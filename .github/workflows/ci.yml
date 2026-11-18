@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, edited, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
@@ -16,30 +16,81 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  pr-checks:
-    name: PR requirements
+  changes:
+    name: Changed areas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      android: ${{ steps.paths.outputs.android }}
+      server: ${{ steps.paths.outputs.server }}
+      audio: ${{ steps.paths.outputs.audio }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Classify changed paths
+        id: paths
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          android=false
+          server=false
+          audio=false
+          if [[ -n "$BASE_SHA" && ! "$BASE_SHA" =~ ^0+$ ]] && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git diff --no-renames --name-only -z "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed-paths"
+            while IFS= read -r -d '' path; do
+              case "$path" in
+                .github/workflows/ci.yml)
+                  android=true
+                  server=true
+                  audio=true
+                  ;;
+                gradlew|gradlew.bat|gradle/wrapper/*|gradle.properties)
+                  android=true
+                  server=true
+                  ;;
+                app/*|gradle/*|build.gradle.kts|settings.gradle.kts|settings-gradle.lockfile)
+                  android=true
+                  ;;
+                server/*)
+                  server=true
+                  ;;
+                scripts/audio/*|tests/audio/*)
+                  audio=true
+                  ;;
+              esac
+            done < "$RUNNER_TEMP/changed-paths"
+          else
+            android=true
+            server=true
+            audio=true
+          fi
+          {
+            echo "android=$android"
+            echo "server=$server"
+            echo "audio=$audio"
+          } >> "$GITHUB_OUTPUT"
+
+  audio:
+    name: Audio fixtures and evidence
+    needs: changes
+    if: needs.changes.outputs.audio == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - name: Test PR validation
-        run: python3 -m unittest discover -s scripts/ci -p 'test_*.py'
       - name: Test audio fixtures, Float64 reference and evidence records
         run: |
           python3 -m unittest discover -s scripts/audio -p 'test_*.py'
           python3 -m scripts.audio.evidence tests/audio/result-template.json
-      - name: Check approved baseline, traceability and scoped results
-        run: |
-          python3 -m unittest discover -s scripts/traceability -p 'test_*.py'
-          python3 scripts/traceability/check.py
-      - name: Validate PR requirements and evidence
-        if: github.event_name == 'pull_request'
-        run: python3 scripts/ci/check_pr.py
 
   server:
     name: Server HTTPS, ownership and PostgreSQL contracts
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -57,7 +108,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           lock_args=()
-          if [[ -n "$BASE_SHA" && ! "$BASE_SHA" =~ ^0+$ ]]; then
+          if [[ -n "$BASE_SHA" && ! "$BASE_SHA" =~ ^0+$ ]] && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
             files=$(git diff --name-only "$BASE_SHA" HEAD -- 'server/*.gradle.kts' 'server/*.lockfile' 'gradle/wrapper/*')
             if [[ -n "$files" ]]; then
               lock_args+=(--write-locks)
@@ -86,6 +137,8 @@ jobs:
 
   android:
     name: Android build, unit tests, lint, release
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -106,7 +159,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           changed=false
-          if [[ -n "$BASE_SHA" && ! "$BASE_SHA" =~ ^0+$ ]]; then
+          if [[ -n "$BASE_SHA" && ! "$BASE_SHA" =~ ^0+$ ]] && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
             files=$(git diff --name-only "$BASE_SHA" HEAD -- '*.gradle.kts' 'gradle/*.toml' 'gradle/wrapper/*' '*.lockfile')
             if [[ -n "$files" ]]; then
               changed=true

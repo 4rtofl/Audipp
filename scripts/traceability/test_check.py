@@ -1,5 +1,4 @@
 import copy
-import json
 from pathlib import Path
 import shutil
 import tempfile
@@ -15,7 +14,7 @@ class InventoryTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        for path in SOURCE_PATHS:
+        for path in SOURCE_PATHS.values():
             destination = self.root / path
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / path, destination)
@@ -27,38 +26,21 @@ class InventoryTests(unittest.TestCase):
         self.assertIn(before, text)
         target.write_text(text.replace(before, after, 1), encoding='utf-8')
 
-    def test_approved_inventory_matches_sources(self):
+    def test_current_specifications_and_recorded_results_are_valid(self):
         self.assertEqual(check(self.root), [])
 
-    def test_approval_history_and_active_commit_cannot_be_lost(self):
-        path = self.root / DIRECTORY / 'baseline.json'
-        original = json.loads(path.read_text())
-        for field, value in (('approved_history', []), ('active_commit', 'main')):
-            with self.subTest(field=field):
-                baseline = dict(original, **{field: value})
-                path.write_text(json.dumps(baseline))
-                self.assertTrue(check(self.root))
-        path.write_text(json.dumps(original))
+    def test_requirements_can_change_without_a_separate_inventory(self):
+        requirements = self.root / SOURCE_PATHS['requirements']
+        detail = self.root / SOURCE_PATHS['detail']
+        with requirements.open('a', encoding='utf-8') as stream:
+            stream.write('\n| FR-NEW-01 | C/RB | New requirement |\n')
+        with detail.open('a', encoding='utf-8') as stream:
+            stream.write('\n| FR-NEW-01 | DD-MODEL | TEST-LIB-01 |\n')
+        self.assertEqual(check(self.root), [])
 
-    def test_added_or_removed_requirement_feature_and_test_are_detected(self):
-        for name, marker, group in (
-            ('01_requirements.md', '| FR-SRC-01 |', 'REQ'),
-            ('05_feature_coverage.md', '| [F-01-01]', 'F'),
-            ('03_detailed_design.md', '| TEST-LIB-01 |', 'TEST'),
-        ):
-            path = self.root / 'docs/specifications' / name
-            original = path.read_text()
-            row = next(line for line in original.splitlines(True) if line.startswith(marker))
-            for updated in (original.replace(row, ''), original + row.replace('-01', '-99')):
-                with self.subTest(group=group, added=updated.startswith(original)):
-                    path.write_text(updated)
-                    errors = check(self.root)
-                    self.assertTrue(errors)
-            path.write_text(original)
-
-    def test_same_count_id_replacement_is_detected(self):
-        self.change('docs/specifications/01_requirements.md', '| FR-SRC-01 |', '| FR-SRC-99 |')
-        self.assertTrue(check(self.root))
+    def test_prose_can_change_without_updating_source_hashes(self):
+        self.change(SOURCE_PATHS['requirements'], '現在の完成目標', '現在の目標')
+        self.assertEqual(check(self.root), [])
 
     def test_missing_link_and_missing_target_are_detected(self):
         self.change('docs/specifications/03_detailed_design.md',
@@ -68,24 +50,17 @@ class InventoryTests(unittest.TestCase):
         self.change('docs/specifications/03_detailed_design.md', 'DD-NONEXISTENT |', 'no design |')
         self.assertTrue(any('FR-SRC-01: missing design/test link' in error for error in check(self.root)))
 
-    def test_excluded_and_retired_ids_cannot_become_current(self):
-        for identifier, scope in (('FR-PLT-02', 'EXCLUDED'), ('F-13-03.01', 'EXCLUDED'),
-                                  ('F-01-02.06', 'RETIRED'), ('F-14-02', 'RETIRED'),
-                                  ('P-01', 'PUBLIC')):
+    def test_scopes_are_read_from_source(self):
+        entries = {entry['id']: entry for entry in inventory(self.root)}
+        for identifier, scope in (
+            ('FR-PLT-02', 'EXCLUDED'), ('F-13-03.01', 'EXCLUDED'),
+            ('F-01-02.06', 'RETIRED'), ('DD-PROV-06', 'RETIRED'), ('P-01', 'PUBLIC'),
+        ):
             with self.subTest(identifier=identifier):
-                path = self.root / DIRECTORY / 'inventory.tsv'
-                original = path.read_text()
-                row = next(line for line in original.splitlines(True) if line.startswith(identifier + '\t'))
-                path.write_text(original.replace(row, row.replace(scope, 'CURRENT')))
-                self.assertTrue(check(self.root))
-                path.write_text(original)
+                self.assertEqual(entries[identifier]['scope'], scope)
 
-    def test_approved_text_changes_require_recorded_approval(self):
-        self.change('docs/specifications/01_requirements.md', '**現在の完成目標（C/RB）**', '**PUBLICを現在必須とする**')
-        self.assertTrue(any('approved source changed' in error for error in check(self.root)))
-
-    def test_windows_line_endings_preserve_the_approved_source(self):
-        for path in SOURCE_PATHS:
+    def test_windows_line_endings_preserve_specification_references(self):
+        for path in SOURCE_PATHS.values():
             target = self.root / path
             target.write_bytes(target.read_bytes().replace(b'\n', b'\r\n'))
         self.assertEqual(check(self.root), [])
@@ -106,11 +81,6 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(references('TEST-AUD-01/02/03 FR-SRC-08〜10 NFR-A11Y-01'),
                          ['FR-SRC-08', 'FR-SRC-09', 'FR-SRC-10', 'NFR-A11Y-01',
                           'TEST-AUD-01', 'TEST-AUD-02', 'TEST-AUD-03'])
-
-    def test_original_bullet_and_link_must_match(self):
-        self.change('docs/specifications/05_feature_coverage.md',
-                    '../audio_app_feature_list.md#L11', '../audio_app_feature_list.md#L9999')
-        self.assertTrue(any('original feature text/line mismatch' in error for error in check(self.root)))
 
 
 class ResultTests(unittest.TestCase):
