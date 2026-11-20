@@ -11,6 +11,7 @@ class NetworkLibrarySourceAdapter(private val library: NetworkLibraryClient) : S
             NetworkFailure.AUTH_REQUIRED -> ResolutionFailure.AUTH_REQUIRED
             NetworkFailure.PERMISSION_REQUIRED -> ResolutionFailure.PERMISSION_REQUIRED
             NetworkFailure.TIMEOUT -> ResolutionFailure.TIMEOUT
+            NetworkFailure.RATE_LIMITED -> ResolutionFailure.RATE_LIMITED
             NetworkFailure.OFFLINE -> ResolutionFailure.SOURCE_IO
             NetworkFailure.UNSUPPORTED -> ResolutionFailure.PLAYBACK_UNSUPPORTED
             NetworkFailure.EXPIRED -> ResolutionFailure.EXPIRED
