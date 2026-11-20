@@ -140,6 +140,8 @@ internal class QobuzFileClient(
             val end = position + size - 1
             // Media/CDN requests never receive the API's app identity or user-token headers.
             val response = request(file.uri, mapOf("Range" to "bytes=$position-$end"), null, size)
+            // A CDN refusal can apply to just the signed URL; the gate would revoke the playback grant.
+            if (response.status == 403) throw IOException("Qobuz media URL refused")
             if (response.status in 400..599) return@execute ProviderCallResult.HttpFailure(response.status)
             val range = Regex("bytes (\\d+)-(\\d+)/(\\d+|\\*)").matchEntire(response.contentRange ?: "")
                 ?: throw IOException("Qobuz range")

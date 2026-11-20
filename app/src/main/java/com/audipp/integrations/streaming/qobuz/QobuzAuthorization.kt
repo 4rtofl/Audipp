@@ -49,9 +49,8 @@ internal class QobuzAuthorization(
     @Synchronized
     fun receive(callback: String): QobuzCallbackResult {
         val expected = state ?: return QobuzCallbackResult.Rejected.NO_REQUEST
-        // Even an invalid callback consumes this attempt; it must never exchange a second code.
-        state = null
         if (nowEpochMs() !in (expiresAt - LIFETIME_MS) until expiresAt) {
+            state = null
             return QobuzCallbackResult.Rejected.EXPIRED
         }
         if (callback.length > 8192) return QobuzCallbackResult.Rejected.MALFORMED
@@ -70,6 +69,7 @@ internal class QobuzAuthorization(
                 }
             }
             if (params["state"] != expected) return QobuzCallbackResult.Rejected.MISMATCH
+            state = null
             if ("error" in params) return QobuzCallbackResult.Rejected.DENIED
             val code = params["code_autorisation"]
             if (code.isNullOrBlank() || code.length > 2048 || code.any(Char::isISOControl)) {

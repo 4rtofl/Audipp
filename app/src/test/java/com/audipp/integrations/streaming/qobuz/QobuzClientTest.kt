@@ -80,7 +80,7 @@ class QobuzClientTest {
             val authorization = authorization()
             val state = query(authorization.begin().uri).getValue("state")
             assertTrue(authorization.receive(change(callback(state))) is QobuzCallbackResult.Rejected)
-            assertEquals(QobuzCallbackResult.Rejected.NO_REQUEST, authorization.receive(callback(state)))
+            assertTrue(authorization.receive(callback(state)) is QobuzCallbackResult.Code)
         }
     }
 
@@ -99,6 +99,7 @@ class QobuzClientTest {
         val next = query(authorization.begin().uri).getValue("state")
         assertNotEquals(first, next)
         assertEquals(QobuzCallbackResult.Rejected.MISMATCH, authorization.receive(callback(first)))
+        assertTrue(authorization.receive(callback(next)) is QobuzCallbackResult.Code)
     }
 
     @Test fun searchUsesOwnGrantAndEncodesQueryOnRealHttp() = fixture { f ->
@@ -220,6 +221,17 @@ class QobuzClientTest {
         f.reply = { exchange -> respond(exchange, 401, "expired signed URL") }
         blocked(ProviderAccessFailure.AUTH_REQUIRED, f.client.readRange(file, 0, 32))
         assertEquals(2, f.requests.size)
+        f.reply = null
+        value(f.client.resolve(42))
+        assertEquals(listOf("/api/track/getFileUrl", "/audio", "/api/track/getFileUrl"),
+            f.requests.map { it.uri.path })
+    }
+
+    @Test fun media403AllowsExplicitReresolutionWithoutChangingPlaybackPermission() = fixture { f ->
+        f.grant(ProviderUse.DIRECT_PLAYBACK)
+        val file = value(f.client.resolve(42))
+        f.reply = { exchange -> respond(exchange, 403, "refused signed URL") }
+        blocked(ProviderAccessFailure.IO, f.client.readRange(file, 0, 32))
         f.reply = null
         value(f.client.resolve(42))
         assertEquals(listOf("/api/track/getFileUrl", "/audio", "/api/track/getFileUrl"),

@@ -14,7 +14,7 @@
 - FileBased：呼出元が正当に利用できるApp ID/secret、本人token、利用主体・期限を渡したときだけ、検索と`track/getFileUrl`の候補プロトコルを実行する。Webプレーヤーの資格抽出や埋込み定数の流用は実装していない。要求formatと応答に記載されたformat/rate/depthを別に保持し、応答rate/depthを実出力やBit-perfectと表示しない。URL寿命は原典で定義を確認できていないので推測しない。
 - 媒体取得：許可リスト内のHTTPSホストにRange要求を送り、206・Content-Range・実際のbyte数を照合して、最大64KiBずつ呼出元へ返す。媒体要求にはAPIのApp ID/tokenを付けない。HTTPキャッシュとredirectを無効にし、ディスクへ音源を書かない。
 - 再生報告：媒体取得を再生開始とみなさず、呼出元からの明示操作で開始/終了報告を送る。終了報告は取得応答にblobがある場合だけ実行し、なければUNSUPPORTEDを返す。HTTP 200でもstatusがsuccess以外なら成功としない。再生時間・Stop/seekに応じた報告区間の生成は#45のPlayer側で接続する。
-- 失効・拒否：APIの401後は同じclientの旧tokenを再送しない。403は既存ゲートがその用途をDENIEDとして保存する。429・通信失敗・失効媒体URLは呼出元へ返し、自動再試行もSessionBased等への切替もしない。媒体URLの401後に同じFileBased方式で再解決する場合も呼出元の明示操作が必要。
+- 失効・拒否：APIの401後は同じclientの旧tokenを再送しない。APIの403は既存ゲートがその用途をDENIEDとして保存する。音源配信先の403は取得失敗として返し、利用許可が有効ならURLを明示的に取り直せる。429・通信失敗・失効媒体URLは呼出元へ返し、自動再試行もSessionBased等への切替もしない。媒体URLの401後に同じFileBased方式で再解決する場合も呼出元の明示操作が必要。
 - IO・取消：既存ゲートのIO dispatcherで通信・JSON解析を行う。メタデータは256KiB、検索は最大50件、connect/readの各timeoutは既定3秒に制限する。取消後や途中で許諾を撤回された応答は返さない。HttpURLConnectionはthread safeではないため、disconnectも所有workerが行い、進行中のblocking readはsocket timeoutまで待つ場合がある。[Android公式資料](https://developer.android.com/reference/java/net/HttpURLConnection)
 
 以上の上限、callbackの5分期限、`com.audipp` scheme、ブラウザー要求のstate往復は実装案。実サービスのredirect受理・state往復・code交換方式は未検証であり、実サービスで動く既知の仕様として固定していない。原典のendpoint/入出力を参照してKotlinで記述し、Rustのソースやバイナリーを導入していない。プロトコル利用条件・コード由来の権利確認は採用レビューで継続する。
