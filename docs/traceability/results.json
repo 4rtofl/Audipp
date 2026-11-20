@@ -1,5 +1,69 @@
 [
   {
+    "case_id": "E05-09-profile-persistence",
+    "requirement_ids": [
+      "FR-DEV-04"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01"
+    ],
+    "commit": "6615e4b1016756d4e953f54ec298d88fa2170187",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "追加の単体試験3件とAPI 23・36の専用エミュレーターで、版付き設定と根拠の再読込、NULL、同型機の個別登録、FK失敗・取消のロールバックと再試行を確認した。Debug build、単体試験全191件、Lintも成功。",
+    "evidence": [
+      "app/src/test/java/com/audipp/domain/device/DeviceProfileContractTest.kt",
+      "app/src/androidTest/java/com/audipp/data/device/DeviceProfileStoreTest.kt",
+      "docs/contracts/device-profiles-v1.md"
+    ],
+    "limitations": "端末内保存の部分ケース。USB識別・優先順位・音量の安全適用は対象外。"
+  },
+  {
+    "case_id": "E05-09-share-copy",
+    "requirement_ids": [
+      "FR-DEV-06"
+    ],
+    "test_ids": [
+      "TEST-SHARE-01"
+    ],
+    "commit": "6615e4b1016756d4e953f54ec298d88fa2170187",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23・36で共有コピーをJSONに変換し、公称・本人申告・OS申告・測定の区分と公開可能な条件を保持し、トークン・URI・シリアル・ローカルID・音量を含まないことを確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/data/device/DeviceProfileStoreTest.kt",
+      "docs/contracts/device-profiles-v1.md"
+    ],
+    "limitations": "各APIで実行したDB試験4件のうち共有コピーの部分ケース。共有画面・送信・サーバー権限は未実施。"
+  },
+  {
+    "case_id": "E05-09-hardware-and-sharing-workflow",
+    "requirement_ids": [
+      "FR-DEV-04",
+      "FR-DEV-06",
+      "FR-AUD-08"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01",
+      "TEST-SHARE-01",
+      "TEST-AUD-03"
+    ],
+    "commit": "6615e4b1016756d4e953f54ec298d88fa2170187",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "実機の指定ADBシリアルがなく、再生経路・安全適用・共有UIとサーバー側操作の接続は今回の保存・コピー実装の範囲外。",
+    "evidence": [
+      "docs/contracts/device-profiles-v1.md"
+    ],
+    "limitations": "物理端末/DAP/DACでの出力・音量・Bit-perfect測定、相手指定共有・認可・撤回等は所管Issueで検証する。"
+  },
+  {
     "case_id": "E00-05-host-traceability-2026-10-31",
     "requirement_ids": [
       "NFR-MAINT-01",

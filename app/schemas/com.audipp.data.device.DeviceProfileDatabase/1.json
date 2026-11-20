@@ -1,0 +1,301 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "0a3e2cda453aa57f75c0d66b91fb88b8",
+    "entities": [
+      {
+        "tableName": "device_components",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`component_id` TEXT NOT NULL, `kind` TEXT NOT NULL, `manufacturer` TEXT, `product` TEXT, `vid` INTEGER, `pid` INTEGER, `usb_serial_hash` TEXT, `notes` TEXT, PRIMARY KEY(`component_id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "component_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "manufacturer",
+            "columnName": "manufacturer",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "product",
+            "columnName": "product",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "vid",
+            "columnName": "vid",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "pid",
+            "columnName": "pid",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "usbSerialHash",
+            "columnName": "usb_serial_hash",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "component_id"
+          ]
+        }
+      },
+      {
+        "tableName": "device_evidence",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`component_id` TEXT NOT NULL, `ordinal` INTEGER NOT NULL, `evidence_json` TEXT NOT NULL, PRIMARY KEY(`component_id`, `ordinal`), FOREIGN KEY(`component_id`) REFERENCES `device_components`(`component_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "componentId",
+            "columnName": "component_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ordinal",
+            "columnName": "ordinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "document",
+            "columnName": "evidence_json",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "component_id",
+            "ordinal"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "device_components",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "component_id"
+            ],
+            "referencedColumns": [
+              "component_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "device_profiles",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`profile_id` TEXT NOT NULL, `display_name` TEXT NOT NULL, `created_at` INTEGER NOT NULL, PRIMARY KEY(`profile_id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "profile_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtEpochMs",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "profile_id"
+          ]
+        }
+      },
+      {
+        "tableName": "profile_components",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`profile_id` TEXT NOT NULL, `component_id` TEXT NOT NULL, `role` TEXT NOT NULL, `ordinal` INTEGER NOT NULL, PRIMARY KEY(`profile_id`, `component_id`, `role`), FOREIGN KEY(`profile_id`) REFERENCES `device_profiles`(`profile_id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`component_id`) REFERENCES `device_components`(`component_id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "profileId",
+            "columnName": "profile_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "componentId",
+            "columnName": "component_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "role",
+            "columnName": "role",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ordinal",
+            "columnName": "ordinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "profile_id",
+            "component_id",
+            "role"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_profile_components_component_id",
+            "unique": false,
+            "columnNames": [
+              "component_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_profile_components_component_id` ON `${TABLE_NAME}` (`component_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "device_profiles",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "profile_id"
+            ],
+            "referencedColumns": [
+              "profile_id"
+            ]
+          },
+          {
+            "table": "device_components",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "component_id"
+            ],
+            "referencedColumns": [
+              "component_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "audio_presets",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`profile_id` TEXT NOT NULL, `preset_id` TEXT NOT NULL, `ordinal` INTEGER NOT NULL, `display_name` TEXT NOT NULL, `revision` INTEGER NOT NULL, `settings_json` TEXT NOT NULL, `default_volume_json` TEXT, `initial_volume_json` TEXT, `safe_volume_json` TEXT, `physical_gain_note` TEXT, `impulse_response_uri` TEXT, PRIMARY KEY(`profile_id`, `preset_id`), FOREIGN KEY(`profile_id`) REFERENCES `device_profiles`(`profile_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "profileId",
+            "columnName": "profile_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "presetId",
+            "columnName": "preset_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ordinal",
+            "columnName": "ordinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "settings",
+            "columnName": "settings_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "defaultVolume",
+            "columnName": "default_volume_json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "initialVolume",
+            "columnName": "initial_volume_json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "safeVolume",
+            "columnName": "safe_volume_json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "physicalGainNote",
+            "columnName": "physical_gain_note",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "impulseResponseUri",
+            "columnName": "impulse_response_uri",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "profile_id",
+            "preset_id"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "device_profiles",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "profile_id"
+            ],
+            "referencedColumns": [
+              "profile_id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0a3e2cda453aa57f75c0d66b91fb88b8')"
+    ]
+  }
+}
