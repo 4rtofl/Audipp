@@ -144,6 +144,8 @@ adb -s SERIAL logcat -b crash -d
 
 Issue #34の独立した`server/`ビルド、HTTPS/JSON・本人所有権、SQL/migration、起動条件と試験範囲は[業務API v1](contracts/backend-v1.md)を参照してください。`./gradlew -p server test installDist distTar`はSDK・Docker・実配備を使わず、一時PostgreSQLで拒否動作と復旧を検証します。Androidの引き渡し検証は従来どおり必要です。
 
+Issue #51 の招待・復旧・Google 結合の設定とローカル試験は[招待制の認証と復旧](contracts/keycloak-invitation.md)を参照してください。
+
 ## Linux x86_64向けの補助手順
 
 Android Studioを使わずに構築する場合の任意の手順です。Bash、curl、tar、unzip、sha256sumが必要です。
