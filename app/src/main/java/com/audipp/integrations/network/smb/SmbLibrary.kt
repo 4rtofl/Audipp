@@ -30,6 +30,7 @@ import java.util.UUID
 
 private const val MAX_RANGE_BYTES = 256 * 1024
 private const val MAX_DIRECTORY_SCAN = 20_000
+private const val MAX_PATH_CHARS = 2_048
 
 class SmbLibrary internal constructor(
     val endpoint: NetworkEndpoint,
@@ -151,7 +152,10 @@ class SmbLibrary internal constructor(
                 val page = entries.withIndex()
                     .onEach { if (it.index >= MAX_DIRECTORY_SCAN) throw SmbRejected(NetworkFailure.UNSUPPORTED) }
                     .map { it.value }
-                    .filter { !it.isReparsePoint && validSmbName(it.name) && filter(it) }
+                    .filter {
+                        path.length + it.name.length < MAX_PATH_CHARS &&
+                            !it.isReparsePoint && validSmbName(it.name) && filter(it)
+                    }
                     .drop(request.offset)
                     .take(request.limit)
                     .map { convert(if (path.isEmpty()) it.name else "$path\\${it.name}", it.name) }

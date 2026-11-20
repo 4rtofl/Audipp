@@ -52,11 +52,11 @@ fun interface PlaybackPermissionChecker {
 }
 
 enum class ResolutionFailure {
+    SIGNATURE_REJECTED,
     STALE_ROUTE, STALE_TRANSITION, SOURCE_UNAVAILABLE, ADAPTER_UNAVAILABLE,
     POLICY_BLOCKED, PLAYBACK_UNSUPPORTED, INVALID_DESCRIPTOR, EXPIRED,
     TARGET_UNREACHABLE, SOURCE_IO, SOURCE_MISMATCH, TIMEOUT, AUTH_REQUIRED,
     SOURCE_MISSING, PERMISSION_REQUIRED,
-    SIGNATURE_REJECTED,
 }
 
 // Descriptors may contain credentials or signed URLs; keep them out of serializable plans and logs.

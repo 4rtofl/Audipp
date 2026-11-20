@@ -33,6 +33,7 @@ import java.nio.charset.CharacterCodingException
 import java.util.UUID
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import java.util.concurrent.TimeoutException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -224,6 +225,8 @@ internal fun smbFailure(error: Throwable): NetworkFailure? {
     }
     return when (error) {
         is IOException, is SMBRuntimeException -> NetworkFailure.IO
+        is CancellationException -> null
+        is RuntimeException -> NetworkFailure.INVALID_RESPONSE
         else -> null
     }
 }

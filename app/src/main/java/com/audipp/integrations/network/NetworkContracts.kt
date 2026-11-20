@@ -34,9 +34,9 @@ class NetworkEndpoint(val protocol: NetworkProtocol, val uri: String) {
 }
 
 enum class NetworkFailure {
+    SIGNATURE_REJECTED,
     OFFLINE, AUTH_REQUIRED, PERMISSION_REQUIRED, TIMEOUT, IO, UNSUPPORTED,
     INVALID_INPUT, INVALID_RESPONSE, STALE_RESPONSE, EXPIRED,
-    SIGNATURE_REJECTED,
 }
 
 sealed interface NetworkResult<out T> {
