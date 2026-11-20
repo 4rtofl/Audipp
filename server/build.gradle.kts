@@ -14,6 +14,7 @@ dependencies {
     implementation("io.ktor:ktor-server-auth:$ktorVersion")
     implementation("com.auth0:java-jwt:4.5.1")
     implementation("com.auth0:jwks-rsa:0.24.1")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.21.2")
     implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
     implementation("io.ktor:ktor-server-status-pages:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")

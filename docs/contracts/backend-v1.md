@@ -21,6 +21,7 @@ JDK 17、Kotlin 2.3.10、Ktor 3.4.3（Netty）、pgJDBC 42.7.14、Auth0 java-jwt
 | `GET /v1/me` | Bearer access token | `user_id`（UUID文字列）、`revision`（正の64bit整数）、`created_at`（UTC、末尾Z） |
 | `POST /v1/auth/session` | Bearer + JSON `{"device_id":"正規形の小文字UUID"}` | `{"user":上記ユーザー,"device":端末}`。端末は`device_id/revision/created_at` |
 | `GET /v1/me/devices/{device_id}` | Bearer + 正規形UUID | 本人が登録済みの端末だけ |
+| `POST /v1/sync/batches` | Bearer + 本人の登録端末 + イベント配列 | [同期push v1](sync-push-v1.md) |
 
 `session`はKeycloakトークンを内部ユーザー・端末に結び付ける。パスワード受付、token発行・refresh、ID連携を行わない。`GET /v1/me`も初回の本人解決時に業務ユーザーを作る。全経路で署名検証済みissuer/subjectだけを使う。token中のemailやuser_idは無視する。queryは未対応で400、POSTの未知JSONキー（user_id/revisionを含む）・欠落・不正UUIDは400。JSON本文上限は1 KiB、超過は413。成功/拒否とも`Cache-Control: no-store`を付ける。
 
@@ -48,7 +49,7 @@ JDK 17、Kotlin 2.3.10、Ktor 3.4.3（Netty）、pgJDBC 42.7.14、Auth0 java-jwt
 
 JDBC処理は最大8並列のIO dispatcherに置く。接続2秒/ソケット5秒、transaction内のstatement 2秒/lock 500 msで待機を限定し、commit直前の取消を検査する。例外・取消はrollbackして接続を閉じる。commit中の通信断/取消では到達不明になり得るため、同一device_idでの再送で確定結果へ収束させる。API応答の受領自体は取消で保証しない。アカウント削除世代や同期cursorは後続Issueであり、このsequenceを同期プロトコル完成と扱わない。
 
-migrationはtransaction advisory lock下でSQLと版/SQLのSHA-256を同時commitする。再起動では同じ版を再適用せず、checksum不一致は起動失敗にする。失敗後はschemaと版がrollbackされる。既存のV001を書き換えて修復せず、原因を取り除いて再起動する。後続migrationの追加は別PRで実装する。自動rollback/downや本番DBの破壊的再作成は行わない。
+migrationはtransaction advisory lock下で版順に適用し、SQLと版/SQLのSHA-256を同時commitする。再起動では同じ版を再適用せず、checksum不一致は起動失敗にする。失敗後は未commitのschemaと版がrollbackされる。既存の版は維持し、原因を取り除いて再起動する。
 
 ## 起動条件と認証DB分離
 
