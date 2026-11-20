@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
@@ -27,40 +28,64 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.audipp.R
 import com.audipp.domain.model.ThemeMode
+import com.audipp.ui.home.HomeScreen
+import com.audipp.ui.navigation.HomeSources
+import com.audipp.ui.navigation.NavigationPlaybackBar
+import com.audipp.ui.navigation.NavigationPlaybackState
+import com.audipp.ui.navigation.PlaybackControl
 import com.audipp.ui.settings.ThemeSettingsScreen
 import com.audipp.ui.settings.ThemeSettingsState
 import com.audipp.ui.theme.AudippSpacing
 
-private enum class Screen { WELCOME, SETTINGS, APPEARANCE }
+private enum class Screen { HOME, SETTINGS, APPEARANCE }
 
 @Composable
-fun AudippApp(
+internal fun AudippApp(
     androidVersion: String,
     themeState: ThemeSettingsState,
+    sources: HomeSources,
+    playback: NavigationPlaybackState,
     onTheme: (ThemeMode) -> Unit,
-    onRetry: () -> Unit,
+    onRetryTheme: () -> Unit,
+    onRetrySources: () -> Unit,
+    onRetryPlayback: () -> Unit,
+    onTogglePlayback: (PlaybackControl) -> Unit,
 ) {
-    var screen by rememberSaveable { mutableStateOf(Screen.WELCOME) }
+    var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
     val screenState = rememberSaveableStateHolder()
-    val back = { screen = if (screen == Screen.APPEARANCE) Screen.SETTINGS else Screen.WELCOME }
-    BackHandler(enabled = screen != Screen.WELCOME, onBack = back)
+    val back = { screen = if (screen == Screen.APPEARANCE) Screen.SETTINGS else Screen.HOME }
+    BackHandler(enabled = screen != Screen.HOME, onBack = back)
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        screenState.SaveableStateProvider(screen) {
-            ScreenColumn {
-                when (screen) {
-                    Screen.WELCOME -> WelcomeScreen(androidVersion) { screen = Screen.SETTINGS }
-                    Screen.SETTINGS -> {
-                        TextButton(onClick = back) { Text(stringResource(R.string.back)) }
-                        Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineLarge)
-                        TextButton(onClick = { screen = Screen.APPEARANCE }) {
-                            Text(stringResource(R.string.appearance))
+        Column(modifier = Modifier.safeDrawingPadding()) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                screenState.SaveableStateProvider(screen) {
+                    ScreenColumn {
+                        when (screen) {
+                            Screen.HOME -> HomeScreen(
+                                sources = sources,
+                                playback = playback,
+                                onSettings = { screen = Screen.SETTINGS },
+                                onRetrySources = onRetrySources,
+                                onRetryPlayback = onRetryPlayback,
+                            )
+                            Screen.SETTINGS -> {
+                                BackButton(back)
+                                Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineLarge)
+                                TextButton(onClick = { screen = Screen.APPEARANCE }) {
+                                    Text(stringResource(R.string.appearance))
+                                }
+                                Text(androidVersion, style = MaterialTheme.typography.bodyMedium)
+                            }
+                            Screen.APPEARANCE -> {
+                                BackButton(back)
+                                ThemeSettingsScreen(themeState, onTheme, onRetryTheme)
+                            }
                         }
                     }
-                    Screen.APPEARANCE -> {
-                        TextButton(onClick = back) { Text(stringResource(R.string.back)) }
-                        ThemeSettingsScreen(themeState, onTheme, onRetry)
-                    }
                 }
+            }
+            if (playback is NavigationPlaybackState.Current) {
+                NavigationPlaybackBar(playback, onTogglePlayback)
             }
         }
     }
@@ -68,16 +93,23 @@ fun AudippApp(
 
 @Composable
 internal fun ScreenColumn(content: @Composable ColumnScope.() -> Unit) {
-    Box(contentAlignment = Alignment.TopCenter) {
-        Column(
-            modifier = Modifier
-                .safeDrawingPadding()
-                .widthIn(max = AudippSpacing.contentMaxWidth)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = AudippSpacing.extraLarge, vertical = AudippSpacing.screenVertical),
-            verticalArrangement = Arrangement.spacedBy(AudippSpacing.large),
-            content = content,
-        )
+    Column(
+        modifier = Modifier
+            .widthIn(max = AudippSpacing.contentMaxWidth)
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = AudippSpacing.extraLarge, vertical = AudippSpacing.screenVertical),
+        verticalArrangement = Arrangement.spacedBy(AudippSpacing.large),
+        content = content,
+    )
+}
+
+@Composable
+private fun BackButton(onBack: () -> Unit) {
+    TextButton(
+        modifier = Modifier.heightIn(min = AudippSpacing.minimumTouchTarget),
+        onClick = onBack,
+    ) {
+        Text(stringResource(R.string.back))
     }
 }
