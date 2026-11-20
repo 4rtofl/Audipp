@@ -85,5 +85,153 @@
       "docs/evidence/issue-20/kotlin-local.txt"
     ],
     "limitations": "加入契約は確認済みで、アプリ資格とは別に保持する。実サービス試験の前提不足をQobuz必須要件の削除やKotlin実装全体の停止理由にはしない。資格取得後に実応答・報告受理・失効を検証し、Playerへ接続する。"
+  },
+  {
+    "case_id": "E06-03-local-pcm-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-09",
+      "FR-OBS-07"
+    ],
+    "test_ids": [
+      "TEST-RESEARCH-01",
+      "TEST-TAP-01"
+    ],
+    "commit": "27219bdf7b1608f45e15693b208a571b1a51dab1",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "固定した上流Player・デコーダーと自作試料で、44100 Hz・2 ch・44100フレーム、Rawと不正サンプルの拒否、所有権、満杯時のStop取消とseek世代の試験5件に合格した。",
+    "evidence": [
+      "docs/evidence/issue-21/local.txt",
+      "docs/specifications/13_spotify_spike.md",
+      "scripts/research/librespot/issue_21_pcm.rs"
+    ],
+    "limitations": "音源側PCMに限定。seek世代は試験用制御で確認した。Spotifyフル音源・lossless、DSP後Tap、実機出力は未実施。"
+  },
+  {
+    "case_id": "E06-03-permission-fixture-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-08"
+    ],
+    "test_ids": [
+      "TEST-PROV-01"
+    ],
+    "commit": "ba8f18b2656d4508cfa381cbd7ded1f94a0a462a",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "架空の再生専用許諾で、共通ProviderAccessGateが他用途の処理を一度も呼ばないことを既存テストで確認した。",
+    "evidence": [
+      "docs/evidence/issue-21/local.txt",
+      "app/src/test/java/com/audipp/integrations/streaming/ProviderAccessGateTest.kt"
+    ],
+    "limitations": "Spotify Adapterの接続、用途別契約および実再生は対象外。"
+  },
+  {
+    "case_id": "E06-03-android-link-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-09"
+    ],
+    "test_ids": [
+      "TEST-RESEARCH-01"
+    ],
+    "commit": "27219bdf7b1608f45e15693b208a571b1a51dab1",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "NDK r28cとRust 1.91.1でarm64-v8aとx86_64の試験バイナリをリンクし、ELFのAndroidノートでAPI 23を確認した。",
+    "evidence": [
+      "docs/evidence/issue-21/local.txt",
+      "docs/specifications/13_spotify_spike.md"
+    ],
+    "limitations": "試験実行、JNI、APKへの組み込み、Android API 23/36の端末動作、DAC出力は未確認。"
+  },
+  {
+    "case_id": "E06-03-live-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-08",
+      "FR-SRC-09"
+    ],
+    "test_ids": [
+      "TEST-PROV-01",
+      "TEST-RESEARCH-01"
+    ],
+    "commit": "27219bdf7b1608f45e15693b208a571b1a51dab1",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "本人Premium、Audippのアプリ資格・用途別許諾・音源の利用権を確認できないため、ブラウザー認可、鍵取得、実曲取得、失効・通信断、検索の実試験を行わなかった。",
+    "evidence": [
+      "docs/specifications/13_spotify_spike.md",
+      "https://github.com/librespot-org/librespot/issues/1649"
+    ],
+    "limitations": "上流報告には別環境の鍵取得失敗がある。App Remote、試聴、ローカルfixtureは実サービスの直接フル再生に算入しない。"
+  },
+  {
+    "case_id": "E06-03-default-policy-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-08"
+    ],
+    "test_ids": [
+      "TEST-PROV-01"
+    ],
+    "commit": "27219bdf7b1608f45e15693b208a571b1a51dab1",
+    "stage": "CURRENT",
+    "outcome": "FAIL",
+    "execution": "EXECUTED",
+    "permission": "DENIED",
+    "reason": "公開Developer Policy III.5/7/13では他サービスとの統合・ミックス・派生統計を許容せず、公開条件だけではAudippの混在・解析を成立させられない。",
+    "evidence": [
+      "docs/specifications/13_spotify_spike.md",
+      "https://developer.spotify.com/policy"
+    ],
+    "limitations": "公開条件の文書照合。Audippへの個別許諾の可否は未確認。Spotify実データの処理は未実施。"
+  },
+  {
+    "case_id": "E06-03-distribution-2026-11-20",
+    "requirement_ids": [
+      "NFR-LEGAL-01",
+      "NFR-LEGAL-02"
+    ],
+    "test_ids": [
+      "TEST-STORE-01"
+    ],
+    "commit": "27219bdf7b1608f45e15693b208a571b1a51dab1",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "候補依存のライセンス一覧を取得した。個人間配布用APKに対する同梱一覧・通知・サービス用途許諾の審査は未実施。",
+    "evidence": [
+      "docs/evidence/issue-21/local.txt",
+      "docs/specifications/13_spotify_spike.md"
+    ],
+    "limitations": "製品採用と配布の可否は保留。ストア向けの一般公開試験は今回の範囲外。"
+  },
+  {
+    "case_id": "E06-03-android-runtime-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-09",
+      "FR-OBS-07"
+    ],
+    "test_ids": [
+      "TEST-RESEARCH-01",
+      "TEST-TAP-01"
+    ],
+    "commit": "27219bdf7b1608f45e15693b208a571b1a51dab1",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "JNIとSpotifyのAndroid経路は未実装。指定ADBシリアルがなく、API 23/36のinstrumented試験と実機・DACの測定を実施していない。",
+    "evidence": [
+      "docs/evidence/issue-21/local.txt",
+      "docs/specifications/13_spotify_spike.md"
+    ],
+    "limitations": "API 23を指定したリンク成功はAPI 23/36端末での起動や出力証拠を含まない。"
   }
 ]
