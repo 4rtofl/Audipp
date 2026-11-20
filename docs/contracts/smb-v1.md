@@ -56,3 +56,5 @@ AUDIPP_SMB_FIXTURE_PORTS=29445,29446 ./gradlew :app:testDebugUnitTest --tests 'c
 最初のAPI 23試験（`e5091081a111f29ac5a767dfa3440b392955f49f`）は `NtlmAuthenticator.java:120` の `removeIf` が参照するクラスをロードできず失敗した。Java API desugaringを追加した実装commitで再実行した。Sambaではローカルfixture用のユーザー名前空間内でグループ切替を代替しているため、ホストのOS権限の検証は結果に含まれない。
 
 PR #184と共通になる `NetworkMedia.name` は同じ形を採用し、SMBJとWebDAV依存のlockは別の座標を使う。PR #187と共有するManifestの `INTERNET` は既存宣言を使用する。両PRのheadを各々重ねたGitの試算に内容衝突はなかった。
+
+IPv6の追検証は `a0a9789c1636c285c507e3332012e8a213f73269` で行った。SMBJが `[::1]` の表記を展開しても、指定したループバックでSMB2交渉を開始し、応答を待つ操作のタイムアウトでソケットを閉じることを確認した。JVMは200件（SMB 12件）成功し、API 23/36で署名付きSambaの同じ試験も各1件成功した。

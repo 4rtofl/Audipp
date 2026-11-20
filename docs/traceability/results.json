@@ -118,6 +118,26 @@
     "limitations": "実NASや実機での動作、音声出力、DAC実測は未確認。"
   },
   {
+    "case_id": "E07-02-ipv6-literal-loopback-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "a0a9789c1636c285c507e3332012e8a213f73269",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "IPv6リテラルの表記がSMBJで正規化されても、指定したループバックでSMB2交渉を開始し、タイムアウトでソケットが閉じた。",
+    "evidence": [
+      "docs/contracts/smb-v1.md",
+      "app/src/test/java/com/audipp/integrations/network/smb/SmbLoopbackTest.kt"
+    ],
+    "limitations": "IPv6では交渉の開始とソケットの終了を検証した。署名付きSambaとの相互運用を再確認した接続先はIPv4ループバック。"
+  },
+  {
     "case_id": "E06-02-ci-baseline-notes-2026-11-10",
     "requirement_ids": [
       "NFR-MAINT-01",
