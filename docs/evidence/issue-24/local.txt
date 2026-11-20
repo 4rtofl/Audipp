@@ -1,0 +1,23 @@
+2026-11-20 17:46:18 JST
+x86_64
+glibc 2.44
+ffmpeg version n9.0.2 Copyright (c) 2000-2026 the FFmpeg developers
+ffprobe version n9.0.2 Copyright (c) 2007-2026 the FFmpeg developers
+fixture: AAC/fMP4 100841 bytes, sha256=8b4410bef1df252c2064976faec34b70bfdd2acec932341cb798a7a3c829823d
+replacement: 100828 bytes, sha256=5aa96f1f479f6e2582e432afaf82fae2fc49c757838bf0f83e398eafd36321c1
+test_disconnect_and_resume (__main__.RelayTest.test_disconnect_and_resume) ... ok
+test_expiry (__main__.RelayTest.test_expiry) ... ok
+test_expiry_rejects_replacement (__main__.RelayTest.test_expiry_rejects_replacement) ... ok
+test_expiry_without_audio_does_not_fall_back (__main__.RelayTest.test_expiry_without_audio_does_not_fall_back) ... ok
+test_owner_and_save_grant (__main__.RelayTest.test_owner_and_save_grant) ... ok
+test_range (__main__.RelayTest.test_range) ... packet PTS=3.008000s / bytes=38316-38559
+ok
+test_start_and_finish (__main__.RelayTest.test_start_and_finish) ... prefix=8192 bytes / first PCM frame=2048 bytes
+ok
+test_pinned_tools (__main__.RuntimeTest.test_pinned_tools) ... Python 3.12.14 / yt-dlp 2026.10.26 / Node 24.21.0 / yt-dlp-ejs 0.8.0
+ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 5.494s
+
+OK
