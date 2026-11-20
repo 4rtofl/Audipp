@@ -4,6 +4,7 @@
 
 - JDK 17
 - Android SDK Platform 36、Build Tools 35.0.0、Platform Tools
+- Android NDK 28.2.13676358、CMake 3.22.1
 - Android Studio、またはAndroid SDK Command-line Tools
 
 GradleはリポジトリのWrapperを使います。AGP・Kotlin・Composeなどの版は [`gradle/libs.versions.toml`](../gradle/libs.versions.toml)、SDKとJavaの設定は [`app/build.gradle.kts`](../app/build.gradle.kts) を参照してください。minSdkは23（Android 6.0）です。
@@ -12,7 +13,7 @@ GradleはリポジトリのWrapperを使います。AGP・Kotlin・Composeなど
 
 1. [Android Studio](https://developer.android.com/studio)とJDK 17を用意します。
 2. **Open** からリポジトリのルートを開きます。
-3. **SDK Manager** で必要なSDKパッケージを導入します。Build Toolsは **Show Package Details** から35.0.0を選びます。
+3. **SDK Manager** で必要なSDKパッケージを導入します。**Show Package Details** からBuild Tools、NDK (Side by side)、CMakeの指定版を選びます。
 4. 設定の **Build, Execution, Deployment > Build Tools > Gradle > Gradle JDK** にJDK 17を指定し、Gradle Syncを実行します。Android Studio自身の実行JDKを変更する必要はありません。[JDK設定の公式資料](https://developer.android.com/build/jdks)
 5. **Device Manager** で仮想端末を作成するか、USBデバッグを有効にした実機を選び、`app` を **Run** します。システムイメージは開発PCのCPUに合うABIを選びます。
 
@@ -99,6 +100,10 @@ Source・Variant・再生Snapshot・Evidenceの公開型、版付きJSON、後�
 ## 音声試験の生成信号と証跡
 
 Issue #17の生成音源・Float64独立比較・版付き測定結果の使い方、要求/試験との対応と未検証範囲は [音声試験基盤 v1](../tests/audio/README.md) を参照してください。Python標準ライブラリのホスト検査をCIでも実行します。音声処理や実機測定の成功とは区別します。
+
+## PCMのnative処理
+
+Issue #41のPCMバッファ契約、世代の取消、ABIと検証の追跡は [PCM処理 v1](contracts/native-pcm-v1.md) を参照してください。
 
 ## 小規模設定と同意の保存
 
