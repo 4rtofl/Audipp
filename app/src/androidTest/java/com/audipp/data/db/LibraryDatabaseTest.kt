@@ -16,6 +16,8 @@ import com.audipp.domain.model.VariantId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -226,6 +228,28 @@ class LibraryDatabaseTest {
                 assertTrue(cursor.moveToFirst())
                 assertEquals("retained", cursor.getString(0))
             }
+        }
+    }
+
+    @Test
+    fun localSourceSummaryUpdatesAndIgnoresProviderState() = runBlocking {
+        val updates = Channel<LocalSourceSummary>(Channel.UNLIMITED)
+        val observer = launch {
+            dao.observeLocalSourceSummary().distinctUntilChanged().collect { updates.send(it) }
+        }
+        suspend fun next() = withTimeout(5_000) { updates.receive() }
+        try {
+            assertEquals(LocalSourceSummary(0, 0, 0), next())
+            val known = local("local:known").copy(availability = Availability.PLAYABLE)
+            val unknown = local("local:unknown")
+            val expired = provider("provider:expired", "fixture", "expired").copy(availability = Availability.EXPIRED)
+            dao.save(LibraryBatch(sources = listOf(known, unknown, expired)))
+            assertEquals(LocalSourceSummary(2, 0, 1), next())
+            assertTrue(dao.markSourceMissing(known.sourceId, 2))
+            assertEquals(LocalSourceSummary(2, 1, 1), next())
+        } finally {
+            observer.cancelAndJoin()
+            updates.close()
         }
     }
 
