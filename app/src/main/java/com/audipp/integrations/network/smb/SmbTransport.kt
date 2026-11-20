@@ -116,11 +116,12 @@ internal class SmbjTransport(
         try {
             val factory = object : ProxySocketFactory() {
                 override fun createSocket(host: String, port: Int): Socket {
-                    if (!host.equals(endpoint.host, ignoreCase = true) || port != endpoint.port || socket.isConnected) {
+                    if (port != endpoint.port || socket.isConnected) {
                         throw SmbRejected(NetworkFailure.PERMISSION_REQUIRED)
                     }
                     if (!isLanReadAllowed()) throw SmbRejected(NetworkFailure.PERMISSION_REQUIRED)
-                    socket.connect(InetSocketAddress(host, port), policy.connectTimeoutMs.toInt())
+                    // SMBJ normalizes IPv6 literals before invoking this factory.
+                    socket.connect(InetSocketAddress(endpoint.host, endpoint.port), policy.connectTimeoutMs.toInt())
                     return socket
                 }
             }

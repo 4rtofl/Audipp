@@ -16,15 +16,18 @@ import com.hierynomus.security.bc.BCSecurityProvider
 import java.io.DataInputStream
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.net.SocketException
 import java.util.concurrent.TimeUnit.SECONDS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeNoException
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
@@ -35,20 +38,17 @@ class SmbLoopbackTest {
     private val password = SmbPassword.encode("root", "audipp-fixture-test".toCharArray(), "WORKGROUP")
 
     @Test fun sendsSmb2NegotiateAndClosesSocketOnOperationTimeout() = runBlocking {
-        listener().use { server ->
-            val calls = NetworkCalls(NetworkCallPolicy(operationTimeoutMs = 1_000))
-            val library = SmbLibrary(endpoint(server.localPort, "music"), { true }, calls)
-            val request = async { library.verifyCredential(password) }
-            withContext(Dispatchers.IO) {
-                server.accept().use { peer ->
-                    peer.soTimeout = 5_000
-                    val input = DataInputStream(peer.getInputStream())
-                    assertSmb2Negotiate(input)
-                    assertEquals(-1, input.read())
-                }
-            }
-            assertEquals(NetworkResult.Failure(NetworkFailure.TIMEOUT), request.await())
+        assertTimeoutAfterNegotiate(listener(), "127.0.0.1")
+    }
+
+    @Test fun connectsToTheSelectedIpv6Literal() = runBlocking {
+        val server = try {
+            listener("::1")
+        } catch (error: SocketException) {
+            assumeNoException(error)
+            return@runBlocking
         }
+        assertTimeoutAfterNegotiate(server, "[::1]")
     }
 
     @Test fun cancellationClosesTheSocketWithoutWaitingForItsReadTimeout() = runBlocking {
@@ -109,7 +109,24 @@ class SmbLoopbackTest {
         }
     }
 
-    private fun listener() = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).apply {
+    private suspend fun assertTimeoutAfterNegotiate(listener: ServerSocket, host: String) = coroutineScope {
+        listener.use { server ->
+            val calls = NetworkCalls(NetworkCallPolicy(operationTimeoutMs = 1_000))
+            val library = SmbLibrary(NetworkEndpoint(NetworkProtocol.SMB, "smb://$host:${server.localPort}/music"), { true }, calls)
+            val request = async { library.verifyCredential(password) }
+            withContext(Dispatchers.IO) {
+                server.accept().use { peer ->
+                    peer.soTimeout = 5_000
+                    val input = DataInputStream(peer.getInputStream())
+                    assertSmb2Negotiate(input)
+                    assertEquals(-1, input.read())
+                }
+            }
+            assertEquals(NetworkResult.Failure(NetworkFailure.TIMEOUT), request.await())
+        }
+    }
+
+    private fun listener(host: String = "127.0.0.1") = ServerSocket(0, 1, InetAddress.getByName(host)).apply {
         soTimeout = SECONDS.toMillis(5).toInt()
     }
 
