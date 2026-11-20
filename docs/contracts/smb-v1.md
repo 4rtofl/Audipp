@@ -41,3 +41,18 @@ AUDIPP_SMB_FIXTURE_PORTS=29445,29446 ./gradlew :app:testDebugUnitTest --tests 'c
 ポート指定がないときはSambaとの相互運用ケースだけスキップする。自動テストの残りは固定の応答とループバックソケットを使う。Androidの再現ではテスト用エミュレーターのシリアルを指定し、`adb -s SERIAL reverse tcp:PORT tcp:PORT` でループバックfixtureを転送する。`SmbAndroidTest` を実行するときは `am instrument` に `-e smbFixturePort PORT` を渡す。
 
 実行結果と検証commitは[試験台帳](../traceability/results.json)を参照。実NAS、指定の実機、利用許諾、製品のUIからの再生、音声出力の実測は別途確認が必要。
+
+## 2026年11月20日の検証結果
+
+実装commit `e8f1936bb9d5101ce098d16c4bc53a718c7943bd` を検証した。
+
+| 環境 | 結果 |
+|---|---|
+| JDK 17、Samba 4.25.0（ループバック） | SMB2.1とSMB3.1.1で必須署名付き認証、一覧、WAVの先頭・非ゼロ位置・64 KiBを超える範囲・終端の読込、認証失敗と共有拒否の区別を確認 |
+| 固定応答とループバックソケット | SMB2からの交渉、署名エラーの分類、タイムアウトと取消時のソケット閉鎖、途中切断後の同一offset、媒体差し替えと読込中の変更の拒否、再接続失敗後の再選択、資格のスコープと読込終了後の消去を確認 |
+| Androidエミュレーター API 23（SMB2.1）、API 36（SMB3.1.1） | それぞれ1件成功。実APKで署名付き接続、Android Keystoreによる資格保管・再取得、非ゼロ位置の読込、許可取消後の読込拒否を確認 |
+| 引き渡し検証 | Debug、未署名Release、AndroidテストAPKの組み立て成功。JVM 199件成功（SMB 11件を含む）。Lintエラー0件、警告14件 |
+
+最初のAPI 23試験（`e5091081a111f29ac5a767dfa3440b392955f49f`）は `NtlmAuthenticator.java:120` の `removeIf` が参照するクラスをロードできず失敗した。Java API desugaringを追加した実装commitで再実行した。Sambaではローカルfixture用のユーザー名前空間内でグループ切替を代替しているため、ホストのOS権限の検証は結果に含まれない。
+
+PR #184と共通になる `NetworkMedia.name` は同じ形を採用し、SMBJとWebDAV依存のlockは別の座標を使う。PR #187と共有するManifestの `INTERNET` は既存宣言を使用する。両PRのheadを各々重ねたGitの試算に内容衝突はなかった。

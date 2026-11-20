@@ -20,6 +20,104 @@
     "limitations": "#18の台帳検査ケースに限定。T18-02の廃止設計への残存参照は既知差異として報告し、Apple Musicは復活させない。TEST-GOV-01全体、製品完成、用途別許可、実機音声・配備・復旧、外部PR承認の合格ではない。"
   },
   {
+    "case_id": "E07-02-api23-before-desugaring-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "e5091081a111f29ac5a767dfa3440b392955f49f",
+    "stage": "CURRENT",
+    "outcome": "FAIL",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23エミュレーターでSMBJのNTLM処理が参照するJava 8 APIをロードできず、署名付きSamba fixtureへの接続試験が認証中に失敗した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "Java API desugaringを追加したcommitで再試験した。"
+  },
+  {
+    "case_id": "E07-02-samba-loopback-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "e8f1936bb9d5101ce098d16c4bc53a718c7943bd",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "署名必須のSMB2.1/SMB3.1.1とのローカル相互運用、認証と共有拒否の分類、固定fixtureによる署名エラー分類、取消・タイムアウト・同一offsetへの再試行、差し替えの拒否、失敗後の再選択を確認した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "実NAS・実機・長時間再生は未実施。署名不正の応答をSMBJが内部で破棄した場合はタイムアウトになり得る。"
+  },
+  {
+    "case_id": "E07-02-android-signed-smb-keystore-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01",
+      "NFR-SEC-02"
+    ],
+    "test_ids": [
+      "TEST-NET-01",
+      "TEST-SEC-01"
+    ],
+    "commit": "e8f1936bb9d5101ce098d16c4bc53a718c7943bd",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23/36のエミュレーターからループバックSambaへ署名付きで接続し、Android Keystoreで保護した資格の再取得、非ゼロ位置の読込、許可取消後の拒否を各1件確認した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "固定fixtureとエミュレーターに限定。実機のAndroid LAN権限フローと実利用許可は未確認。"
+  },
+  {
+    "case_id": "E07-02-wav-range-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-01"
+    ],
+    "test_ids": [
+      "TEST-FORMAT-01"
+    ],
+    "commit": "e8f1936bb9d5101ce098d16c4bc53a718c7943bd",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "自作PCM WAVで、先頭、非ゼロoffset、SMB単発要求の上限をまたぐ範囲、終端のbyte列が入力と一致した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "SMB経由のWAVのファイル読込を検証。Media3のデコード、他形式、破損ファイル、音声出力は未実施。"
+  },
+  {
+    "case_id": "E07-02-physical-nas-and-dap-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "e8f1936bb9d5101ce098d16c4bc53a718c7943bd",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "実環境へ接続せずローカルfixtureに限定したため、実NASとGalaxy/FiiOの相互運用および用途許可は確認していない。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "実NASや実機での動作、音声出力、DAC実測は未確認。"
+  },
+  {
     "case_id": "E06-02-ci-baseline-notes-2026-11-10",
     "requirement_ids": [
       "NFR-MAINT-01",
