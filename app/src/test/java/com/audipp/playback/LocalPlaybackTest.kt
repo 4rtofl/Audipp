@@ -93,6 +93,53 @@ class LocalPlaybackTest {
     }
 
     @Test
+    fun routeRevisionInvalidatesPlanWithoutInterruptingActiveStandardPlayback() = runBlocking {
+        val engine = Engine()
+        val playback = LocalPlayback(engine, { Availability.PLAYABLE })
+        assertNull(playback.start(entry, variant))
+        val oldPlan = playback.snapshot.value.executionPlan!!
+
+        assertFalse(playback.onRouteRevisionChanged(1))
+        assertEquals(PlanRejection.STALE_ROUTE, oldPlan.rejectionFor(1, oldPlan.transitionId))
+        assertNull(playback.snapshot.value.executionPlan)
+        assertTrue(engine.active)
+        playback.onEngineState(PlaybackPhase.PLAYING, 50, 500, true)
+        assertEquals(50L, playback.snapshot.value.positionMs)
+
+        assertNull(playback.start(entry, variant))
+        assertEquals(1L, playback.snapshot.value.executionPlan!!.routeRevision)
+    }
+
+    @Test
+    fun routeRevisionRejectsLateSourceResponseAndAllowsRetry() = runBlocking {
+        val opened = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val engine = Engine()
+        val playback = LocalPlayback(engine, {
+            if (opened.complete(Unit)) {
+                withContext(NonCancellable) { finish.await() }
+            }
+            Availability.PLAYABLE
+        })
+
+        val pending = async { playback.start(entry, variant) }
+        withTimeout(2_000) { opened.await() }
+        assertTrue(playback.onRouteRevisionChanged(1))
+        assertEquals(PlaybackPhase.IDLE, playback.snapshot.value.phase)
+        assertFalse(engine.active)
+        assertTrue(engine.prepared.isEmpty())
+
+        val retry = QueueEntryId("retry")
+        assertNull(playback.start(retry, variant))
+        finish.complete(Unit)
+        assertTrue(runCatching { pending.await() }.exceptionOrNull() is CancellationException)
+        assertTrue(engine.active)
+        assertEquals(1L, playback.snapshot.value.executionPlan!!.routeRevision)
+        assertEquals(retry, playback.snapshot.value.currentEntryId)
+        assertEquals(listOf(retry), engine.prepared)
+    }
+
+    @Test
     fun missingAndIoFailuresAreCommonErrorsAndNeverPrepare() = runBlocking {
         for (access in listOf<suspend (String) -> Availability>(
             { Availability.MISSING }, { throw IOException("content://private") })) {
