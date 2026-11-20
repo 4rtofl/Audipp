@@ -43,6 +43,8 @@ cleanup() {
     exit "$result"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # This disposable service-account realm exercises OIDC/JWKS without using the invitation realm.
 openssl rand -hex 32 | tr -d '\n' > "$AUDIPP_SECRETS_DIR/client-secret"
@@ -135,10 +137,15 @@ get_authenticated_api() {
 }
 
 printf 'Checking loopback ports, TLS trust, issuer and ownership.\n'
-for endpoint in 'db 5432' 'keycloak 9000' 'keycloak 8080'; do
-    read -r service container_port <<< "$endpoint"
-    if compose port "$service" "$container_port" >/dev/null 2>&1; then
-        printf >&2 '%s unexpectedly publishes port %s.\n' "$service" "$container_port"
+for service in db keycloak api; do
+    container=$(compose ps -q "$service")
+    bindings=$(docker_local inspect --format '{{len .HostConfig.PortBindings}}' "$container")
+    expected=1
+    if [[ $service == db ]]; then
+        expected=0
+    fi
+    if [[ $bindings != "$expected" ]]; then
+        printf >&2 '%s has %s published port bindings, expected %s.\n' "$service" "$bindings" "$expected"
         exit 1
     fi
 done

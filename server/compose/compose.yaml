@@ -14,7 +14,12 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks: [db]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -q -h 127.0.0.1 && psql -XAtq -U postgres -d postgres -c \"SELECT count(*) FROM pg_database WHERE datname IN ('audipp_api', 'audipp_auth')\" | grep -qx 2"]
+      test:
+        - CMD-SHELL
+        - >-
+          PGCONNECT_TIMEOUT=2 PGPASSWORD="$$(cat /run/secrets/db_admin_password)"
+          psql -wXAtq -h 127.0.0.1 -U postgres -d postgres
+          -c "SELECT count(*) FROM pg_database WHERE datname IN ('audipp_api', 'audipp_auth')" | grep -qx 2
       interval: 3s
       timeout: 3s
       retries: 20
