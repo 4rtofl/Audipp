@@ -10,8 +10,8 @@ import androidx.room.RoomDatabase
     entities = [SourceEntity::class, TrackEntity::class, VariantEntity::class,
         AlbumEntity::class, ArtistEntity::class, TrackArtistEntity::class,
         LocalScanRoot::class, LocalScanSource::class],
-    version = 2,
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    version = 3,
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {

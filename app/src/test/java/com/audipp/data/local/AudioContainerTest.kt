@@ -36,7 +36,7 @@ class AudioContainerTest {
         assertRejected(byteArrayOf(), AudioProbeProblem.EMPTY, "empty.wav")
         assertRejected(ascii("ordinary text"), AudioProbeProblem.EXTENSION_MISMATCH, "false.mp3")
         assertRejected(wave(1, 24, 20), AudioProbeProblem.EXTENSION_MISMATCH, "renamed.flac")
-        assertRejected(ascii("ordinary text"), AudioProbeProblem.UNSUPPORTED)
+        assertRejected(ascii("ordinary text"), AudioProbeProblem.UNRECOGNIZED)
         assertRejected(wave(1, 24, 20).dropLast(1).toByteArray(), AudioProbeProblem.MALFORMED)
         assertRejected(ascii("fLaC"), AudioProbeProblem.MALFORMED)
         assertRejected(ascii("FRM8"), AudioProbeProblem.MALFORMED)
@@ -48,7 +48,7 @@ class AudioContainerTest {
     fun recognizesMpegLayerThreeAdtsAndMp4WithoutFileNames() {
         val mp3 = byteArrayOf(0xff.toByte(), 0xfb.toByte(), 0x90.toByte(), 0x64) + ByteArray(413)
         val adts = byteArrayOf(0xff.toByte(), 0xf1.toByte(), 0x50, 0x80.toByte(), 0x01, 0x1f, 0xfc.toByte(), 0)
-        val mp4 = be32(16) + ascii("ftypM4A ") + be32(0)
+        val mp4 = box("ftyp", ascii("M4A ") + be32(0)) + box("moov", byteArrayOf())
         assertEquals(AudioContainer.MP3, read(mp3).container)
         assertEquals(AudioContainer.ADTS, read(adts).container)
         assertEquals(AudioContainer.MP4, read(mp4).container)
@@ -57,6 +57,7 @@ class AudioContainerTest {
         assertRejected(mp3.copyOf(416), AudioProbeProblem.MALFORMED)
         assertRejected(adts.copyOf(7), AudioProbeProblem.MALFORMED)
         assertRejected(mp4.copyOf(15), AudioProbeProblem.MALFORMED)
+        assertRejected(mp4.copyOf(16), AudioProbeProblem.MALFORMED)
     }
 
     @Test
@@ -65,7 +66,7 @@ class AudioContainerTest {
         val pictureHeader = be32(3) + be32(png.size) + png + be32(0) +
             be32(3000) + be32(3000) + be32(24) + be32(0) + be32(2_000_000)
         val imageOffset = 42 + 4 + pictureHeader.size
-        val fileSize = imageOffset + 2_000_000 + 2
+        val fileSize = imageOffset + 2_000_000 + 9
         val packed = (96_000L shl 44) or (1L shl 41) or (23L shl 36) or 192_000L
         val streamInfo = ByteArray(10) + be64(packed) + ByteArray(16)
         val metadata = ascii("fLaC") + byteArrayOf(0, 0, 0, 34) + streamInfo +
@@ -74,7 +75,7 @@ class AudioContainerTest {
             assertTrue(count <= 64)
             when {
                 offset < metadata.size -> metadata.copyOfRange(offset.toInt(), offset.toInt() + count)
-                offset == (fileSize - 2).toLong() -> byteArrayOf(0xff.toByte(), 0xf8.toByte())
+                offset == (fileSize - 9).toLong() -> byteArrayOf(0xff.toByte(), 0xf8.toByte(), 0x19, 0x18)
                 else -> error("Unexpected access inside artwork")
             }
         } as AudioProbeResult.Identified
@@ -82,6 +83,20 @@ class AudioContainerTest {
         assertEquals(24, probed.format.bitDepth)
         assertEquals(2_000L, probed.durationMs)
         assertEquals(EmbeddedArtwork(imageOffset.toLong(), 2_000_000, "image/png"), probed.artwork)
+    }
+
+    @Test
+    fun mp4LocatesCoverWithoutReadingItsPayload() {
+        val data = box("data", be32(14) + be32(0) + ByteArray(32_768))
+        val cover = box("ilst", box("covr", data))
+        val movie = box("moov", box("udta", box("meta", be32(0) + cover)))
+        val bytes = box("ftyp", ascii("M4A ") + be32(0)) + movie
+        val imageStart = bytes.size - 32_768
+        val result = probeAudioContainer(bytes.size.toLong(), "track.m4a") { offset, count ->
+            assertTrue(offset + count <= imageStart)
+            bytes.copyOfRange(offset.toInt(), offset.toInt() + count)
+        } as AudioProbeResult.Identified
+        assertEquals(EmbeddedArtwork(imageStart.toLong(), 32_768, "image/png"), result.artwork)
     }
 
     @Test
@@ -94,7 +109,8 @@ class AudioContainerTest {
             iff("FS  ", be32(2_822_400)) +
             iff("CHNL", byteArrayOf(0, 2) + ascii("SLFTSRGT")) +
             iff("CMPR", ascii("DSD ") + byteArrayOf(0))
-        val dff = iff("FRM8", ascii("DSD ") + iff("PROP", properties) + iff("DSD ", ByteArray(7056)))
+        val form = ascii("DSD ") + iff("FVER", be32(0x01050000))
+        val dff = iff("FRM8", form + iff("PROP", properties) + iff("DSD ", ByteArray(7056)))
         assertEquals(AudioContainer.DSF, read(dsf).container)
         assertEquals(AudioContainer.DFF, read(dff).container)
         for (bytes in listOf(dsf, dff)) {
@@ -107,6 +123,21 @@ class AudioContainerTest {
             assertNull(result.pcm)
             assertRejected(bytes.copyOf(bytes.size - 1), AudioProbeProblem.MALFORMED)
         }
+    }
+
+    @Test
+    fun dffDistinguishesDstFromRawDsd() {
+        val properties = ascii("SND ") +
+            iff("FS  ", be32(2_822_400)) +
+            iff("CHNL", byteArrayOf(0, 2) + ascii("SLFTSRGT")) +
+            iff("CMPR", ascii("DST ") + byteArrayOf(0))
+        val data = iff("FRTE", be32(150) + byteArrayOf(0, 75)) + iff("DSTF", byteArrayOf(1))
+        val bytes = iff("FRM8", ascii("DSD ") + iff("FVER", be32(0x01050000)) +
+            iff("PROP", properties) + iff("DST ", data))
+        val result = read(bytes, "track.dff")
+        assertEquals("audio/x-dst", result.format.codec)
+        assertEquals(2_000L, result.durationMs)
+        assertNull(result.format.bitDepth)
     }
 
     @Test
@@ -145,6 +176,8 @@ class AudioContainerTest {
             ascii("WAVEfmt ") + le32(format.capacity()) + format.array() +
             ascii("data") + le32(dataSize) + ByteArray(dataSize)
     }
+
+    private fun box(id: String, bytes: ByteArray) = be32(bytes.size + 8) + ascii(id) + bytes
 
     private fun iff(id: String, bytes: ByteArray) =
         ascii(id) + be64(bytes.size.toLong()) + bytes + ByteArray(bytes.size % 2)

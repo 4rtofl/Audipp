@@ -208,10 +208,15 @@ class LibraryDatabaseTest {
     }
 
     @Test
-    fun migratesExportedVersionOneWithoutChangingExistingIds() = runBlocking {
+    fun migratesExportedVersionOneWithoutChangingExistingIds() = verifyMigration(1)
+
+    @Test
+    fun migratesExportedVersionTwoWithoutChangingExistingIds() = verifyMigration(2)
+
+    private fun verifyMigration(version: Int) = runBlocking {
         db.close()
         val assets = InstrumentationRegistry.getInstrumentation().context.assets
-        val schema = assets.open("com.audipp.data.db.LibraryDatabase/1.json").bufferedReader().use {
+        val schema = assets.open("com.audipp.data.db.LibraryDatabase/$version.json").bufferedReader().use {
             JSONObject(it.readText()).getJSONObject("database")
         }
         context.openOrCreateDatabase("library-test.db", 0, null).use { raw ->
@@ -230,7 +235,7 @@ class LibraryDatabaseTest {
             raw.execSQL("INSERT INTO sources (source_id, kind, availability, updated_at) VALUES ('old-source', 'LOCAL', 'MISSING', 1)")
             raw.execSQL("INSERT INTO tracks (track_id, title) VALUES ('old-track', 'Existing')")
             raw.execSQL("INSERT INTO track_variants (variant_id, track_id, source_id) VALUES ('old-variant', 'old-track', 'old-source')")
-            raw.version = 1
+            raw.version = version
         }
         db = LibraryDatabase.open(context, "library-test.db")
         val variant = dao.trackVariant(VariantId("old-variant"))!!
@@ -239,13 +244,14 @@ class LibraryDatabaseTest {
         assertEquals(Availability.MISSING, variant.source.availability)
         assertEquals("Existing", dao.track("old-track")?.title)
         assertTrue(db.safScanDao().roots().isEmpty())
-        assertEquals(2, db.openHelper.writableDatabase.version)
+        assertEquals(3, db.openHelper.writableDatabase.version)
+        assertNull(dao.variant("old-variant")?.localMetadata)
     }
 
     @Test
     fun unsupportedDatabaseVersionFailsWithoutDestroyingRows() = runBlocking {
         dao.save(LibraryBatch(tracks = listOf(TrackEntity("retained"))))
-        db.openHelper.writableDatabase.version = 3
+        db.openHelper.writableDatabase.version = 4
         db.close()
         db = LibraryDatabase.open(context, "library-test.db")
         try {
@@ -257,7 +263,7 @@ class LibraryDatabaseTest {
         db.close()
         val raw = context.openOrCreateDatabase("library-test.db", 0, null)
         raw.use {
-            assertEquals(3, it.version)
+            assertEquals(4, it.version)
             it.rawQuery("SELECT track_id FROM tracks", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals("retained", cursor.getString(0))

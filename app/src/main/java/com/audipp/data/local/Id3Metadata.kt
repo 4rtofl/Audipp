@@ -1,5 +1,8 @@
 package com.audipp.data.local
 
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+
 internal data class AudioTags(
     val title: String? = null,
     val artist: String? = null,
@@ -68,8 +71,12 @@ private fun ByteArray.id3Text(): String? {
         3 -> Charsets.UTF_8
         else -> return null
     }
-    return String(this, 1, size - 1, charset).substringBefore('\u0000')
-        .trim().take(4096).takeIf { it.isNotEmpty() }
+    val value = try {
+        charset.newDecoder().decode(ByteBuffer.wrap(this, 1, size - 1)).toString()
+    } catch (_: CharacterCodingException) {
+        return null
+    }
+    return value.substringBefore('\u0000').trim().take(4096).takeIf { it.isNotEmpty() }
 }
 
 private fun ByteArray.pictureOffset(): Pair<Int, String>? {

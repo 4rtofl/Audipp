@@ -73,6 +73,14 @@ class AndroidSafAccessTest {
     }
 
     @Test
+    fun readsDisplayNameWithoutTreatingTheProviderMimeAsAnAudioFormat() {
+        val rows = MatrixCursor(arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_MIME_TYPE, Document.COLUMN_DISPLAY_NAME))
+            .apply { addRow(arrayOf("arbitrary-id", "application/octet-stream", "actually-an-audio-file.wav")) }
+        assertEquals(listOf(SafEntry("arbitrary-id", false, "actually-an-audio-file.wav")), list(rows))
+        assertTrue(rows.isClosed)
+    }
+
+    @Test
     fun rootProbeChecksThatTheProviderCanStillReadTheSelectedDirectory() = runBlocking {
         var response = cursor().apply { addRow(arrayOf(rootId, Document.MIME_TYPE_DIR)) }
         val access = register { uri ->

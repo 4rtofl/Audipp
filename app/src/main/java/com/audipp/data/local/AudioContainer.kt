@@ -6,7 +6,7 @@ import java.nio.ByteOrder
 
 internal enum class AudioContainer { FLAC, WAVE, MP3, ADTS, MP4, DSF, DFF }
 
-internal enum class AudioProbeProblem { EMPTY, EXTENSION_MISMATCH, MALFORMED, UNSUPPORTED, INSPECTION_LIMIT }
+internal enum class AudioProbeProblem { EMPTY, EXTENSION_MISMATCH, MALFORMED, UNRECOGNIZED, UNSUPPORTED, INSPECTION_LIMIT }
 
 internal sealed interface AudioProbeResult {
     data class Identified(
@@ -55,7 +55,7 @@ internal fun probeAudioContainer(
         val identified = ContainerReader(length, read).identify()
         when {
             identified == null && expected -> rejected(AudioProbeProblem.EXTENSION_MISMATCH)
-            identified == null -> rejected(AudioProbeProblem.UNSUPPORTED)
+            identified == null -> rejected(AudioProbeProblem.UNRECOGNIZED)
             expected && !identified.container.matches(extension) -> rejected(AudioProbeProblem.EXTENSION_MISMATCH)
             else -> identified
         }
@@ -92,17 +92,16 @@ private class ContainerReader(
         if (header.limit() >= 4 && header.name(0) == "fLaC") return flac(start, tag)
         if (!id3 && header.limit() >= 4) {
             when (header.name(0)) {
-                "RIFF" -> if (header.limit() >= 12 && header.name(8) == "WAVE") return wave(header)
+                "RIFF" -> {
+                    if (header.limit() < 12) malformed()
+                    if (header.name(8) == "WAVE") return wave(header)
+                }
                 "DSD " -> return dsf()
                 "FRM8" -> return dff()
             }
         }
         if (!id3 && header.limit() >= 8 && header.name(4) == "ftyp") {
-            val shortSize = header.u32(0)
-            val boxSize = if (shortSize == 1L) bytes(8, 8).getLong(0) else shortSize
-            if (boxSize < (if (shortSize == 1L) 24L else 16L)) malformed()
-            end(0, boxSize, length)
-            return AudioProbeResult.Identified(AudioContainer.MP4)
+            return mp4()
         }
         if (header.limit() >= 2 && header.u8(0) == 0xff) {
             val sync = header.u8(1)
@@ -127,6 +126,52 @@ private class ContainerReader(
                 end(start, frameBytes.toLong(), length)
                 return AudioProbeResult.Identified(AudioContainer.MP3, id3 = tag)
             }
+        }
+        return null
+    }
+
+    private fun mp4(): AudioProbeResult.Identified {
+        val file = Box(0, length)
+        val fileType = file.child("ftyp") ?: malformed()
+        if (fileType.limit - fileType.start < 8) malformed()
+        val movie = file.child("moov") ?: malformed()
+        val userData = movie.child("udta")
+        val metadata = userData?.child("meta") ?: movie.child("meta")
+        val artwork = metadata?.let {
+            if (it.limit - it.start < 4 || bytes(it.start, 4).getInt(0) != 0) return@let null
+            Box(it.start + 4, it.limit).child("ilst")?.child("covr")?.child("data")
+        }?.let {
+            if (it.limit - it.start <= 8) return@let null
+            val mime = when (bytes(it.start, 8).getInt(0)) {
+                13 -> "image/jpeg"
+                14 -> "image/png"
+                else -> return@let null
+            }
+            EmbeddedArtwork(it.start + 8, it.limit - it.start - 8, mime)
+        }
+        return AudioProbeResult.Identified(AudioContainer.MP4, artwork = artwork)
+    }
+
+    private data class Box(val start: Long, val limit: Long)
+
+    private fun Box.child(type: String): Box? {
+        var position = start
+        while (position < limit) {
+            end(position, 8, limit)
+            val header = bytes(position, 8)
+            var payload = position + 8
+            val size = when (val shortSize = header.u32(0)) {
+                0L -> limit - position
+                1L -> {
+                    payload = end(payload, 8, limit)
+                    bytes(payload - 8, 8).getLong(0)
+                }
+                else -> shortSize
+            }
+            if (size < payload - position) malformed()
+            val childEnd = end(position, size, limit)
+            if (header.name(4) == type) return Box(payload, childEnd)
+            position = childEnd
         }
         return null
     }
@@ -169,8 +214,11 @@ private class ContainerReader(
             if (type == 6 && artwork == null) artwork = picture(position + 4, next)
             position = next
         }
-        val frame = bytes(position, 2)
-        if (frame.u8(0) != 255 || frame.u8(1) and 0xfe != 0xf8) malformed()
+        end(position, 9, length)
+        val frame = bytes(position, 4)
+        if (frame.u8(0) != 255 || frame.u8(1) and 0xfe != 0xf8 ||
+            frame.u8(2) ushr 4 == 0 || frame.u8(2) and 15 == 15 || frame.u8(3) and 1 != 0
+        ) malformed()
         return AudioProbeResult.Identified(
             AudioContainer.FLAC,
             AudioFormat("audio/flac", rate, bits, channels),
@@ -259,17 +307,19 @@ private class ContainerReader(
         val metadata = head.getLong(16)
         if (head.getLong(0) != 28L || fileSize != length) malformed()
         val fmt = bytes(28, 52).order(ByteOrder.LITTLE_ENDIAN)
-        if (fmt.name(0) != "fmt " || fmt.getLong(4) != 52L) malformed()
+        val formatSize = fmt.getLong(4)
+        if (fmt.name(0) != "fmt " || formatSize < 52L) malformed()
+        val dataStart = end(28, formatSize, length)
         if (fmt.getInt(12) != 1 || fmt.getInt(16) != 0) unsupported()
         val channels = fmt.getInt(24).takeIf { it in 1..6 } ?: malformed()
         val rate = fmt.getInt(28).takeIf { it > 0 } ?: malformed()
         val samples = fmt.getLong(36).takeIf { it > 0 } ?: malformed()
         val block = fmt.getInt(44)
         if ((fmt.getInt(32) != 1 && fmt.getInt(32) != 8) || block != 4096) malformed()
-        val data = bytes(80, 12).order(ByteOrder.LITTLE_ENDIAN)
+        val data = bytes(dataStart, 12).order(ByteOrder.LITTLE_ENDIAN)
         val chunkSize = data.getLong(4)
         if (data.name(0) != "data" || chunkSize <= 12L) malformed()
-        val dataEnd = end(80, chunkSize, length)
+        val dataEnd = end(dataStart, chunkSize, length)
         val blocks = (samples - 1) / (block * 8) + 1
         if (chunkSize - 12L != blocks * block * channels) malformed()
         val id3 = if (metadata == 0L) {
@@ -289,7 +339,11 @@ private class ContainerReader(
         val form = bytes(4, 12)
         if (form.name(8) != "DSD ") unsupported()
         val limit = end(12, form.getLong(0), length)
-        var position = 16L
+        if (limit < 32) malformed()
+        val versionHeader = bytes(16, 16)
+        if (versionHeader.name(0) != "FVER" || versionHeader.getLong(4) != 4L) malformed()
+        if (versionHeader.u8(12) != 1) unsupported()
+        var position = 32L
         var rate = 0
         var channels = 0
         var compression: String? = null
@@ -338,12 +392,12 @@ private class ContainerReader(
                     dataType = chunk.name(0)
                     dataLength = size
                     if (dataType == "DST ") {
-                        if (size < 18) malformed()
+                        if (size <= 30) malformed()
                         val frameInfo = bytes(body, 18)
                         if (frameInfo.name(0) != "FRTE" || frameInfo.getLong(4) != 6L) malformed()
                         val frames = frameInfo.u32(12)
                         val framesPerSecond = frameInfo.u16(16)
-                        if (frames == 0L || framesPerSecond == 0) malformed()
+                        if (frames == 0L || framesPerSecond != 75) malformed()
                         dstDuration = duration(frames, framesPerSecond)
                     }
                 }
