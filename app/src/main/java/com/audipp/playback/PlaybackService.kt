@@ -121,6 +121,12 @@ class PlaybackService : MediaLibraryService() {
         player.addListener(object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) = updateEngineSnapshot()
 
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) = playback.invalidatePcm()
+
             override fun onPlayerError(error: PlaybackException) {
                 preparation?.cancel()
                 playback.fail(error.toCommonError())
