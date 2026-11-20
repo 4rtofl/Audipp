@@ -85,5 +85,89 @@
       "docs/evidence/issue-20/kotlin-local.txt"
     ],
     "limitations": "加入契約は確認済みで、アプリ資格とは別に保持する。実サービス試験の前提不足をQobuz必須要件の削除やKotlin実装全体の停止理由にはしない。資格取得後に実応答・報告受理・失効を検証し、Playerへ接続する。"
+  },
+  {
+    "case_id": "E05-04-usbfs-fd-and-callback-2026-11-20",
+    "requirement_ids": [
+      "FR-AUD-03"
+    ],
+    "test_ids": [
+      "TEST-AUD-02"
+    ],
+    "commit": "1ef6976f7002c3efc9b8efcaba28a5aafe12d308",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "libusb 1.0.29のLinuxバックエンドで模擬usbfsを使用。wrap失敗・成功時のFD保持、取消と切断のcallback回収、EBUSYの変換を観測した。",
+    "evidence": [
+      "docs/evidence/issue-43/README.md",
+      "docs/evidence/issue-43/local.txt"
+    ],
+    "limitations": "単一URBのホスト契約試験。物理USB転送、Android権限とOS排他、アプリの並行停止は未評価。"
+  },
+  {
+    "case_id": "E05-04-android-abi-and-jni-2026-11-20",
+    "requirement_ids": [
+      "FR-PLT-01"
+    ],
+    "test_ids": [
+      "TEST-COMP-01"
+    ],
+    "commit": "1ef6976f7002c3efc9b8efcaba28a5aafe12d308",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23向け3 ABIをリンクし、ELFとAPKを照合。x86_64のAPI 23/36のアプリUIDでJNIをロードし、失敗時に複製FDだけを閉じることを確認した。",
+    "evidence": [
+      "docs/evidence/issue-43/README.md",
+      "docs/evidence/issue-43/local.txt"
+    ],
+    "limitations": "Androidでは非USBのFDを使用。ARM実行、物理端末とDACの互換性、USB許可の成否は未評価。"
+  },
+  {
+    "case_id": "E05-04-usb-device-exclusivity-and-transfer-2026-11-20",
+    "requirement_ids": [
+      "FR-AUD-03",
+      "FR-AUD-05",
+      "FR-PLT-01"
+    ],
+    "test_ids": [
+      "TEST-AUD-02",
+      "TEST-COMP-01"
+    ],
+    "commit": "1ef6976f7002c3efc9b8efcaba28a5aafe12d308",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "対象の物理端末の指定ADBシリアルと試験構成が未提示。Android許可FDのwrap、OS出力停止とinterface取得、USB転送・切断回収を計測していない。",
+    "evidence": [
+      "docs/evidence/issue-43/README.md",
+      "docs/evidence/issue-43/local.txt"
+    ],
+    "limitations": "対象端末のOS/build/ABIとDACのVID/PID/firmware・能力は実機で確認する。模擬EBUSYは製品の排他判定に使わない。"
+  },
+  {
+    "case_id": "E05-04-usb-quality-2026-11-20",
+    "requirement_ids": [
+      "FR-AUD-03",
+      "FR-AUD-05"
+    ],
+    "test_ids": [
+      "TEST-AUD-02"
+    ],
+    "commit": "1ef6976f7002c3efc9b8efcaba28a5aafe12d308",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "QLT-09のUSB PCM/Native/DoP実測を実施していない。",
+    "evidence": [
+      "docs/evidence/issue-43/README.md",
+      "docs/evidence/issue-43/local.txt"
+    ],
+    "limitations": "実バイト列・出力経路・DACのロックとアナログ過渡を観測してから機器別の対応を判定する。"
   }
 ]
