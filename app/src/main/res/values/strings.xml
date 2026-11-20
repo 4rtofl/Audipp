@@ -1,8 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Audipp</string>
-    <string name="welcome_title">音楽を聴く、その前に。</string>
-    <string name="welcome_body">Audippへようこそ。\n音楽の再生機能は、これから追加していきます。</string>
+    <string name="home">ホーム</string>
+    <string name="local_sources">ローカル音源</string>
+    <string name="local_sources_loading">ローカル音源を読み込み中</string>
+    <string name="local_sources_empty">登録済みの音源がありません。</string>
+    <string name="local_sources_onboarding">端末の音楽フォルダからの追加は準備中です。</string>
+    <string name="local_sources_read_failed">ライブラリ情報を読み込めませんでした。</string>
+    <plurals name="local_sources_registered">
+        <item quantity="other">登録済み %1$d 件</item>
+    </plurals>
+    <string name="local_sources_unavailable">利用できない音源 %1$d 件</string>
+    <string name="local_sources_unknown">利用可否が不明な音源 %1$d 件</string>
+    <string name="playback_disconnected">再生サービスに接続できませんでした。</string>
+    <string name="retry_playback">再生サービスに再接続</string>
+    <string name="playback_permission_denied">音源へのアクセスが許可されていません。</string>
+    <string name="playback_format_unsupported">この音源の形式には対応していません。</string>
+    <string name="playback_failed">音源を再生できませんでした。</string>
+    <string name="playback_unknown_title">曲名不明</string>
+    <string name="playback_artist_and_state">%1$s · %2$s</string>
+    <string name="playback_loading">再生を準備中</string>
+    <string name="playback_playing">再生中</string>
+    <string name="playback_paused">一時停止中</string>
+    <string name="playback_pause">一時停止</string>
+    <string name="playback_resume">再開</string>
     <string name="settings">設定</string>
     <string name="appearance">外観</string>
     <string name="theme">テーマ</string>
