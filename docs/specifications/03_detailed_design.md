@@ -959,22 +959,9 @@ Galaxy S20も追加検証端末として利用可能（2026-10-28利用者連絡
 6. **品質**：両指定端末で長時間・フォーカス・切断・プロセス終了・日英UI・アクセシビリティとQLTを検証する。Play vitalsを私用版の証拠に要求しない。
 7. **PUBLIC（完成後）**：一般向け自己登録/メール送信、公開名義・配布経路・AAB/ストア審査・年齢区分・公開文書・常設窓口/体制・段階的公開。現在の完成を止める条件へ混ぜない。
 
-### DD-RELEASE-02 GitHub PRテンプレート推奨項目
+### DD-RELEASE-02 開発中のPR
 
-```markdown
-## 対応要件
-FR-... / NFR-... / DD-... / TEST-...
-## 変更範囲
-UI / domain / playback / adapter / storage / audio / network / backend
-## 成果
-実装した動作・出力・ユーザー可視の差分
-## 証跡
-CI結果 / Unit / Instrumented / 実機（機種、OS、DAC、サンプル）
-## 安全・権利・プライバシー
-音量 / Bit-perfectの根拠 / SDK規約 / 権限 / ログ
-## 未確認
-端末差異・対応不能のAPI・既知の制限
-```
+PR本文は自由形式とする。変更の目的や確認結果は、差分だけでは伝わりにくい場合に記載する。
 
 ## DD-DECISIONS：領域ごとの実装・導入条件
 
@@ -1002,7 +989,7 @@ CI結果 / Unit / Instrumented / 実機（機種、OS、DAC、サンプル）
 | `FR-SRC-06` | DD-SRC-04 | TEST-META-01 |
 | `FR-SRC-07` | DD-SRC-03/04 / DD-DB-01 | TEST-META-01 / TEST-SCHEDULE-01 |
 | `FR-SRC-08` | DD-PROV / DD-QUEUE | TEST-PROV-01 |
-| `FR-SRC-09` | DD-PROV-01/02/04/06/07 | TEST-PROV-01 / TEST-RESEARCH-01 |
+| `FR-SRC-09` | DD-PROV-01/02/04/07 | TEST-PROV-01 / TEST-RESEARCH-01 |
 | `FR-SRC-10` | DD-PROV-01/04（検索は技術・許諾上可能なら実装） | TEST-PROV-01 |
 | `FR-SRC-11` | DD-PROV-04/05 | TEST-RESEARCH-01 / TEST-PROV-01 / TEST-YTDLP-01 |
 | `FR-SRC-12` | DD-PROV-08 | TEST-SAVE-01 |

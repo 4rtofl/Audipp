@@ -52,10 +52,14 @@ Debug APKは `app/build/outputs/apk/debug/app-debug.apk`、テスト結果は `a
 
 ## CIとPRの品質ゲート
 
-[Issue #15](https://github.com/4rtoflow/Audipp/issues/15) のCIは `.github/workflows/ci.yml` で定義します。main宛てのPR（本文編集を含む）、mainへのpush、手動実行が対象です。資料のみのPRも同じチェックを実行します。
+[Issue #15](https://github.com/4rtoflow/Audipp/issues/15) のCIは `.github/workflows/ci.yml` で定義します。main宛てのPRの作成やコミット更新、mainへのpush、手動実行が対象です。PR本文は自由形式で、本文だけの編集ではCIを起動しません。
 
-- `PR requirements`: PR本文に「対応要件」「変更範囲」「成果」「証跡」「安全・権利・プライバシー」「未確認」の記入を求めます。「対応要件」にはFR/NFR・DD・TESTの各IDが必要です。テンプレートのコメントは記入扱いにしません。IDの実在と対応の妥当性、証跡の内容はレビューで確認します。
-- `Android build, unit tests, lint, release`: Ubuntu 24.04、JDK 17、既存Wrapperで次を実行します。minSdk 23・compileSdk 36を維持します。
+- `Changed areas` は変更パスを調べ、Android、サーバー、音声試験のうち対象となるジョブを実行します。`docs/` やルートの `LICENSE` のみの変更はパスの判定だけで終わります。
+- `Android build, unit tests, lint, release` はAndroidのコード・ビルド入力の変更時に実行します。Ubuntu 24.04、JDK 17、既存Wrapperを使います。minSdk 23・compileSdk 36を維持します。
+- サーバー、音声試験はそれぞれ `server/`、`scripts/audio/` または `tests/audio/` の変更時に実行します。共有のGradle Wrapperに変更があればAndroidとサーバーを検証します。
+- CI設定の変更、手動実行、比較元のコミットを取得できない場合は全ジョブを実行します。
+
+AndroidのCIで実行するコマンドは次のとおりです。
 
 ```sh
 ./gradlew --no-daemon --console=plain :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
@@ -65,24 +69,18 @@ Gradle設定・カタログ・Wrapper・lockfileを変更した場合だけ、CI
 
 ビルド・テスト・Lint・lock検証が失敗した場合はジョブが失敗し、APKはアップロードしません。テスト・Lintレポートは失敗時も取得可能なものを7日保存します。成功時の `ci-apks-not-for-distribution` にはDebug APKと**未署名Release APK**を7日保存します。配布用の署名鍵・API秘密・個人SDKパスをCIへ渡す必要はありません。実署名APKと同一鍵更新の検証は #151 の責務です。
 
-PR本文チェックのローカル検証:
-
-```sh
-python3 -m unittest discover -s scripts/ci -p 'test_*.py'
-```
-
 ### main保護の管理者向け設定依頼
 
 2026-10-29の確認ではrulesetはなく、接続アカウントの権限はpushまででadmin/maintainはありません。管理者はCIの初回実行後、Settings → Branchesのmain保護、または同等のrulesetで次を設定してください。この設定が確認できるまでは、CI成功をマージ強制の導入完了とは扱いません。
 
 1. PR経由の変更と承認レビュー1件を必須にし、追加コミットで古い承認を無効化する。
-2. 必須チェックに `PR requirements` と `Android build, unit tests, lint, release`（GitHub Actions）を指定し、マージ前に最新のmainとの整合を要求する。
+2. 必須チェックに `Changed areas` と `Android build, unit tests, lint, release`（GitHub Actions）を指定し、マージ前に最新のmainとの整合を要求する。
 3. 未解決のレビュー会話があるマージ、force push、main削除を禁止し、管理者にも同じルールを適用する。
-4. 未記入のPR、失敗するビルド/テスト/Lint、承認前のPRがマージ不可で、チェック成功・承認後にマージ可能になることを確認する。
+4. 必須チェックの失敗時と承認前にマージが止まり、チェック成功・承認後にマージ可能になることを確認する。
 
 ### Issue #15の要求・検証の対応
 
-対象は NFR-MAINT-01 / NFR-TEST-01 / NFR-TEST-02 → DD-TEST-01 / DD-RELEASE-02 → TEST-GOV-01（CI・PRゲート部分）、およびTEST-COMP-01（API設定・ビルド部分）です。結果・対象commit・実行URLは対応PRの「証跡」に記録します。API 23での実行、スマートフォン/DAP/DAC実機、音声品質、管理権限が必要なmain保護設定は、ビルド成功から推定しません。これらの試験ファミリー全体の完了を表すものではありません。
+対象は NFR-MAINT-01 / NFR-TEST-01 / NFR-TEST-02 → DD-TEST-01 / DD-RELEASE-02 → TEST-GOV-01（CI部分）、およびTEST-COMP-01（API設定・ビルド部分）です。API 23での実行、スマートフォン/DAP/DAC実機、音声品質、main保護設定は個別に確認します。
 
 2026-10-29の検証証跡（最終構成の結果とレビューは [PR #160](https://github.com/4rtoflow/Audipp/pull/160) で追跡）:
 
@@ -90,9 +88,9 @@ python3 -m unittest discover -s scripts/ci -p 'test_*.py'
 - `7ed4f6b`: [一時的な3ケースの障害注入](https://github.com/4rtoflow/Audipp/actions/runs/40828233303)。未定義の型でcompileDebugKotlin、失敗するJUnitでtestDebugUnitTest、重複View IDでlintDebugがそれぞれ失敗。全ケースでAPK保存をスキップし、Unit/Lintの失敗レポートだけを保存。障害注入は検証後に削除。
 - ローカル: Debug/Release・Unit/Lint、PR本文検査9件、actionlint 1.7.12が成功。Release APKのminSdk 23 / targetSdk 36を確認し、Release lock追加前後で依存座標・版に変更がないことを比較。
 
-## 承認ベースラインと追跡台帳
+## 仕様の参照と試験結果
 
-Issue #18の固定版・ID対応・個別試験結果とcommit、既知差異・更新手順は[追跡台帳](traceability/README.md)を参照してください。CIで件数・参照・結果の整合を検査します。台帳検査の成功は製品や試験ファミリー全体の完成を意味しません。
+[試験結果の記録](traceability/README.md)に、現行の仕様から要件・設計・試験の参照を確認する手順と、個別の試験結果の記録方法をまとめています。
 
 ## 共通domain契約
 
