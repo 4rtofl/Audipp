@@ -103,16 +103,29 @@ internal class LocalPlayback(
         return error
     }
 
+    fun onRouteRevisionChanged(revision: Long): Boolean {
+        if (revision <= context.routeRevision) return false
+        context = context.copy(routeRevision = revision)
+        val previous = snapshot.value
+        if (previous.phase == PlaybackPhase.RESOLVING) {
+            stop()
+            return true
+        }
+        if (previous.executionPlan != null) publish(previous.copy(executionPlan = null))
+        return false
+    }
+
     fun onEngineState(phase: PlaybackPhase, positionMs: Long?, durationMs: Long?, canSeek: Boolean) {
         val previous = snapshot.value
-        val plan = previous.executionPlan ?: return
+        if (previous.effectiveSource == null) return
+        val plan = previous.executionPlan
         if (previous.phase == PlaybackPhase.ERROR) return
         val duration = durationMs?.takeIf { it >= 0 }
         val position = positionMs?.takeIf { it >= 0 }?.let {
             if (duration == null) it else it.coerceAtMost(duration)
         }
         publish(previous.copy(phase = phase, positionMs = position, durationMs = duration,
-            executionPlan = plan.copy(capabilities = plan.capabilities.copy(canSeek = canSeek))))
+            executionPlan = plan?.copy(capabilities = plan.capabilities.copy(canSeek = canSeek))))
     }
 
     private fun publish(value: PlaybackSnapshot) {

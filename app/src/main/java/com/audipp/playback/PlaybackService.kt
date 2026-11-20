@@ -26,6 +26,8 @@ import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
 import com.audipp.MainActivity
 import com.audipp.R
+import com.audipp.audio.route.ObservedAudioOutputProvider
+import com.audipp.audio.route.OutputRouteMonitor
 import com.audipp.domain.model.ErrorDomain
 import com.audipp.domain.model.ModelJson
 import com.audipp.domain.model.PlaybackError
@@ -52,6 +54,8 @@ import kotlinx.coroutines.launch
 @UnstableApi
 class PlaybackService : MediaLibraryService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private lateinit var routeMonitor: OutputRouteMonitor
+    internal val outputRoute get() = routeMonitor.snapshot
     private var mediaSession: MediaLibrarySession? = null
     private lateinit var player: ExoPlayer
     private lateinit var playback: LocalPlayback
@@ -66,6 +70,9 @@ class PlaybackService : MediaLibraryService() {
                 .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
         }
+        routeMonitor = OutputRouteMonitor(this) {
+            if (playback.onRouteRevisionChanged(it)) preparation?.cancel()
+        }
         player = ExoPlayer.Builder(this)
             .setTrackSelector(selector)
             .setMediaSourceFactory(DefaultMediaSourceFactory {
@@ -75,6 +82,7 @@ class PlaybackService : MediaLibraryService() {
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
+            .setAudioOutputProvider(ObservedAudioOutputProvider(this, routeMonitor))
             .build()
         playback = LocalPlayback(object : LocalPlaybackEngine {
             override fun prepare(entryId: QueueEntryId, document: SourceDescriptor.LocalDocument) {
@@ -138,7 +146,10 @@ class PlaybackService : MediaLibraryService() {
         scope.launch {
             while (isActive) {
                 delay(1_000)
-                if (player.isPlaying) updateEngineSnapshot()
+                if (player.isPlaying) {
+                    routeMonitor.refreshRoute()
+                    updateEngineSnapshot()
+                }
             }
         }
     }
@@ -147,6 +158,7 @@ class PlaybackService : MediaLibraryService() {
         if (controllerInfo.uid == Process.myUid() || controllerInfo.isTrusted) mediaSession else null
 
     override fun onDestroy() {
+        if (::routeMonitor.isInitialized) routeMonitor.close()
         scope.cancel()
         mediaSession?.release()
         mediaSession = null
