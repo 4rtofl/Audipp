@@ -85,5 +85,63 @@
       "docs/evidence/issue-20/kotlin-local.txt"
     ],
     "limitations": "加入契約は確認済みで、アプリ資格とは別に保持する。実サービス試験の前提不足をQobuz必須要件の削除やKotlin実装全体の停止理由にはしない。資格取得後に実応答・報告受理・失効を検証し、Playerへ接続する。"
+  },
+  {
+    "case_id": "E01-02-saf-traversal-emulators-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-02",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-LIB-01"
+    ],
+    "commit": "28e4367aa9ee3bd76ebefa0b2c42b5e900a78f2a",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23/36 の合成提供元と Room で、不完全走査・古い走査が未訪問曲の状態を維持し、正常完了でのみ消失を確定すること、解析失敗時の既存曲保持と再許可後の Variant 参照復旧を確認した。",
+    "evidence": [
+      "docs/contracts/saf-library-scan.md"
+    ],
+    "limitations": "TEST-LIB-01 の合成ケース。物理 SD 抜去、実際のシステムピッカー経由の許可成功、実プレイリスト UI は未実施。"
+  },
+  {
+    "case_id": "E01-02-saf-minimum-read-access-2026-11-20",
+    "requirement_ids": [
+      "NFR-SEC-01"
+    ],
+    "test_ids": [
+      "TEST-SEC-01"
+    ],
+    "commit": "28e4367aa9ee3bd76ebefa0b2c42b5e900a78f2a",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23/36 で読み取り・永続化フラグの欠落と OS による未許可アクセスの拒否を確認した。権限宣言を増やさず、API 36 で合成 WAV の記述子を読み取り専用で開くことを検査した。",
+    "evidence": [
+      "docs/contracts/saf-library-scan.md"
+    ],
+    "limitations": "SAF 登録と読取経路の部分ケース。実ファイルの許可成功、外部サービス用途、同期、TEST-SEC-01 のその他のケースは未実施。"
+  },
+  {
+    "case_id": "E01-02-saf-picker-and-physical-sd-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-02"
+    ],
+    "test_ids": [
+      "TEST-LIB-01"
+    ],
+    "commit": "28e4367aa9ee3bd76ebefa0b2c42b5e900a78f2a",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "専用エミュレーターの OS 拒否と合成提供元で確認した。システムピッカーでの実フォルダ許可成功、物理 SD 抜去、実プレイリスト画面経由の参照は試験していない。",
+    "evidence": [
+      "docs/contracts/saf-library-scan.md"
+    ],
+    "limitations": "実機シリアルの指定なし。登録画面とプレイリスト画面の結合後に実施する。"
   }
 ]

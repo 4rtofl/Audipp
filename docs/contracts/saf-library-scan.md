@@ -1,6 +1,6 @@
 # SAF 登録とライブラリ走査（Issue #35）
 
-FR-SRC-02・NFR-SEC-01・NFR-REL-01 のうち、DD-SRC-01・DD-DB-03・IMP-02 に沿った登録、走査、消失判定を扱う。TEST-LIB-01 の対象ケースと検証対象コミットは、対応 PR の証跡に記録する。[Issue #35](https://github.com/4rtofl/Audipp/issues/35) · [設計](../specifications/03_detailed_design.md#dd-src-01-registerlocaltree)
+FR-SRC-02・NFR-SEC-01・NFR-REL-01 のうち、DD-SRC-01・DD-DB-03・IMP-02 に沿った登録、走査、消失判定を扱う。対象ケースと検証対象コミットを記録した。[Issue #35](https://github.com/4rtofl/Audipp/issues/35) · [設計](../specifications/03_detailed_design.md#dd-src-01-registerlocaltree) · [試験台帳](../traceability/results.json)
 
 ## 呼び出し契約
 
@@ -30,3 +30,11 @@ Room v2 は v1 の6表を維持し、`local_scan_roots` と `local_scan_sources`
 | コンテナ解析 | `AndroidSafAudioTest` の API 36 専用エミュレーターで、提供元の MIME と拡張子に依存せず合成 WAV の音声トラックを検出し、読み取り専用の記述子を解放 |
 
 システムピッカーを経由した実際の許可成功、物理 SD 抜去、OEM 提供元、実プレイリスト UI、実機再生は未実施。永続許可取得後の復旧・物理 SD 抜去相当は合成提供元で検証する。プレイリストの結合試験では保存済み Variant の参照を利用できる。登録画面は #84、再生・キューの結合は #83、保存ジョブとの接続は #104 で扱う。DAC と外部サービスの用途許可は本変更の試験範囲外。
+
+## 検証結果
+
+2026-11-20 JST、実装コミット `28e4367aa9ee3bd76ebefa0b2c42b5e900a78f2a` を検証した。
+
+- JDK 17 で `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest` が成功。ユニット試験 196 件（本変更の8件を含む）が成功し、Lint はエラー0件、既存箇所の警告13件。
+- API 23 と API 36 の専用 x86_64 エミュレーターに Debug／AndroidTest APK を導入し、`SafLibraryTest`、`LibraryDatabaseTest`、`AndroidSafAudioTest` を実行した。API 23 は17件、API 36 は18件が成功。実コンテナ解析の試験は API 36 で実行し、API 23 では試験用 API の下限により省略した。
+- v1／v2 の生成スキーマを比較し、従来の6表の定義が一致することを確認した。
