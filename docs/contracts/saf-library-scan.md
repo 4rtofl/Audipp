@@ -6,7 +6,7 @@ FR-SRC-02・NFR-SEC-01・NFR-REL-01 のうち、DD-SRC-01・DD-DB-03・IMP-02 �
 
 - `SafLibrary.openTreeIntent()` を起動し、成功時に Android が返した `Intent` を `registerLocalTree()` に渡す。受領結果に読み取り権限と永続化の両フラグがあるツリー URI を受理し、OS には読み取り権限だけを要求する。登録に失敗した場合は、その呼び出しで新規に取得した権限の解放を試みる。登録済みルートは DB の再オープン後も `registeredRoots()` で取得できる。[Android Developers の SAF ガイド](https://developer.android.com/training/data-storage/shared/documents-files)
 - `startScan(rootId, scope)` は呼び出し元のスコープに属する走査を IO ディスパッチャーで実行する。`progress` は訪問件数、列挙を完了したディレクトリ数、追加・更新・スキップ・解析失敗件数を通知する。`cancel()` で消失確定処理の開始前まで取り消せる。`await()` は走査 ID、最終件数、状態と列挙型の問題コードを返す。
-- `COMPLETE` は全ディレクトリの列挙と最後のルート確認が成功した状態を示す。解析に失敗した既存曲も訪問済みとし、既存の Variant とメタデータを保持する。以前 `MISSING` だった曲を列挙できた場合、解析失敗時は `UNKNOWN`、解析成功時は `PLAYABLE` に戻す。
+- `COMPLETE` は全ディレクトリの列挙と最後のルート確認が成功した状態を示す。解析に失敗した既存曲も訪問済みとし、既存の Variant とメタデータを保持する。以前 `MISSING` だった曲を列挙できた場合は、解析結果に応じて `UNKNOWN`、`UNSUPPORTED`、`PLAYABLE` へ更新する。 [音源の形式判定と保存の契約](local-audio-formats.md)
 - `PARTIAL` は上限やディレクトリの列挙エラー等を示す。`CANCELLED` は取り消し、`ACCESS_LOST` は永続読み取り権限がない場合やルートにアクセスできない場合を示す。いずれも途中まで保存済みの行を保持し、未訪問曲の状態を維持する。再許可は同じフォルダを選び直し、同じルート ID で再走査する。
 
 ## Room と走査上限
@@ -17,7 +17,7 @@ Room v2 は v1 の6表を維持し、`local_scan_roots` と `local_scan_sources`
 
 深さ 32（ルートは深さ 0）、列挙行 50,000 件、走査中に保持する ID とディレクトリ情報の見積もり 16 MiB を実装値とする。カーソルは一度に1つ開き、提供元の未完了・エラー通知も部分走査として扱う。個々の問い合わせやファイル解析には 10 秒で取消を要求する。提供元が取消を無視する場合や、カーソル取得後の読み出し・ネイティブ解析が停止した場合は、呼び出しが戻るまで待機が残る。SAF の列挙結果とルート確認は、複数ファイルの同時変更に対する一貫したスナップショットを提供しない。[DocumentsContract](https://developer.android.com/reference/android/provider/DocumentsContract)
 
-音源は読み取り専用で開き、実際のコンテナから音声トラックを検出する。埋め込みタグは Android で取得できる範囲を保存し、文字列は 4096 文字で制限する。アルバム名の保存単位は音源で、同名アルバムの統合・画像処理は後続のライブラリ機能で扱う。`PLAYABLE` はインデックスの状態であり、端末でのデコード・出力は別試験で確認する。URI はアプリ専用 DB に保存し、この機能の進捗・失敗結果には URI や提供元例外の本文を含めない。[MediaExtractor](https://developer.android.com/reference/android/media/MediaExtractor)
+音源は読み取り専用で開き、実際のコンテナから音声トラックを検出する。埋め込みタグは Android で取得できる範囲を保存し、文字列は 4096 文字で制限する。アルバム名の保存単位は音源で、同名アルバムの統合・画像処理は後続のライブラリ機能で扱う。形式別のタグ・画像参照、非対応と破損の区別、デコードの検証範囲は形式対応表を参照する。 [ローカル音源のメタデータとデコード対応](local-audio-formats.md)URI はアプリ専用 DB に保存し、この機能の進捗・失敗結果には URI や提供元例外の本文を含めない。[MediaExtractor](https://developer.android.com/reference/android/media/MediaExtractor)
 
 ## TEST-LIB-01 の検証範囲
 

@@ -14,6 +14,7 @@ import com.audipp.data.db.LocalScanSource
 import com.audipp.data.db.SourceEntity
 import com.audipp.data.db.TrackEntity
 import com.audipp.data.db.VariantEntity
+import com.audipp.data.db.VariantLocalMetadata
 import com.audipp.domain.model.Availability
 import com.audipp.domain.model.SourceKind
 import java.util.UUID
@@ -220,7 +221,7 @@ class SafLibrary internal constructor(
                             pending.addLast(Directory(entry.id, dir.depth + 1))
                         } else {
                             val uri = DocumentsContract.buildDocumentUriUsingTree(tree, entry.id)
-                            inspect(uri)
+                            inspect(uri, entry.displayName)
                         }
                     }
                     if (directoryComplete) {
@@ -240,17 +241,29 @@ class SafLibrary internal constructor(
             } else rootAccess
         }
 
-        private suspend fun inspect(uri: Uri) {
-            var failed = false
+        private suspend fun inspect(uri: Uri, displayName: String?) {
+            var scanIssue: LibraryScanIssue? = null
+            var rejectedAvailability: Availability? = null
             val audio = try {
-                access.analyze(uri)
+                access.analyze(uri, displayName)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                issues += if (failure is SafTimeout) LibraryScanIssue.TIMEOUT else LibraryScanIssue.ANALYSIS_FAILED
-                failed = true
+                scanIssue = when (failure) {
+                    is SafTimeout -> LibraryScanIssue.TIMEOUT
+                    is SafAudioRejected -> {
+                        rejectedAvailability = if (failure.issue == LibraryScanIssue.UNSUPPORTED_AUDIO) {
+                            Availability.UNSUPPORTED
+                        } else Availability.UNKNOWN
+                        failure.issue
+                    }
+                    else -> LibraryScanIssue.ANALYSIS_FAILED
+                }
                 null
             }
+
+            scanIssue?.let { issues += it }
+            if (audio != null && !audio.standardPath) issues += LibraryScanIssue.UNSUPPORTED_AUDIO
 
             val id = stableId(uri)
             val sourceId = "saf-source:$id"
@@ -268,20 +281,35 @@ class SafLibrary internal constructor(
                     library.save(LibraryBatch(
                         sources = listOf(SourceEntity(
                             sourceId, SourceKind.LOCAL, localUri = uriString,
-                            availability = Availability.PLAYABLE, grantMode = "PERSISTED_READ", updatedAt = updatedAt,
+                            availability = if (audio.standardPath) Availability.PLAYABLE else Availability.UNSUPPORTED,
+                            grantMode = "PERSISTED_READ", updatedAt = updatedAt,
                         )),
                         tracks = listOf(track.copy(title = audio.title, artistDisplay = audio.artist)),
                         albums = listOfNotNull(album),
                         variants = listOf(VariantEntity(
                             variantId, trackId, sourceId, album?.albumId, audio.disc, audio.track,
-                            audio.durationMs, audio.codec, audio.sampleRate, channels = audio.channels,
+                            audio.durationMs, audio.codec, audio.sampleRate, audio.bitDepth, audio.channels,
                             masteringLabel = library.variant(variantId)?.masteringLabel,
+                            localMetadata = VariantLocalMetadata(
+                                container = audio.container?.name,
+                                title = audio.title,
+                                artist = audio.artist,
+                                album = audio.album,
+                                albumArtist = audio.albumArtist,
+                                pcmStorageBits = audio.pcm?.storageBits,
+                                pcmFloatingPoint = audio.pcm?.floatingPoint,
+                                artworkRef = audio.artwork?.let { "embedded:${it.offset}:${it.length}:${it.mimeType}" },
+                            ),
                         )),
                     ))
-                } else if (previous?.availability == Availability.MISSING) {
-                    library.save(LibraryBatch(sources = listOf(previous.copy(
-                        availability = Availability.UNKNOWN, updatedAt = updatedAt,
-                    ))))
+                } else if (previous != null) {
+                    val availability = rejectedAvailability
+                        ?: if (previous.availability == Availability.MISSING) Availability.UNKNOWN else null
+                    if (availability != null && availability != previous.availability) {
+                        library.save(LibraryBatch(sources = listOf(previous.copy(
+                            availability = availability, updatedAt = updatedAt,
+                        ))))
+                    }
                 }
                 if (audio != null || previous != null) {
                     scans.recordVisit(LocalScanSource(sourceId, rootId, scanId))
@@ -290,7 +318,7 @@ class SafLibrary internal constructor(
             }
             val before = progress.value
             progress.value = when {
-                failed -> before.copy(failed = before.failed + 1)
+                scanIssue != null -> before.copy(failed = before.failed + 1)
                 audio == null -> before.copy(skipped = before.skipped + 1)
                 existing -> before.copy(updated = before.updated + 1)
                 else -> before.copy(indexed = before.indexed + 1)

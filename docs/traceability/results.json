@@ -143,5 +143,83 @@
       "docs/contracts/saf-library-scan.md"
     ],
     "limitations": "実機シリアルの指定なし。登録画面とプレイリスト画面の結合後に実施する。"
+  },
+  {
+    "case_id": "E01-03-local-formats-emulators-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-04"
+    ],
+    "test_ids": [
+      "TEST-FORMAT-01"
+    ],
+    "commit": "59a3915ce531841f692dd529a0b66633bc4ea655",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23／36 で合成 FLAC、MP3、ADTS、M4A のトラックから MediaCodec が PCM を出すことと、WAV の読み取り、DSF の音源属性を確認した。拡張子偽装・0 長・破損・非対応を分け、走査を継続した。",
+    "evidence": [
+      "docs/contracts/local-audio-formats.md"
+    ],
+    "limitations": "対象コンテナの合成ケース。DFF と DST はヘッダーの単体試験のみ。実機、Media3 の連続再生、出力、対応一覧 UI は未実施。"
+  },
+  {
+    "case_id": "E01-03-variant-metadata-and-artwork-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-05"
+    ],
+    "test_ids": [
+      "TEST-LIB-02"
+    ],
+    "commit": "59a3915ce531841f692dd529a0b66633bc4ea655",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "別の Variant が持つタグで欠損を補完せず、再走査後も既存 ID を保持した。大きな FLAC 画像範囲を本文の読み出しなしで特定し、M4A／ID3 画像参照と Room v1／v2 からの移行を確認した。",
+    "evidence": [
+      "docs/contracts/local-audio-formats.md"
+    ],
+    "limitations": "自前のメタデータ読み取り上限を検証した。画像描画、キャッシュやネイティブ抽出器のメモリ実測、自動アルバム分類 UI は未実施。"
+  },
+  {
+    "case_id": "E01-03-source-precision-fields-2026-11-20",
+    "requirement_ids": [
+      "FR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-AUD-01"
+    ],
+    "commit": "59a3915ce531841f692dd529a0b66633bc4ea655",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "ソース側の整数有効精度、格納幅、浮動小数形式を識別した。20-in-24 の整数精度は 20、32-bit float の整数精度は null とし、Variant に保管する値を検証した。",
+    "evidence": [
+      "docs/contracts/local-audio-formats.md"
+    ],
+    "limitations": "ソースの読み取りと保存に限る。Signal Path の UI、OS 申告や観測経路・実測値との表示比較は未実施。"
+  },
+  {
+    "case_id": "E01-03-physical-playback-matrix-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-04",
+      "FR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-FORMAT-01",
+      "TEST-AUD-01"
+    ],
+    "commit": "59a3915ce531841f692dd529a0b66633bc4ea655",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "物理スマートフォン・DAP・DAC は使用せず、指定した専用エミュレーターの標準デコーダのみを使用した。",
+    "evidence": [
+      "docs/contracts/local-audio-formats.md"
+    ],
+    "limitations": "機種別デコーダ、連続再生、物理出力の確認は別途必要。DSD 専用経路の確認は #54〜#59 に引き継ぐ。"
   }
 ]
