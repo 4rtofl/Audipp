@@ -1,0 +1,171 @@
+services:
+  db:
+    image: &postgres docker.io/library/postgres:17.11-bookworm@sha256:73bedc9eaa0121b92b9b26bb52e5141b3f6f37479c7ef913c0160455763ca80a
+    platform: linux/amd64
+    mem_limit: 512m
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_admin_password
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    secrets: [db_admin_password, api_db_password, auth_db_password]
+    configs:
+      - source: init_db
+        target: /docker-entrypoint-initdb.d/10-audipp.sh
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [db]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -q -h 127.0.0.1 && psql -XAtq -U postgres -d postgres -c \"SELECT count(*) FROM pg_database WHERE datname IN ('audipp_api', 'audipp_auth')\" | grep -qx 2"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.5@sha256:6529db34610ce6328824218dce3bbe55c4ba4757bc5c8a09b5a4c746e28b6e9d
+    platform: linux/amd64
+    mem_limit: 2g
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint:
+      - /bin/bash
+      - -ec
+      - |
+        export KC_DB_PASSWORD="$$(cat /run/secrets/auth_db_password)"
+        if [ -s /run/secrets/bootstrap_password ]; then
+          export KC_BOOTSTRAP_ADMIN_USERNAME=audipp-admin
+          export KC_BOOTSTRAP_ADMIN_PASSWORD="$$(cat /run/secrets/bootstrap_password)"
+        fi
+        exec /opt/keycloak/bin/kc.sh "$$@"
+      - keycloak
+    command: [start]
+    environment:
+      KC_DB: postgres
+      KC_CACHE: local
+      KC_DB_URL: jdbc:postgresql://db:5432/audipp_auth
+      KC_DB_USERNAME: audipp_auth
+      KC_HOSTNAME: https://auth.audipp.test:8443
+      KC_HTTP_ENABLED: "false"
+      KC_HTTPS_CERTIFICATE_FILE: /run/secrets/auth_cert
+      KC_HTTPS_CERTIFICATE_KEY_FILE: /run/secrets/auth_key
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_HTTP_MANAGEMENT_SCHEME: http
+      KC_HTTP_MANAGEMENT_HOST: 127.0.0.1
+    secrets: [auth_db_password, bootstrap_password, auth_cert, auth_key]
+    ports:
+      - "127.0.0.1:${AUDIPP_AUTH_PORT:-8443}:8443"
+    networks:
+      db:
+      tls:
+        aliases: [auth.audipp.test]
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "/bin/bash", "-ec", "{ printf 'HEAD /health/ready HTTP/1.0\r\n\r\n' >&0; read -r status; [[ $$status == 'HTTP/1.0 200 '* || $$status == 'HTTP/1.1 200 '* ]]; } 0<>/dev/tcp/127.0.0.1/9000"]
+      interval: 5s
+      timeout: 3s
+      start_period: 90s
+      retries: 15
+
+  api:
+    image: ${AUDIPP_API_IMAGE:?Specify the locally built Audipp API image}
+    platform: linux/amd64
+    pull_policy: never
+    mem_limit: 768m
+    depends_on:
+      db:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        export AUDIPP_DB_PASSWORD="$$(cat /run/secrets/api_db_password)"
+        export AUDIPP_TLS_PASSWORD="$$(cat /run/secrets/api_tls_password)"
+        exec /opt/audipp/bin/audipp-server
+    environment:
+      AUDIPP_DB_HOST: db
+      AUDIPP_DB_PORT: "5432"
+      AUDIPP_DB_NAME: audipp_api
+      AUDIPP_DB_USER: audipp_api
+      AUDIPP_DB_SSLMODE: disable
+      AUDIPP_AUTH_DB_NAME: audipp_auth
+      AUDIPP_AUTH_DB_USER: audipp_auth
+      AUDIPP_ISSUER: https://auth.audipp.test:8443/realms/audipp
+      AUDIPP_AUDIENCE: audipp-api
+      AUDIPP_BIND_HOST: 0.0.0.0
+      AUDIPP_TLS_PORT: "9443"
+      AUDIPP_TLS_ALIAS: audipp-api
+      AUDIPP_TLS_STORE: /run/secrets/api_tls_store
+      JAVA_TOOL_OPTIONS: >-
+        -Xmx256m -XX:ActiveProcessorCount=4
+        -Djavax.net.ssl.trustStore=/run/secrets/api_trust_store
+        -Djavax.net.ssl.trustStorePassword=changeit
+    secrets: [api_db_password, api_tls_password, api_tls_store, api_trust_store, local_ca]
+    ports:
+      - "127.0.0.1:${AUDIPP_API_PORT:-9443}:9443"
+    networks: [db, tls]
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          test "$$(curl --noproxy '*' --silent --max-time 2 --output /dev/null --write-out '%{http_code}'
+          --cacert /run/secrets/local_ca --resolve api.audipp.test:9443:127.0.0.1
+          https://api.audipp.test:9443/v1/me)" = 401
+      interval: 3s
+      timeout: 3s
+      start_period: 15s
+      retries: 15
+
+  worker:
+    image: *postgres
+    platform: linux/amd64
+    profiles: [maintenance]
+    user: postgres
+    mem_limit: 256m
+    environment:
+      PGHOST: db
+      PGCONNECT_TIMEOUT: "5"
+    entrypoint: ["/bin/bash", "/opt/maintenance.sh"]
+    configs:
+      - source: maintenance
+        target: /opt/maintenance.sh
+    secrets: [api_db_password, auth_db_password]
+    networks: [db]
+
+networks:
+  db:
+    internal: true
+  tls:
+
+volumes:
+  postgres_data:
+
+configs:
+  init_db:
+    file: ./init-db.sh
+  maintenance:
+    file: ./maintenance.sh
+
+secrets:
+  db_admin_password:
+    file: ${AUDIPP_SECRETS_DIR:?Specify an absolute path outside the checkout}/db-admin-password
+  api_db_password:
+    file: ${AUDIPP_SECRETS_DIR}/api-db-password
+  auth_db_password:
+    file: ${AUDIPP_SECRETS_DIR}/auth-db-password
+  bootstrap_password:
+    file: ${AUDIPP_SECRETS_DIR}/auth-bootstrap-password
+  auth_cert:
+    file: ${AUDIPP_SECRETS_DIR}/auth.crt
+  auth_key:
+    file: ${AUDIPP_SECRETS_DIR}/auth.key
+  api_tls_password:
+    file: ${AUDIPP_SECRETS_DIR}/api-tls-password
+  api_tls_store:
+    file: ${AUDIPP_SECRETS_DIR}/api.p12
+  api_trust_store:
+    file: ${AUDIPP_SECRETS_DIR}/trust.p12
+  local_ca:
+    file: ${AUDIPP_SECRETS_DIR}/ca.crt
