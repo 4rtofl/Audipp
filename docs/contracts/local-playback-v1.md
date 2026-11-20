@@ -31,7 +31,7 @@ ManifestにmediaPlayback FGS、FOREGROUND_SERVICE / FOREGROUND_SERVICE_MEDIA_PLA
 仕様にない以下の詳細は本PRの実装案であり、承認済み製品条件の変更ではない。
 
 - `PlaybackConnection`のcustom commandと版付きdomain JSON、entry ID最大256文字/要求JSON最大16,384文字。これらは製品の曲数・タグ長制限ではなく、このIPC入口の上限。
-- `LocalPlayback`をService looperで直列に扱い、標準端末出力のtarget IDを`android-standard`、初期route revisionを0とする。これは実経路の観測済み申告ではない。経路の監視・証拠とrevision更新は #42、再生Reducer/詳細なフォーカス・切断方針は #37 で統合する。
+- `LocalPlayback`をService looperで直列に扱い、標準端末出力のtarget IDを`android-standard`、初期route revisionを0とする。経路の監視・証拠とrevision更新は #42 で扱う。
 - 再生中のsnapshot位置を1秒ごとに観測する。checkpointの保存周期や性能達成値ではない。
 - 1要求につき1曲を準備する。キューDB/現在項目参照は #38、次/前曲・shuffle/repeatと有限探索は #60、復元を含む結合試験は #83 に接続する。未実装の操作をControllerで有効にしない。現行WelcomeScreenへの選曲UI追加は本Issueの対象外。
 
@@ -48,3 +48,13 @@ Media3のexoplayer/sessionと推移artifactをすべて1.11.1へ統一し、Debu
 2026-10-31: Debug/未署名Releaseビルド、全99件のUnit（失敗/skip 0）、Lint（エラー0、警告12）と依存lock生成が成功した。LocalPlaybackTest、PlaybackServiceTest、AndroidDocumentAccessTestと既存SourceResolverTestを含む。警告は依存更新案内10件、動的に接続を検査するexported service、toUriのKTX提案である。RobolectricはAPI23/35の模擬frameworkであり、端末のinstrumented testではない。API36のRobolectric実行にはJDK21が必要なため、既定JDK17のCIではAPI35を上限にする（[公式互換表](https://robolectric.org/compatibility_table/)）。コマンド・結果・対象commit・CI URLは対応PRの「証跡」に記録する。
 
 **NOT_RUN:** Android API23/36上のinstrumented test、実Activity回転中の継続音声、画面OFF・ロック画面・通知/BTボタン、実通話/フォーカス/BT・USB切断、Galaxy S25/FiiO M21/S20、実形式別codec/音声出力、DAC実測。ADB serialの指定がないため端末を操作しない。Bit-perfect、DSP精度、長時間再生、性能目標、試験ファミリー全体の成功を申告しない。未実施項目と最終レビューは本PR/#83等で追跡する。
+
+## 再生状態と割り込み（Issue #37）
+
+コマンド・Playerの状態通知・OSの割り込みをServiceのメインlooperへ揃える。曲の準備ごとに遷移IDを発行し、同じエントリーの再生要求でも過去の準備結果と区別する。停止時は再生要求を取り消し、Playerから音源を取り除く。自然終了は`ADVANCING`で通知し、次の項目の選択は #60 で扱う。
+
+曲長を取得でき、Playerがシークに対応する場合に、Sessionで`0..duration`を受け付ける。単一Playerにシークを順に渡し、Media3が保留中の操作を反映した最新状態から位置を取得する。
+
+音声フォーカス喪失と`becoming noisy`はMedia3の通知を使う。一時フォーカス喪失で再生が抑制された場合も再生要求を解除する。Androidがダッキングだけを指示する場合はMedia3の音量制御に従う。API31以降はAndroidの音声モード変更で着信や通話を検知する。API23〜30の再生中の通話割り込みは音声フォーカス通知に依存する。準備時と再開時には現在の音声モードを確認する。
+
+外部出力の取り外し通知では、安全側に倒して標準再生を一時停止する。Androidの接続機器一覧を使うため、未使用の外部出力を外した場合にも一時停止することがある。通話終了・再接続・フォーカス復帰後の再開には再生操作が必要。確認したケースと検証コミットは[試験結果](../traceability/results.json)に記録する。

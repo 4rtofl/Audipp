@@ -85,5 +85,47 @@
       "docs/evidence/issue-20/kotlin-local.txt"
     ],
     "limitations": "加入契約は確認済みで、アプリ資格とは別に保持する。実サービス試験の前提不足をQobuz必須要件の削除やKotlin実装全体の停止理由にはしない。資格取得後に実応答・報告受理・失効を検証し、Playerへ接続する。"
+  },
+  {
+    "case_id": "E02-02-host-state-and-seek-2026-11-20",
+    "requirement_ids": ["FR-PLY-01"],
+    "test_ids": ["TEST-PLY-01"],
+    "commit": "3de907841349d113842c26801bb66ead38590cb0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "ReducerとMediaControllerのホスト試験で、曲長が未知の場合のシーク無効化、0と曲末へのシーク、範囲外の拒否、連続シークの最新位置、停止後の古い準備完了の破棄、自然終了時のADVANCINGを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/LocalPlaybackTest.kt",
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "#37の状態遷移とシークに限定。キュー編集と次曲の選択は後続Issueで検証する。"
+  },
+  {
+    "case_id": "E02-02-host-interruptions-2026-11-20",
+    "requirement_ids": ["FR-PLY-03", "NFR-REL-01"],
+    "test_ids": ["TEST-PLY-02"],
+    "commit": "3de907841349d113842c26801bb66ead38590cb0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric API23/35で一時フォーカス喪失、becoming noisy、USB出力取り外し通知による一時停止を確認した。API35の通話モードと、フォーカス復帰・通話終了・再接続の通知後も明示的な再生操作を待つことを確認した。",
+    "evidence": ["app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"],
+    "limitations": "ホスト上でOSの通知を再現したケースに限定。端末のルーティングや、切断から一時停止までの実際の音声出力は実機確認が必要。"
+  },
+  {
+    "case_id": "E02-02-device-interruptions-2026-11-20",
+    "requirement_ids": ["FR-PLY-03", "NFR-REL-01"],
+    "test_ids": ["TEST-PLY-02"],
+    "commit": "3de907841349d113842c26801bb66ead38590cb0",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "指定ADBシリアルがないため、API23/36の端末試験と実通話・実フォーカス・実BT/USB切断は未実施。",
+    "evidence": [],
+    "limitations": "スピーカーへの切替過渡、実機のフォーカス・通話通知、画面ロック中の挙動は未確認。"
   }
 ]
