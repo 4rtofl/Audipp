@@ -19,6 +19,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -207,9 +208,44 @@ class LibraryDatabaseTest {
     }
 
     @Test
+    fun migratesExportedVersionOneWithoutChangingExistingIds() = runBlocking {
+        db.close()
+        val assets = InstrumentationRegistry.getInstrumentation().context.assets
+        val schema = assets.open("com.audipp.data.db.LibraryDatabase/1.json").bufferedReader().use {
+            JSONObject(it.readText()).getJSONObject("database")
+        }
+        context.openOrCreateDatabase("library-test.db", 0, null).use { raw ->
+            val entities = schema.getJSONArray("entities")
+            for (index in 0 until entities.length()) {
+                val table = entities.getJSONObject(index)
+                raw.execSQL(table.getString("createSql").replace("\${TABLE_NAME}", table.getString("tableName")))
+                val indices = table.optJSONArray("indices") ?: continue
+                for (i in 0 until indices.length()) {
+                    raw.execSQL(indices.getJSONObject(i).getString("createSql")
+                        .replace("\${TABLE_NAME}", table.getString("tableName")))
+                }
+            }
+            val setup = schema.getJSONArray("setupQueries")
+            for (index in 0 until setup.length()) raw.execSQL(setup.getString(index))
+            raw.execSQL("INSERT INTO sources (source_id, kind, availability, updated_at) VALUES ('old-source', 'LOCAL', 'MISSING', 1)")
+            raw.execSQL("INSERT INTO tracks (track_id, title) VALUES ('old-track', 'Existing')")
+            raw.execSQL("INSERT INTO track_variants (variant_id, track_id, source_id) VALUES ('old-variant', 'old-track', 'old-source')")
+            raw.version = 1
+        }
+        db = LibraryDatabase.open(context, "library-test.db")
+        val variant = dao.trackVariant(VariantId("old-variant"))!!
+        assertEquals(SourceId("old-source"), variant.source.sourceId)
+        assertEquals(TrackId("old-track"), variant.trackId)
+        assertEquals(Availability.MISSING, variant.source.availability)
+        assertEquals("Existing", dao.track("old-track")?.title)
+        assertTrue(db.safScanDao().roots().isEmpty())
+        assertEquals(2, db.openHelper.writableDatabase.version)
+    }
+
+    @Test
     fun unsupportedDatabaseVersionFailsWithoutDestroyingRows() = runBlocking {
         dao.save(LibraryBatch(tracks = listOf(TrackEntity("retained"))))
-        db.openHelper.writableDatabase.version = 2
+        db.openHelper.writableDatabase.version = 3
         db.close()
         db = LibraryDatabase.open(context, "library-test.db")
         try {
@@ -221,7 +257,7 @@ class LibraryDatabaseTest {
         db.close()
         val raw = context.openOrCreateDatabase("library-test.db", 0, null)
         raw.use {
-            assertEquals(2, it.version)
+            assertEquals(3, it.version)
             it.rawQuery("SELECT track_id FROM tracks", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals("retained", cursor.getString(0))

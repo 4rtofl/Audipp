@@ -25,6 +25,8 @@ android {
         compose = true
     }
 
+    sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
