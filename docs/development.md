@@ -116,6 +116,10 @@ Issue #31のアダプター登録、出力先ごとのPlan、許諾・経路・�
 
 Issue #33の用途別台帳、証跡・scope・期限と技術能力の分離、処理入口での再検査、403・失効・保存失敗と後続接続の責務は [Provider用途別許諾 v1](contracts/provider-policy-v1.md) を参照してください。
 
+## YouTube系の音声中継調査
+
+Issue #24 の再現手順、FR-SRC-11/12 と TEST-YTDLP-01/RESEARCH-01/SAVE-01 の部分結果、実サービスの利用資格・用途別許諾の確認状況は [音声中継・保存条件の調査](evidence/issue-24/README.md) を参照してください。
+
 ## USB機器の取得
 
 Issue #32の明示許可・接続寿命・公開属性・UAC descriptor解析の範囲と検証の追跡は [USB機器の取得 v1](contracts/usb-devices-v1.md) を参照してください。実際の再生経路、機器プロファイル、画面、native USB出力との接続は各担当Issueで行います。
@@ -143,6 +147,8 @@ adb -s SERIAL logcat -b crash -d
 ## 業務APIと所有権の検証
 
 Issue #34の独立した`server/`ビルド、HTTPS/JSON・本人所有権、SQL/migration、起動条件と試験範囲は[業務API v1](contracts/backend-v1.md)を参照してください。`./gradlew -p server test installDist distTar`はSDK・Docker・実配備を使わず、一時PostgreSQLで拒否動作と復旧を検証します。Androidの引き渡し検証は従来どおり必要です。
+
+Issue #51 の招待・復旧・Google 結合の設定とローカル試験は[招待制の認証と復旧](contracts/keycloak-invitation.md)を参照してください。
 
 ## Linux x86_64向けの補助手順
 
