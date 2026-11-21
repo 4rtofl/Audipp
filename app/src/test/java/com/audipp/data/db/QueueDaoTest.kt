@@ -96,6 +96,17 @@ class QueueDaoTest {
     }
 
     @Test
+    fun removingTheStoppedLiveEntryClearsAnOlderCheckpointForARetainedEntry() = runBlocking {
+        val a = entry("a")
+        val b = entry("b")
+        prepareQueue(listOf(a, b), current = a)
+
+        assertUpdated(1, listOf(a), b.entryId)
+
+        assertEquals(checkpoint(a).copy(queueRevision = 2, entryId = null, positionMs = null), dao.checkpoint())
+    }
+
+    @Test
     fun migratesTheExportedV1SchemaWithoutDroppingLibraryRows() = runBlocking {
         val name = "queue-migration.db"
         val schema = JSONObject(File("schemas/com.audipp.data.db.LibraryDatabase/1.json").readText())
