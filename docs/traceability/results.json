@@ -1413,5 +1413,45 @@
       "app/src/test/java/com/audipp/integrations/network/webdav/WebDavAuthenticationTest.kt"
     ],
     "limitations": "原因例外のないハンドシェイク失敗はJVMのinterceptorで模擬した。Android実機での通信断時の例外と、公的証明書を持つ実サーバーとの接続は未確認。"
+  },
+  {
+    "case_id": "E02-05-host-playback-owner",
+    "requirement_ids": [
+      "FR-PLY-07"
+    ],
+    "test_ids": [
+      "TEST-QUEUE-01"
+    ],
+    "commit": "748629aa9accbca2069acdae0ae4b41cfd3254d4",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "CoordinatorとSourceResolverを接続したホスト試験9件で停止状態の観測、開始前の再検査、取消後の遅延成功への停止再要求、期限切れ、手動継続と外部引き渡しを確認した。全ユニットテスト208件、Debugビルド、Lintが成功した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackOwnerCoordinatorTest.kt",
+      "docs/contracts/playback-owner.md"
+    ],
+    "limitations": "#61の停止確認と状態・効果の契約をホストで確認した。実Serviceの効果接続と連続再生、外部サービスや実機の再生状態は未確認。"
+  },
+  {
+    "case_id": "E02-05-host-playback-owner-review-200",
+    "requirement_ids": [
+      "FR-PLY-07"
+    ],
+    "test_ids": [
+      "TEST-QUEUE-01"
+    ],
+    "commit": "e5a35986ad706df77bac18afd942c15085c4f936",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Coordinatorのホスト試験16件で、期限切れ後の開始・引き渡し抑止、旧コマンド終端と停止観測の待機、旧開始の終端通知の欠落からの復旧、キュー読み取り中の状態変更、読み取り失敗と取消を確認した。全ユニットテスト215件が成功した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackOwnerCoordinatorTest.kt",
+      "docs/contracts/playback-owner.md"
+    ],
+    "limitations": "#61の切替契約をホストのFakeで確認した。実Serviceからの効果接続、実SDKでのコマンド終端・失効の保証、外部サービスと実機の再生状態は未確認。"
   }
 ]

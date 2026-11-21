@@ -206,19 +206,41 @@ class SourceResolver(
         currentCoroutineContext().ensureActive()
         contextFailure(request.context)?.let { return it }
         if (policy != null) return policy
+        return playbackFailure(result)
+    }
+
+    internal fun rejectionAtDispatch(
+        result: SourceResolution.Resolved,
+        currentPermission: (ResolutionRequest, ResolutionUse) -> PermissionState,
+    ): ResolutionFailure? {
+        val request = result.request
+        contextFailure(request.context)?.let { return it }
+        val use = permissionUse(request, result.plan.mode)
+        if (use != null && currentPermission(request, use) != PermissionState.ALLOWED) {
+            return ResolutionFailure.POLICY_BLOCKED
+        }
+        return playbackFailure(result)
+    }
+
+    private fun playbackFailure(result: SourceResolution.Resolved): ResolutionFailure? {
         if (!result.plan.capabilities.canPlay) return ResolutionFailure.PLAYBACK_UNSUPPORTED
-        return descriptorFailure(request, result.descriptor)
+        return descriptorFailure(result.request, result.descriptor)
     }
 
     private suspend fun policyFailure(
         request: ResolutionRequest, mode: ExecutionMode,
     ): ResolutionFailure? {
-        if (request.variant.source.kind != SourceKind.PROVIDER) return null
-        val use = if (mode == ExecutionMode.PARTNER_DIRECT) ResolutionUse.DIRECT_PLAYBACK
-            else ResolutionUse.PLAYBACK_CONTROL
+        val use = permissionUse(request, mode) ?: return null
         return if (permissions.check(request, use) == PermissionState.ALLOWED) null
             else ResolutionFailure.POLICY_BLOCKED
     }
+
+    private fun permissionUse(request: ResolutionRequest, mode: ExecutionMode): ResolutionUse? =
+        when {
+            request.variant.source.kind != SourceKind.PROVIDER -> null
+            mode == ExecutionMode.PARTNER_DIRECT -> ResolutionUse.DIRECT_PLAYBACK
+            else -> ResolutionUse.PLAYBACK_CONTROL
+        }
 
     internal fun contextFailure(context: ResolutionContext): ResolutionFailure? {
         val current = currentContext()
