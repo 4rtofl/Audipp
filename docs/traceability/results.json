@@ -85,5 +85,84 @@
       "docs/evidence/issue-20/kotlin-local.txt"
     ],
     "limitations": "加入契約は確認済みで、アプリ資格とは別に保持する。実サービス試験の前提不足をQobuz必須要件の削除やKotlin実装全体の停止理由にはしない。資格取得後に実応答・報告受理・失効を検証し、Playerへ接続する。"
+  },
+  {
+    "case_id": "E10-14-compose-ports-2026-11-20",
+    "requirement_ids": [
+      "NFR-SEC-03"
+    ],
+    "test_ids": [
+      "TEST-SEC-01"
+    ],
+    "commit": "81b115edc346437cdc6a9cdcd094740120af40df",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "CIのServerジョブ（チェックアウト: b2f06ff8a121d549561f2d30348cc030f8588735）で、APIとKeycloakのHTTPSだけがホストの127.0.0.1に公開され、DBポートとKeycloak管理HTTPポートがホストに公開されないことを確認した。試験CAを信頼しない接続の拒否、issuerの一致、業務ロールから認証DBへの接続拒否も確認した。",
+    "evidence": [
+      "https://github.com/4rtoflow/Audipp/actions/runs/44708353671/job/136193733972"
+    ],
+    "limitations": "一時ランナーでの検証。APIコンテナーからKeycloak管理HTTPへの接続拒否は同ジョブの実行時点では未検査。実配備は未実施。"
+  },
+  {
+    "case_id": "E10-14-compose-outage-recovery-2026-11-20",
+    "requirement_ids": [
+      "NFR-OPS-01"
+    ],
+    "test_ids": [
+      "TEST-GOV-01"
+    ],
+    "commit": "81b115edc346437cdc6a9cdcd094740120af40df",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "CIのServerジョブ（チェックアウト: b2f06ff8a121d549561f2d30348cc030f8588735）で、DB停止時および署名鍵をキャッシュしていない状態でのKeycloak停止時にAPIがHTTP 503を返し、各サービス再起動後の再試行が成功した。TLS設定不備によるAPI起動失敗と、設定を戻した後の応答回復を確認した。",
+    "evidence": [
+      "https://github.com/4rtoflow/Audipp/actions/runs/44708353671/job/136193733972"
+    ],
+    "limitations": "一時ランナーでのAPI応答の検証。DB初期化中断からの復旧、実配備、Android実機での認証・障害表示は未実施。"
+  },
+  {
+    "case_id": "E10-14-compose-restore-both-databases-2026-11-20",
+    "requirement_ids": [
+      "NFR-OPS-01",
+      "FR-USE-03"
+    ],
+    "test_ids": [
+      "TEST-GOV-01",
+      "TEST-ACC-01"
+    ],
+    "commit": "81b115edc346437cdc6a9cdcd094740120af40df",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "CIのServerジョブ（チェックアウト: b2f06ff8a121d549561f2d30348cc030f8588735）で、APIとKeycloakの停止後に両DBをダンプした。新規ボリュームで不正なダンプの拒否と両DBの復元を確認し、復元後のKeycloakトークンでAPIに再接続して本人IDが変わらないことを確かめた。",
+    "evidence": [
+      "https://github.com/4rtoflow/Audipp/actions/runs/44708353671/job/136193733972"
+    ],
+    "limitations": "一時ランナーでの同一バージョンへの復元。実配備、定期暗号化バックアップ、削除記録の再適用、Android実機での認証は未実施。"
+  },
+  {
+    "case_id": "E10-14-compose-management-http-2026-11-21",
+    "requirement_ids": [
+      "NFR-SEC-03"
+    ],
+    "test_ids": [
+      "TEST-SEC-01"
+    ],
+    "commit": "8c6cb4478f1a45bd0085fe16199c6884e898232e",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "CIのServerジョブ（PR head 8c6cb44）で、Keycloakがhealthyになった後、APIコンテナーからauth.audipp.test:9000への接続がcurlの終了コード7で失敗することを確認した。",
+    "evidence": [
+      "https://github.com/4rtofl/Audipp/actions/runs/44914582651/job/136877383768",
+      "server/compose/smoke-test.sh"
+    ],
+    "limitations": "一時ランナーでの検証。実配備は未実施。"
   }
 ]
