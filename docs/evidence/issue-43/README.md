@@ -1,6 +1,6 @@
 # #43 libusb 1.0.29 の FD 取込・取消調査（E05-04）
 
-調査コードは `1ef6976f7002c3efc9b8efcaba28a5aafe12d308`、Audipp の起点は `ba8f18b2656d4508cfa381cbd7ded1f94a0a462a`。libusb はタグ `v1.0.29` の `15a7ebb4d426c5ce196684347d2b7cafad862626` に固定した。実行値と環境は [local.txt](local.txt) に記録した。
+調査コードの初回実行は `1ef6976f7002c3efc9b8efcaba28a5aafe12d308`、Audipp の起点は `ba8f18b2656d4508cfa381cbd7ded1f94a0a462a`。libusb はタグ `v1.0.29` の `15a7ebb4d426c5ce196684347d2b7cafad862626` に固定した。ホスト契約試験は `ioctl` の引数型を修正して6件を再実行した。再実行の対象 commit と環境は [local.txt](local.txt) に記録した。
 
 | 判定対象 | 結果 | 観測と制約 |
 | --- | --- | --- |
@@ -27,7 +27,8 @@
 ## E05-05（#119）への引き継ぎ
 
 - 既存の許可・descriptor 用 `AndroidUsbHost.inspect` は接続をメソッド内で閉じる。再生用は別に開き、`UsbDeviceConnection` をセッションが所有する案とする。JNI は `F_DUPFD_CLOEXEC` で複製を所有し、明示的な `libusb_context` を `LIBUSB_OPTION_NO_DEVICE_DISCOVERY` 付きで初期化する。wrap 失敗時は JNI が複製を閉じ、Java 側は自身の接続を閉じる。複製と元 FD は同一の open file description を共有するため、セッション中は Java 側で並行 USB I/O をしない。
-- OS 出力の停止を観測し、interface を取得できた場合に転送へ進む。Stop・切断では新規 submit と callback からの再 submit を止め、受理済み転送を取り消し、イベント処理を続けて terminal callback が戻るまで待つ。`NOT_FOUND` と `NO_DEVICE` が返った場合にも未回収転送を早期解放しない。回収後に転送・バッファを解放し、interface の解放を試み、`libusb_close` → 複製 FD close → Java 接続 close の順にする。context は全 handle の終了後に破棄する。切断による release の `NO_DEVICE` は記録して残りの解放へ進む。イベント停止・複数転送・世代更新・切断と再接続の競合は実装側で検証する。
+- OS 出力の停止を観測し、interface を取得できた場合に転送へ進む。Stop・切断では新規 submit と callback からの再 submit を止め、受理済み転送を取り消す。全転送の terminal callback が戻るまではイベント処理を続ける。`NOT_FOUND` と `NO_DEVICE` が返った場合にも未回収転送を早期解放しない。回収後に転送・バッファを解放し、interface の解放を試み、`libusb_close` → 複製 FD close → Java 接続 close の順にする。切断による release の `NO_DEVICE` は記録して残りの解放へ進む。
+- context を破棄するときは、全転送の callback 回収後にイベントスレッドの停止フラグを設定し、`libusb_interrupt_event_handler()` でイベント待ちを起こし、`join` でスレッドの終了を確認する。全 handle を閉じ、その context を使うイベントスレッドが終了してから `libusb_exit()` を呼ぶ。共有 context では最後の利用者がイベントスレッドの停止を担当する。イベント停止・複数転送・世代更新・切断と再接続の競合は実装側で検証する。
 - 機器ごとに OS 出力の停止と interface claim を個別に観測する。排他不成立や root が必要と判明した構成では開始を拒否する。実機記録に端末 OS/build/ABI、DAC VID/PID/firmware、対象 interface/alternate/endpoint、各操作の結果と時間、各パケットの status/actual length、最後の callback と解放の順を残す。未知 DAC に vendor 固有制御を送らない。
 - 配布前に、対象 APK と対応する libusb のソース・ビルド手順、著作権表示とライセンス文の提供、改変版への差し替えまたは再リンクを可能にする方法を確定する。共有ライブラリの分離は今回の検証 APK で確認済み。製品の署名・配布方式で改変版を利用できる手順と適用する LGPL §6 の条件は導入時に確認する。[上流のライセンス本文](https://github.com/libusb/libusb/blob/v1.0.29/COPYING)
 
@@ -41,10 +42,11 @@ bash scripts/research/issue-43/build-probes.sh
 
 スクリプトは上流ソースを固定してホストの契約試験を実行し、一時ディレクトリに ELF 検査結果とローカル試験用 `probe.apk` を出す。自作 fixture の descriptor は `usbfs_contract.c` 内の 43 byte。外部音源・機器 descriptor は使用していない。
 
-API 23 と 36 の x86_64 エミュレーターを用意し、自分で起動したエミュレーターのシリアルを指定して各 API で実行する。
+API 23 と 36 の x86_64 エミュレーターを用意し、自分で起動したエミュレーターのシリアルを指定して各 API で実行する。`probe_apk` にはビルドの出力 `Local probe APK:` に表示された絶対パスを設定する。
 
 ```sh
-adb -s "$serial" install "$build_dir/probe.apk"
+probe_apk='/絶対パス/probe.apk'
+adb -s "$serial" install "$probe_apk"
 adb -s "$serial" shell am instrument -w -r com.audipp.research.usbfd/.UsbFdProbe
 ```
 

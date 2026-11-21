@@ -23,7 +23,7 @@ test "$(git -C "$usb_src" rev-parse HEAD)" = "$usb_commit"
     ./autogen.sh --disable-udev --enable-static --disable-shared
     make -j4
 ) >"$build_dir/host-build.log" 2>&1
-cc -Wall -Wextra -Werror -I "$usb_src/libusb" "$probe_dir/usbfs_contract.c" \
+cc -Wall -Wextra -Werror -I "$usb_src" -I "$usb_src/libusb" "$probe_dir/usbfs_contract.c" \
     "$usb_src/libusb/.libs/libusb-1.0.a" -pthread -Wl,--wrap=ioctl,--wrap=poll \
     -o "$build_dir/usbfs-contract"
 "$build_dir/usbfs-contract"

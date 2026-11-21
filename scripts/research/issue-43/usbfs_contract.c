@@ -2,15 +2,16 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <linux/usbdevice_fs.h>
 #include <poll.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#include "libusb.h"
+#include "libusbi.h"
+#include "os/linux_usbfs.h"
 
 static const unsigned char descriptors[] = {
     18, 1, 0, 2, 0, 0, 0, 64, 0x34, 0x12, 0x78, 0x56, 0, 1, 0, 0, 0, 1,
@@ -20,7 +21,7 @@ static const unsigned char descriptors[] = {
 };
 
 static int fixture_fd = -1;
-static struct usbdevfs_urb *pending;
+static struct usbfs_urb *pending;
 static bool ready;
 static bool disconnected;
 static bool busy;
@@ -32,63 +33,61 @@ static int fail(int error)
     return -1;
 }
 
-int __wrap_ioctl(int fd, unsigned long request, ...)
+static int fixture_ioctl(unsigned long request, va_list *args)
 {
-    if (fd != fixture_fd || fd < 0)
-        return fail(ENOTTY);
-
-    va_list args;
-    va_start(args, request);
-    void *arg = va_arg(args, void *);
-    va_end(args);
-
     switch (request) {
-    case USBDEVFS_CONNECTINFO:
-        ((struct usbdevfs_connectinfo *)arg)->devnum = 1;
+    case IOCTL_USBFS_CONNECTINFO:
+        va_arg(*args, struct usbfs_connectinfo *)->devnum = 1;
         return 0;
-    case USBDEVFS_GET_SPEED:
-        return 2;
-    case USBDEVFS_CONTROL: {
-        struct usbdevfs_ctrltransfer *control = arg;
+    case IOCTL_USBFS_GET_SPEED:
+        return USBFS_SPEED_FULL;
+    case IOCTL_USBFS_CONTROL: {
+        struct usbfs_ctrltransfer *control = va_arg(*args, struct usbfs_ctrltransfer *);
         assert(control->bRequest == LIBUSB_REQUEST_GET_CONFIGURATION);
         assert(control->wLength == 1);
         *(unsigned char *)control->data = 1;
         return 1;
     }
-    case USBDEVFS_GET_CAPABILITIES:
-        *(unsigned int *)arg = 0;
+    case IOCTL_USBFS_GET_CAPABILITIES:
+        *va_arg(*args, uint32_t *) = 0;
         return 0;
-    case USBDEVFS_CLAIMINTERFACE:
-        assert(*(unsigned int *)arg == 0 && !claimed);
+    case IOCTL_USBFS_CLAIMINTERFACE: {
+        unsigned int *interface = va_arg(*args, unsigned int *);
+        assert(*interface == 0 && !claimed);
         if (busy)
             return fail(EBUSY);
         claimed = true;
         return 0;
-    case USBDEVFS_RELEASEINTERFACE:
-        assert(*(unsigned int *)arg == 0 && claimed);
+    }
+    case IOCTL_USBFS_RELEASEINTERFACE: {
+        unsigned int *interface = va_arg(*args, unsigned int *);
+        assert(*interface == 0 && claimed);
         claimed = false;
         return disconnected ? fail(ENODEV) : 0;
-    case USBDEVFS_SUBMITURB: {
-        struct usbdevfs_urb *urb = arg;
+    }
+    case IOCTL_USBFS_SUBMITURB: {
+        struct usbfs_urb *urb = va_arg(*args, struct usbfs_urb *);
         assert(claimed && !pending && !ready);
-        assert(urb->type == USBDEVFS_URB_TYPE_ISO && urb->endpoint == 1);
+        assert(urb->type == USBFS_URB_TYPE_ISO && urb->endpoint == 1);
         assert(urb->number_of_packets == 2 && urb->buffer_length == 16);
         pending = urb;
         return 0;
     }
-    case USBDEVFS_DISCARDURB:
+    case IOCTL_USBFS_DISCARDURB: {
         if (disconnected)
             return fail(ENODEV);
-        assert(pending && arg == pending);
+        struct usbfs_urb *urb = va_arg(*args, struct usbfs_urb *);
+        assert(pending && urb == pending);
         if (ready)
             return fail(EINVAL);
         pending->status = -ENOENT;
         ready = true;
         return 0;
-    case USBDEVFS_REAPURBNDELAY:
+    }
+    case IOCTL_USBFS_REAPURBNDELAY:
         if (!ready)
             return fail(EAGAIN);
-        *(struct usbdevfs_urb **)arg = pending;
+        *va_arg(*args, struct usbfs_urb **) = pending;
         pending = NULL;
         ready = false;
         return 0;
@@ -96,6 +95,18 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
         assert(!"unexpected fixture ioctl");
         return fail(ENOTTY);
     }
+}
+
+int __wrap_ioctl(int fd, unsigned long request, ...)
+{
+    if (fd != fixture_fd || fd < 0)
+        return fail(ENOTTY);
+
+    va_list args;
+    va_start(args, request);
+    int result = fixture_ioctl(request, &args);
+    va_end(args);
+    return result;
 }
 
 int __real_poll(struct pollfd *fds, nfds_t count, int timeout);
