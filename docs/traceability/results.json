@@ -107,6 +107,100 @@
     "limitations": "#18の台帳検査ケースに限定。T18-02の廃止設計への残存参照は既知差異として報告し、Apple Musicは復活させない。TEST-GOV-01全体、製品完成、用途別許可、実機音声・配備・復旧、外部PR承認の合格ではない。"
   },
   {
+    "case_id": "E05-01-host-output-route-2026-11-20",
+    "requirement_ids": [
+      "FR-DEV-01",
+      "FR-AUD-01",
+      "NFR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01",
+      "TEST-AUD-01"
+    ],
+    "commit": "01d462f64f7bd38576c0ccd296df2358605eebb6",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "JDK 17でDebugビルド、単体試験193件、Lintが成功した。固定データで内蔵・有線・Bluetooth・USB、USB接続中の内蔵出力、OS申告48 kHzと動作レート不明の区別、複数経路、観測不可・取得拒否からの復旧、古い再生計画・外部確認・解決結果の失効を検査した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/audio/route/OutputRouteMonitorTest.kt",
+      "app/src/test/java/com/audipp/playback/LocalPlaybackTest.kt",
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt",
+      "docs/contracts/output-route-v1.md"
+    ],
+    "limitations": "固定データとホスト試験の部分ケース。実機での出力切替、DAC実測、試験ファミリー全体は対象外。"
+  },
+  {
+    "case_id": "E05-01-host-output-route-review-2026-11-21",
+    "requirement_ids": [
+      "FR-DEV-01",
+      "FR-AUD-01",
+      "NFR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01",
+      "TEST-AUD-01"
+    ],
+    "commit": "ddfb07de62d56e2dbaca4d4dd762a38ad12ea610",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "JDK 17で対象の単体試験16件が成功した。初回の経路観測と同一経路での一時停止・再開でrevisionを維持すること、解決中の経路変化から最新revisionで再解決できること、再解決中の変化は再試行可能なエラーとして呼出元に返ることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/audio/route/OutputRouteMonitorTest.kt",
+      "app/src/test/java/com/audipp/playback/LocalPlaybackTest.kt",
+      "docs/contracts/output-route-v1.md"
+    ],
+    "limitations": "ホストの固定データによる部分ケース。再開時の経路観測は計装試験を実行しておらず、エミュレーターや実機では未確認。"
+  },
+  {
+    "case_id": "E05-01-emulator-output-route-2026-11-20",
+    "requirement_ids": [
+      "FR-DEV-01",
+      "FR-AUD-01",
+      "NFR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01",
+      "TEST-AUD-01"
+    ],
+    "commit": "01d462f64f7bd38576c0ccd296df2358605eebb6",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "自作の無音WAVで標準Media3出力を再生し、AudioTrackの実経路取得と一時停止後の観測解除をAPI 23（1件）とAPI 36（2件）で確認した。API 36では仮想端末の2出力を返すTrack fixtureで複数取得APIの選択と全出力の保持も確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/audio/route/OutputRouteInstrumentedTest.kt",
+      "docs/contracts/output-route-v1.md"
+    ],
+    "limitations": "仮想端末のプラットフォーム動作と固定データを検査した。物理端末での複数出力の同時動作、USB・Bluetoothの実切替、DAC側の動作形式やビット列の測定は未実施。"
+  },
+  {
+    "case_id": "E05-01-hardware-output-route-2026-11-20",
+    "requirement_ids": [
+      "FR-DEV-01",
+      "FR-AUD-01",
+      "NFR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01",
+      "TEST-AUD-01"
+    ],
+    "commit": "01d462f64f7bd38576c0ccd296df2358605eebb6",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "ユーザーから指定された実機のADB serialがないため、対象スマートフォン・DAPおよびDACを使う試験は実施していない。",
+    "evidence": [
+      "docs/contracts/output-route-v1.md"
+    ],
+    "limitations": "Galaxy S25／S20、FiiO M21、ZEN DAC V2・ECHOシリーズ、物理経路切替・複数出力・DAC測定・QLT-01の実機条件は未確認。"
+  },
+  {
     "case_id": "E06-02-ci-baseline-notes-2026-11-10",
     "requirement_ids": [
       "NFR-MAINT-01",
