@@ -88,8 +88,12 @@
   },
   {
     "case_id": "E02-02-host-state-and-seek-2026-11-20",
-    "requirement_ids": ["FR-PLY-01"],
-    "test_ids": ["TEST-PLY-01"],
+    "requirement_ids": [
+      "FR-PLY-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-01"
+    ],
     "commit": "3de907841349d113842c26801bb66ead38590cb0",
     "stage": "CURRENT",
     "outcome": "PASS",
@@ -104,21 +108,33 @@
   },
   {
     "case_id": "E02-02-host-interruptions-2026-11-20",
-    "requirement_ids": ["FR-PLY-03", "NFR-REL-01"],
-    "test_ids": ["TEST-PLY-02"],
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
     "commit": "3de907841349d113842c26801bb66ead38590cb0",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
     "permission": "NOT_REQUIRED",
     "reason": "Robolectric API23/35で一時フォーカス喪失、becoming noisy、USB出力取り外し通知による一時停止を確認した。API35の通話モードと、フォーカス復帰・通話終了・再接続の通知後も明示的な再生操作を待つことを確認した。",
-    "evidence": ["app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"],
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
     "limitations": "ホスト上でOSの通知を再現したケースに限定。端末のルーティングや、切断から一時停止までの実際の音声出力は実機確認が必要。"
   },
   {
     "case_id": "E02-02-device-interruptions-2026-11-20",
-    "requirement_ids": ["FR-PLY-03", "NFR-REL-01"],
-    "test_ids": ["TEST-PLY-02"],
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
     "commit": "3de907841349d113842c26801bb66ead38590cb0",
     "stage": "CURRENT",
     "outcome": "NOT_RUN",
@@ -127,5 +143,45 @@
     "reason": "指定ADBシリアルがないため、API23/36の端末試験と実通話・実フォーカス・実BT/USB切断は未実施。",
     "evidence": [],
     "limitations": "スピーカーへの切替過渡、実機のフォーカス・通話通知、画面ロック中の挙動は未確認。"
+  },
+  {
+    "case_id": "E02-02-host-state-and-seek-2026-11-20-rerun-4300eed",
+    "requirement_ids": [
+      "FR-PLY-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-01"
+    ],
+    "commit": "4300eedd3b9851727c2e4117e389b59e18e622a5",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Reducer試験で曲長が未知のときのシーク無効化と自然終了時のADVANCINGを確認した。MediaController経由で、メディア未設定時のシークコマンド無効化、0と曲末へのシーク、範囲外の拒否、連続シークの最新位置、停止による解決取消を確認した。停止後の古い準備完了の破棄はReducer試験で確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/LocalPlaybackTest.kt",
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "シーク可能だが曲長が未知の状態はSession経由では未検証。キュー編集と次曲の選択は後続Issueで検証する。"
+  },
+  {
+    "case_id": "E02-02-host-interruptions-2026-11-20-rerun-4300eed",
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
+    "commit": "4300eedd3b9851727c2e4117e389b59e18e622a5",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric API23/35で、通常の一時フォーカス喪失と復帰、becoming noisyによる一時停止、USB出力の取り外しと再接続、解決中の取り外し後の選曲保持と一時停止、MODE_IN_COMMUNICATIONでの自動開始抑止と明示的な再生を確認した。API23では通話中の一時フォーカス喪失後に自動再開しないこと、API35では着信・通話中の再生拒否後にMediaControllerのplayWhenReadyもfalseであり、通話終了後は明示的な再生を待つことを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "ホスト上でOSの通知を再現したケースに限定。端末のルーティングや、切断から一時停止までの実際の音声出力は実機確認が必要。"
   }
 ]
