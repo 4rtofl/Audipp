@@ -104,7 +104,27 @@
       "docs/evidence/issue-43/README.md",
       "docs/evidence/issue-43/local.txt"
     ],
-    "limitations": "単一URBのホスト契約試験。物理USB転送、Android権限とOS排他、アプリの並行停止は未評価。"
+    "limitations": "単一URBのホスト契約試験。物理USB転送、Android権限とOS排他、アプリの並行停止は未評価。初回のioctlラッパーには可変長引数の型不一致があり、修正後の再実行は2026-11-21の記録を参照。"
+  },
+  {
+    "case_id": "E05-04-usbfs-fd-and-callback-2026-11-21",
+    "requirement_ids": [
+      "FR-AUD-03"
+    ],
+    "test_ids": [
+      "TEST-AUD-02"
+    ],
+    "commit": "3e3b91ac021932e244e8101ada07e6b0a7077a18",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "固定版のLinuxバックエンドが渡す型にioctlラッパーを合わせ、模擬usbfsによるFD保持、EBUSYの変換、取消と切断のcallback回収の6件を再実行した。",
+    "evidence": [
+      "docs/evidence/issue-43/README.md",
+      "docs/evidence/issue-43/local.txt"
+    ],
+    "limitations": "標準のudev無効ビルドは/dev/bus/usbがないため初期化に失敗し、udevを有効にしてデバイス探索を無効のまま実行した。単一URBのホスト試験で、物理USB転送、Android権限とOS排他、アプリの並行停止は未評価。"
   },
   {
     "case_id": "E05-04-android-abi-and-jni-2026-11-20",
