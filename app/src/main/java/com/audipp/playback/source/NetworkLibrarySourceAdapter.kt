@@ -11,10 +11,14 @@ class NetworkLibrarySourceAdapter(private val library: NetworkLibraryClient) : S
             NetworkFailure.AUTH_REQUIRED -> ResolutionFailure.AUTH_REQUIRED
             NetworkFailure.PERMISSION_REQUIRED -> ResolutionFailure.PERMISSION_REQUIRED
             NetworkFailure.TIMEOUT -> ResolutionFailure.TIMEOUT
+            NetworkFailure.RATE_LIMITED -> ResolutionFailure.RATE_LIMITED
+            NetworkFailure.MISSING -> ResolutionFailure.SOURCE_MISSING
+            NetworkFailure.REFRESH_REQUIRED -> ResolutionFailure.REFRESH_REQUIRED
             NetworkFailure.OFFLINE -> ResolutionFailure.SOURCE_IO
             NetworkFailure.UNSUPPORTED -> ResolutionFailure.PLAYBACK_UNSUPPORTED
             NetworkFailure.EXPIRED -> ResolutionFailure.EXPIRED
-            NetworkFailure.INVALID_INPUT, NetworkFailure.INVALID_RESPONSE -> ResolutionFailure.INVALID_DESCRIPTOR
+            NetworkFailure.INVALID_INPUT, NetworkFailure.INVALID_RESPONSE,
+            NetworkFailure.DIRECTORY_LIMIT_EXCEEDED -> ResolutionFailure.INVALID_DESCRIPTOR
             NetworkFailure.STALE_RESPONSE -> ResolutionFailure.STALE_TRANSITION
             NetworkFailure.IO -> ResolutionFailure.SOURCE_IO
         })
