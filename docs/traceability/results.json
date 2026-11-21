@@ -85,5 +85,21 @@
       "docs/evidence/issue-20/kotlin-local.txt"
     ],
     "limitations": "加入契約は確認済みで、アプリ資格とは別に保持する。実サービス試験の前提不足をQobuz必須要件の削除やKotlin実装全体の停止理由にはしない。資格取得後に実応答・報告受理・失効を検証し、Playerへ接続する。"
+  },
+  {
+    "case_id": "E02-06-host-playback-checkpoint",
+    "requirement_ids": ["FR-PLY-04", "NFR-REL-03"],
+    "test_ids": ["TEST-RESTORE-01"],
+    "commit": "5e6d605fe5b5a454caf45f629d4696460199e219",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "ホスト試験7件で定期・確定時保存、終了時保存なしのDB再オープン、競合・書込み失敗、消失・失効時の復元を確認した。5秒間隔、疑似停止時の2秒の巻戻り、ホスト1試行での保存観測まで11msを記録した。全ユニットテスト199件、前提PR #178を重ねた対象テスト45件が成功した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackCheckpointJournalTest.kt",
+      "docs/contracts/playback-checkpoint.md"
+    ],
+    "limitations": "DB再オープンとホストのタイミング試験に限定。実Serviceへの接続、端末のプロセス強制終了と端末での保存遅延は#83の検証範囲。"
   }
 ]
