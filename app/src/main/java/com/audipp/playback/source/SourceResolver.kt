@@ -220,7 +220,7 @@ class SourceResolver(
             else ResolutionFailure.POLICY_BLOCKED
     }
 
-    private fun contextFailure(context: ResolutionContext): ResolutionFailure? {
+    internal fun contextFailure(context: ResolutionContext): ResolutionFailure? {
         val current = currentContext()
         return when {
             current.target != context.target || current.routeRevision != context.routeRevision ->
