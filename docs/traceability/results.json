@@ -610,7 +610,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -629,7 +629,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -648,7 +648,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -667,7 +667,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -687,7 +687,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -707,7 +707,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -726,7 +726,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -764,7 +764,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -783,7 +783,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -831,5 +831,179 @@
       "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
     ],
     "limitations": "API 23・35 の Robolectric 上で、ローカルの Media3 と再生サービスをコントローラ経由で検証した。実機と外部経路は未検証。"
+  },
+  {
+    "case_id": "E02-07-variant-order-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06",
+      "FR-PLY-09"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "同じ Track の5分版と7分版を選択した実再生順に並べ、2倍速で各曲の残時間と開始予定、キューの終了予定が一致した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "シャッフル済みの順序を計算関数に渡した。実再生順の決定と画面表示は対象外。"
+  },
+  {
+    "case_id": "E02-07-recalculate-inputs-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "シーク後の位置、並べ替えた順序、更新した曲長を入力すると、曲の残時間と開始予定、キューの終了予定が更新された。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "計算関数に観測済みの位置と順序を渡した。キューと再生サービスの接続は #83 で扱う。"
+  },
+  {
+    "case_id": "E02-07-paused-buffering-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "一時停止とバッファリング中は、取得できた曲の残時間だけを返した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "固定の再生状態を入力したホスト試験。実機での画面表示は未実施。"
+  },
+  {
+    "case_id": "E02-07-repeat-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "1曲・全曲リピートとも現在曲の残時間と繰返し状態だけを返し、位置が不明なら残時間も未知になった。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "リピート設定を計算関数に渡した。実再生のリピート動作は対象外。"
+  },
+  {
+    "case_id": "E02-07-unknown-duration-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06",
+      "FR-PLY-09"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "曲長不明の項目より先の時計予定を抑止し、後続の既知の曲長から求めた残時間を保持した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "固定の曲長を入力したホスト試験。外部サービスの曲長の精度は未測定。"
+  },
+  {
+    "case_id": "E02-07-external-position-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06",
+      "FR-PLY-09"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "外部経路で位置を取得できない場合は部分結果を返し、順序・速度が未知、外部委譲、Variant 不一致の場合は算出不可を返した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "固定の経路と能力を入力したホスト試験。実際の経路切替と外部サービスは未検証。"
+  },
+  {
+    "case_id": "E02-07-position-at-end-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "位置が曲長と同じか曲長を超えたときは残時間を0とした。速度が0または NaN のときは算出不可を返した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "固定の位置と速度を入力したホスト試験。"
+  },
+  {
+    "case_id": "E02-07-speed-range-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "速度1e-20、0.249、4.001、正の無限大では予定を算出せず、境界の0.25倍と4.0倍では期待する残時間と終了予定を返した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "0.25〜4.0倍を算出範囲とする計算関数のホスト試験。"
+  },
+  {
+    "case_id": "E02-07-local-seek-observation-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "7分版の1分地点から6分地点へのシークを要求すると位置と予定が未知になり、旧位置の通知で復元されず、新しい位置の観測後に残り1分の予定を公開した。曲長・速度の変更、一時停止、停止による更新も確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "LocalPlayback と偽の再生エンジンを使った接続試験。実機でのシークと外部経路は未検証。"
   }
 ]
