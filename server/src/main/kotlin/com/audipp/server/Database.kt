@@ -47,19 +47,25 @@ class Database(private val source: DataSource) {
             statement.execute("SELECT pg_advisory_xact_lock(34001)")
             statement.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version integer PRIMARY KEY, sha256 text NOT NULL)")
         }
-        val sql = checkNotNull(javaClass.getResource("/db/migration/V001__ownership.sql")).readText()
-        val digest = MessageDigest.getInstance("SHA-256").digest(sql.toByteArray()).joinToString("") { "%02x".format(it) }
-        val previous = connection.createStatement().use { statement ->
-            statement.executeQuery("SELECT sha256 FROM schema_migrations WHERE version = 1").use { if (it.next()) it.getString(1) else null }
-        }
-        if (previous == null) {
-            connection.createStatement().use { it.execute(sql) }
-            connection.prepareStatement("INSERT INTO schema_migrations VALUES (1, ?)").use {
-                it.setString(1, digest)
-                it.executeUpdate()
+        val migrations = listOf("V001__ownership.sql", "V002__sync_push.sql")
+        migrations.forEachIndexed { index, name ->
+            val version = index + 1
+            val sql = checkNotNull(javaClass.getResource("/db/migration/$name")).readText()
+            val digest = MessageDigest.getInstance("SHA-256").digest(sql.toByteArray()).joinToString("") { "%02x".format(it) }
+            val previous = connection.prepareStatement("SELECT sha256 FROM schema_migrations WHERE version = ?").use {
+                it.setInt(1, version)
+                it.executeQuery().use { rows -> if (rows.next()) rows.getString(1) else null }
             }
-        } else {
-            check(previous == digest) { "Migration checksum mismatch" }
+            if (previous == null) {
+                connection.createStatement().use { it.execute(sql) }
+                connection.prepareStatement("INSERT INTO schema_migrations VALUES (?, ?)").use {
+                    it.setInt(1, version)
+                    it.setString(2, digest)
+                    it.executeUpdate()
+                }
+            } else {
+                check(previous == digest) { "Migration checksum mismatch for version $version" }
+            }
         }
     }
 
@@ -79,7 +85,7 @@ class Database(private val source: DataSource) {
         }
     }
 
-    fun resolve(connection: Connection, identity: Identity): UserResponse {
+    fun resolve(connection: Connection, identity: Identity, forUpdate: Boolean = false): UserResponse {
         // Serialize first-login races before allocating a user; email is deliberately absent from the key.
         connection.prepareStatement("SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))").use {
             it.setString(1, identity.issuer)
@@ -96,7 +102,8 @@ class Database(private val source: DataSource) {
                 it.setString(1, identity.issuer); it.setString(2, identity.subject); it.setObject(3, id); it.executeUpdate()
             }
         }
-        return connection.prepareStatement("SELECT revision, created_at, active FROM users WHERE user_id = ? FOR SHARE").use {
+        val lock = if (forUpdate) "FOR UPDATE" else "FOR SHARE"
+        return connection.prepareStatement("SELECT revision, created_at, active FROM users WHERE user_id = ? $lock").use {
             it.setObject(1, userId)
             it.executeQuery().use { rows ->
                 check(rows.next())

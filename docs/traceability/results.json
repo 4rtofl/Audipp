@@ -85,5 +85,45 @@
       "docs/evidence/issue-20/kotlin-local.txt"
     ],
     "limitations": "加入契約は確認済みで、アプリ資格とは別に保持する。実サービス試験の前提不足をQobuz必須要件の削除やKotlin実装全体の停止理由にはしない。資格取得後に実応答・報告受理・失効を検証し、Playerへ接続する。"
+  },
+  {
+    "case_id": "E10-04-sync-push-batch-2026-11-21",
+    "requirement_ids": [
+      "FR-USE-03",
+      "NFR-PRIV-02"
+    ],
+    "test_ids": [
+      "TEST-SYNC-01"
+    ],
+    "commit": "2b12b8bac30d2518e4dd552b74ef5bae339f352e",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "一時PostgreSQLでpushの200/400/401/403/409/413/429/503を確認した。100/101件と1 MiB/1バイト超過、同一イベント再送時の同一revision、異内容ID再利用・同時更新の競合、途中不正・DB障害・取消時に部分適用が残らないことを検査した。",
+    "evidence": [
+      "server/src/test/kotlin/com/audipp/server/SyncPushTest.kt"
+    ],
+    "limitations": "TEST-SYNC-01のサーバーpush部分に限定。NOT_RUNはpullのcursor失効時の410と完全同期（#80）、Androidからの送信（#115）、実環境への配備。"
+  },
+  {
+    "case_id": "E10-04-sync-push-privacy-2026-11-21",
+    "requirement_ids": [
+      "FR-USE-03",
+      "NFR-PRIV-02"
+    ],
+    "test_ids": [
+      "TEST-SYNC-01"
+    ],
+    "commit": "2b12b8bac30d2518e4dd552b74ef5bae339f352e",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "一時PostgreSQLで本人と登録端末の分離、同意の適用と撤回、Provider由来の申告に対する403を確認した。Basic EQとNFS: Heat OSTは200、URIを含む名前、認証値の形に一致する名前、未定義のtoken項目は400。削除時の履歴payload消去と、旧世代・削除済み履歴IDの再適用拒否を検査した。",
+    "evidence": [
+      "server/src/test/kotlin/com/audipp/server/SyncPushTest.kt"
+    ],
+    "limitations": "ローカルのサーバーpush部分に限定。NOT_RUNはProviderの実許諾、公開削除APIと派生値・バックアップの失効検証。"
   }
 ]
