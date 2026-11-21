@@ -8,7 +8,7 @@
 
 `PlaybackConnection.playLocal(controller, entryId, variant)`へ、選択版と重複曲を区別するエントリーIDを渡す。`SourceResolver`にLOCAL/DEVICEの具体アダプターだけを登録する。指定された版を別版へ置き換えず、現在のOS権限で`content://`文書を開閉して検査する。許可の取得・永続grantの保存は選択UI/ライブラリ側の責務で、URIの文字列だけでは許可とみなさない。file/HTTP、userinfo/fragment付きURI、不明なソース種別、利用不可の版は再生しない。実再生もContentDataSourceに限定し、ネットワークfallbackを設けない。
 
-音声フォーカスをExoPlayerに委ね、`becoming noisy`を有効にする。video/textトラックを無効にし、Android標準の音声経路を使う。音量変更、DSP、Direct/USB出力、Bit-perfect検証は行わない。未知のduration/positionはnull、seek可否はPlayerの観測値で更新する。PCM取得能力は申告しない。
+音声フォーカスの要求とダッキングをExoPlayerに委ね、`becoming noisy`を有効にする。通常の一時フォーカス喪失からの復帰にはExoPlayerの自動再開を使い、着信・通話や外部出力の取り外しで解除した再生要求は復元しない（Issue #37の節を参照）。video/textトラックを無効にし、Android標準の音声経路を使う。音量変更、DSP、Direct/USB出力、Bit-perfect検証は行わない。未知のduration/positionはnull、seek可否はPlayerの観測値で更新する。PCM取得能力は申告しない。
 
 ## 結果・取消・失敗
 
@@ -31,7 +31,7 @@ ManifestにmediaPlayback FGS、FOREGROUND_SERVICE / FOREGROUND_SERVICE_MEDIA_PLA
 仕様にない以下の詳細は本PRの実装案であり、承認済み製品条件の変更ではない。
 
 - `PlaybackConnection`のcustom commandと版付きdomain JSON、entry ID最大256文字/要求JSON最大16,384文字。これらは製品の曲数・タグ長制限ではなく、このIPC入口の上限。
-- `LocalPlayback`をService looperで直列に扱い、標準端末出力のtarget IDを`android-standard`、初期route revisionを0とする。経路の監視・証拠とrevision更新は #42 で扱う。
+- `LocalPlayback`をService looperで直列に扱い、標準端末出力のtarget IDを`android-standard`、初期route revisionを0とする。これは実経路の観測済み申告ではない。経路の監視・証拠とrevision更新は #42 で扱う。
 - 再生中のsnapshot位置を1秒ごとに観測する。checkpointの保存周期や性能達成値ではない。
 - 1要求につき1曲を準備する。キューDB/現在項目参照は #38、次/前曲・shuffle/repeatと有限探索は #60、復元を含む結合試験は #83 に接続する。未実装の操作をControllerで有効にしない。現行WelcomeScreenへの選曲UI追加は本Issueの対象外。
 
@@ -55,6 +55,6 @@ Media3のexoplayer/sessionと推移artifactをすべて1.11.1へ統一し、Debu
 
 曲長を取得でき、Playerがシークに対応する場合に、Sessionで`0..duration`を受け付ける。単一Playerにシークを順に渡し、Media3が保留中の操作を反映した最新状態から位置を取得する。
 
-音声フォーカス喪失と`becoming noisy`はMedia3の通知を使う。一時フォーカス喪失で再生が抑制された場合も再生要求を解除する。Androidがダッキングだけを指示する場合はMedia3の音量制御に従う。API31以降はAndroidの音声モード変更で着信や通話を検知する。API23〜30の再生中の通話割り込みは音声フォーカス通知に依存する。準備時と再開時には現在の音声モードを確認する。
+一時フォーカス喪失で抑制された再生は、フォーカスが戻るとMedia3が自動で再開する。`becoming noisy`ではMedia3が再生要求を解除する。API31以降は音声モード変更で`MODE_RINGTONE`と`MODE_IN_CALL`を検知し、再生要求を解除する。API23〜30では一時フォーカス喪失の通知を処理するときに、この2つのモードを確認する。着信・通話中は自動開始と明示的な再生操作を止める。`MODE_IN_COMMUNICATION`中は準備後の自動開始を止め、明示的な再生操作はMedia3に渡す。
 
-外部出力の取り外し通知では、安全側に倒して標準再生を一時停止する。Androidの接続機器一覧を使うため、未使用の外部出力を外した場合にも一時停止することがある。通話終了・再接続・フォーカス復帰後の再開には再生操作が必要。確認したケースと検証コミットは[試験結果](../traceability/results.json)に記録する。
+外部出力の取り外し通知で標準再生を一時停止する。Androidの接続機器一覧を使うため、未使用の外部出力を外した場合にも一時停止することがある。音源の解決中に出力の取り外しや着信・通話を検知した場合、選曲を保持して自動再生をせずに準備を続ける。着信・通話の終了後や出力の再接続後は、明示的な再生操作を待つ。確認したケースと検証コミットは[試験結果](../traceability/results.json)に記録する。

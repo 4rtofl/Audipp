@@ -188,7 +188,7 @@ class PlaybackServiceTest {
     }
 
     @Test
-    fun sessionSeekRejectsUnknownOrOutOfRangePositionsAndKeepsNewestValidSeek() {
+    fun sessionSeekRequiresMediaAndRejectsOutOfRangePositionsAndKeepsNewestValidSeek() {
         val session = service.onGetSession(ownApp)!!
         val controller = connect(session.token)
         assertFalse(controller.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM))
@@ -218,10 +218,7 @@ class PlaybackServiceTest {
     fun externalOutputRemovalPausesAndReconnectionDoesNotResume() {
         val session = service.onGetSession(ownApp)!!
         val controller = connect(session.token)
-        val device = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_USB_DEVICE).build()
-        val port = ReflectionHelpers.getField<Any>(device, "mPort")
-        ReflectionHelpers.setField(port, "mRole", 2) // AudioPort.ROLE_SINK
-        assertTrue(device.isSink)
+        val device = usbOutput()
         val callback = ReflectionHelpers.getField<AudioDeviceCallback>(service, "outputCallback")
         startWav(controller)
         assertTrue(rawPlayer.playWhenReady)
@@ -236,14 +233,65 @@ class PlaybackServiceTest {
     }
 
     @Test
-    fun transientFocusLossClearsPlayIntentSoFocusGainDoesNotResume() {
+    fun externalOutputRemovalDuringResolutionKeepsSelectionPausedAfterPrepare() {
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        val opened = CountDownLatch(1)
+        val proceed = CountDownLatch(1)
+        val wav = registerWav {
+            opened.countDown()
+            check(proceed.await(5, TimeUnit.SECONDS))
+        }
+        val entry = QueueEntryId("entry")
+        val pending = PlaybackConnection.playLocal(controller, entry, wav)
+        try {
+            advancePlaybackUntil { opened.count == 0L }
+            assertEquals(PlaybackPhase.RESOLVING, PlaybackConnection.snapshot(controller.sessionExtras)?.phase)
+            val callback = ReflectionHelpers.getField<AudioDeviceCallback>(service, "outputCallback")
+            callback.onAudioDevicesRemoved(arrayOf(usbOutput()))
+        } finally {
+            proceed.countDown()
+        }
+        assertEquals(SessionResult.RESULT_SUCCESS, await(pending).resultCode)
+        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
+        assertEquals(entry, PlaybackConnection.snapshot(controller.sessionExtras)?.currentEntryId)
+        assertFalse(controller.playWhenReady)
+        assertFalse(rawPlayer.playWhenReady)
+        controller.play()
+        advancePlaybackUntil { rawPlayer.playWhenReady }
+    }
+
+    @Test
+    fun transientFocusLossResumesWhenFocusReturns() {
         val controller = connect(service.onGetSession(ownApp)!!.token)
         val audio = shadowOf(service.getSystemService(AudioManager::class.java))
         startWav(controller)
         advancePlaybackUntil { audio.lastAudioFocusRequest?.listener != null && rawPlayer.playWhenReady }
         val listener = audio.lastAudioFocusRequest.listener
         listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)
+        advancePlaybackUntil {
+            rawPlayer.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS &&
+                rawPlayer.playbackState == Player.STATE_READY
+        }
+        assertTrue(rawPlayer.playWhenReady)
+        assertFalse(rawPlayer.isPlaying)
+        listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_GAIN)
+        advancePlaybackUntil { rawPlayer.isPlaying }
+        assertTrue(rawPlayer.playWhenReady)
+    }
+
+    @Test
+    @Config(sdk = [23])
+    fun transientFocusLossDuringCallClearsPlayIntentOnLegacyAndroid() {
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        val audio = service.getSystemService(AudioManager::class.java)
+        startWav(controller)
+        val shadowAudio = shadowOf(audio)
+        advancePlaybackUntil { shadowAudio.lastAudioFocusRequest?.listener != null && rawPlayer.playWhenReady }
+        val listener = shadowAudio.lastAudioFocusRequest.listener
+        audio.mode = AudioManager.MODE_IN_CALL
+        listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)
         advancePlaybackUntil { !rawPlayer.playWhenReady }
+        audio.mode = AudioManager.MODE_NORMAL
         listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_GAIN)
         shadowOf(rawPlayer.playbackLooper).idle()
         shadowOf(Looper.getMainLooper()).idle()
@@ -269,17 +317,35 @@ class PlaybackServiceTest {
         val audio = service.getSystemService(AudioManager::class.java)
         startWav(controller)
         assertTrue(rawPlayer.playWhenReady)
-        audio.mode = AudioManager.MODE_IN_CALL
+        audio.mode = AudioManager.MODE_RINGTONE
         advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
 
-        controller.play()
-        shadowOf(Looper.getMainLooper()).idle()
-        assertFalse(rawPlayer.playWhenReady)
+        for (mode in listOf(AudioManager.MODE_RINGTONE, AudioManager.MODE_IN_CALL)) {
+            audio.mode = mode
+            controller.play()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(rawPlayer.playWhenReady)
+            assertFalse(controller.playWhenReady)
+        }
         audio.mode = AudioManager.MODE_NORMAL
         shadowOf(Looper.getMainLooper()).idle()
         assertFalse(rawPlayer.playWhenReady)
         controller.play()
         advancePlaybackUntil { rawPlayer.playWhenReady }
+    }
+
+    @Test
+    fun communicationModePreventsAutostartButAllowsExplicitPlay() {
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        val audio = service.getSystemService(AudioManager::class.java)
+        audio.mode = AudioManager.MODE_IN_COMMUNICATION
+        startWav(controller)
+        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
+        assertFalse(controller.playWhenReady)
+        assertFalse(rawPlayer.playWhenReady)
+
+        controller.play()
+        advancePlaybackUntil { rawPlayer.playWhenReady && controller.playWhenReady }
     }
 
     @Test
@@ -348,6 +414,19 @@ class PlaybackServiceTest {
     }
 
     private fun startWav(controller: MediaController) {
+        val result = await(PlaybackConnection.playLocal(controller, QueueEntryId("entry"), registerWav()))
+        assertEquals(SessionResult.RESULT_SUCCESS, result.resultCode)
+    }
+
+    private fun usbOutput(): AudioDeviceInfo {
+        val device = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_USB_DEVICE).build()
+        val port = ReflectionHelpers.getField<Any>(device, "mPort")
+        ReflectionHelpers.setField(port, "mRole", 2) // AudioPort.ROLE_SINK
+        assertTrue(device.isSink)
+        return device
+    }
+
+    private fun registerWav(beforeOpen: () -> Unit = {}): TrackVariant {
         val sampleRate = 8_000
         val pcmBytes = 4 * sampleRate * Short.SIZE_BYTES
         val wav = ByteBuffer.allocate(44 + pcmBytes).order(ByteOrder.LITTLE_ENDIAN)
@@ -356,12 +435,13 @@ class PlaybackServiceTest {
             .putShort(2).putShort(16).put("data".toByteArray()).putInt(pcmBytes).array()
         val file = File(service.cacheDir, "four-seconds.wav").apply { writeBytes(wav) }
         registerProvider("wav", object : DeniedProvider() {
-            override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor =
-                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+            override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
+                beforeOpen()
+                return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+            }
         })
         val source = variant().source.copy(localDocumentUri = "content://wav/song")
-        val result = await(PlaybackConnection.playLocal(controller, QueueEntryId("entry"), variant().copy(source = source)))
-        assertEquals(SessionResult.RESULT_SUCCESS, result.resultCode)
+        return variant().copy(source = source)
     }
 
     private fun registerProvider(authority: String, provider: ContentProvider) {
