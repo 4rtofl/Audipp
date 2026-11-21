@@ -74,6 +74,7 @@ class PlaybackServiceTest {
         assertSame(player, service.onGetSession(ownApp)!!.player)
         assertTrue(second.isConnected)
         assertEquals(PlaybackPhase.IDLE, PlaybackConnection.snapshot(second.sessionExtras)!!.phase)
+        assertEquals(PlaybackSchedule.Unknown, PlaybackConnection.schedule(second.sessionExtras))
     }
 
     @Test

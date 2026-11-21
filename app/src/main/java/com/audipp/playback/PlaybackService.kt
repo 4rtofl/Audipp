@@ -113,13 +113,19 @@ class PlaybackService : MediaLibraryService() {
                 }
                 return super.handleSetPlayWhenReady(playWhenReady)
             }
+
+            override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
+                playback.onSeekRequested()
+                return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
+            }
         }
         mediaSession = MediaLibrarySession.Builder(this, sessionPlayer, SessionCallback())
             .setSessionActivity(PendingIntent.getActivity(this, 0,
                 Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
             .build()
         player.addListener(object : Player.Listener {
-            override fun onEvents(player: Player, events: Player.Events) = updateEngineSnapshot()
+            override fun onEvents(player: Player, events: Player.Events) =
+                updateEngineSnapshot(seekPositionObserved = events.contains(Player.EVENT_POSITION_DISCONTINUITY))
 
             override fun onPlayerError(error: PlaybackException) {
                 preparation?.cancel()
@@ -155,19 +161,21 @@ class PlaybackService : MediaLibraryService() {
         super.onDestroy()
     }
 
-    private fun updateEngineSnapshot() {
+    private fun updateEngineSnapshot(seekPositionObserved: Boolean = false) {
         val phase = when (player.playbackState) {
             Player.STATE_BUFFERING -> PlaybackPhase.BUFFERING
             Player.STATE_READY -> if (player.isPlaying) PlaybackPhase.PLAYING else PlaybackPhase.PAUSED
             else -> PlaybackPhase.IDLE
         }
         playback.onEngineState(phase, player.currentPosition.takeUnless { it == C.TIME_UNSET },
-            player.duration.takeUnless { it == C.TIME_UNSET }, player.isCurrentMediaItemSeekable)
+            player.duration.takeUnless { it == C.TIME_UNSET }, player.isCurrentMediaItemSeekable,
+            player.playbackParameters.speed.toDouble(), System.currentTimeMillis(), seekPositionObserved)
     }
 
     private fun snapshotExtras() = Bundle().apply {
         putString(PlaybackConnection.SNAPSHOT,
             ModelJson.encode(playback.snapshot.value.withoutDocumentUri()))
+        putString(PlaybackConnection.SCHEDULE, ModelJson.encode(playback.schedule.value))
     }
 
     internal inner class SessionCallback : MediaLibrarySession.Callback {

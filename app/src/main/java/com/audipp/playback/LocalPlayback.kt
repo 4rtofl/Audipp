@@ -1,11 +1,13 @@
 package com.audipp.playback
 
+import com.audipp.data.db.QueueRepeatMode
 import com.audipp.domain.model.Availability
 import com.audipp.domain.model.ErrorDomain
 import com.audipp.domain.model.PlaybackCapabilities
 import com.audipp.domain.model.PlaybackError
 import com.audipp.domain.model.PlaybackPhase
 import com.audipp.domain.model.PlaybackSnapshot
+import com.audipp.domain.model.QueueEntry
 import com.audipp.domain.model.QueueEntryId
 import com.audipp.domain.model.SourceKind
 import com.audipp.domain.model.TrackVariant
@@ -46,6 +48,10 @@ internal class LocalPlayback(
     )
     private val mutableSnapshot = MutableStateFlow(PlaybackSnapshot(0, PlaybackPhase.IDLE))
     val snapshot: StateFlow<PlaybackSnapshot> = mutableSnapshot.asStateFlow()
+    private val mutableSchedule = MutableStateFlow<PlaybackSchedule>(PlaybackSchedule.Unknown)
+    val schedule: StateFlow<PlaybackSchedule> = mutableSchedule.asStateFlow()
+    private var selectedVariant: TrackVariant? = null
+    private var seekPending = false
     private val resolver = SourceResolver(
         mapOf(AdapterKey(SourceKind.LOCAL, TargetKind.DEVICE) to LocalDocumentSourceAdapter(
             PlaybackCapabilities(canPlay = true, canPause = true, canReadPosition = true), access,
@@ -70,6 +76,7 @@ internal class LocalPlayback(
                 ?: return fail(ResolutionFailure.INVALID_DESCRIPTOR.toPlaybackError())
             // The grant may have been revoked after resolution; the engine also opens under OS checks.
             if (context != attempt) throw CancellationException("Superseded playback")
+            selectedVariant = variant
             publish(snapshot.value.copy(phase = PlaybackPhase.BUFFERING,
                 effectiveSource = result.plan.source, executionPlan = result.plan))
             engine.prepare(entryId, descriptor)
@@ -91,31 +98,67 @@ internal class LocalPlayback(
 
     fun stop() {
         context = context.copy(transitionId = newTransition())
+        selectedVariant = null
+        seekPending = false
         publish(PlaybackSnapshot(0, PlaybackPhase.IDLE))
         engine.reset()
     }
 
     fun fail(error: PlaybackError): PlaybackError {
         context = context.copy(transitionId = newTransition())
+        selectedVariant = null
+        seekPending = false
         publish(snapshot.value.copy(phase = PlaybackPhase.ERROR, executionPlan = null,
             effectiveSource = null, positionMs = null, durationMs = null, error = error))
         engine.reset()
         return error
     }
 
-    fun onEngineState(phase: PlaybackPhase, positionMs: Long?, durationMs: Long?, canSeek: Boolean) {
+    fun onSeekRequested() {
+        if (snapshot.value.executionPlan == null) return
+        seekPending = true
+        publish(snapshot.value.copy(positionMs = null))
+    }
+
+    fun onEngineState(
+        phase: PlaybackPhase,
+        positionMs: Long?,
+        durationMs: Long?,
+        canSeek: Boolean,
+        speed: Double,
+        observedAtEpochMs: Long,
+        seekPositionObserved: Boolean = false,
+    ) {
         val previous = snapshot.value
         val plan = previous.executionPlan ?: return
         if (previous.phase == PlaybackPhase.ERROR) return
         val duration = durationMs?.takeIf { it >= 0 }
-        val position = positionMs?.takeIf { it >= 0 }?.let {
+        val observedPosition = positionMs?.takeIf { it >= 0 }
+        if (seekPositionObserved && observedPosition != null) seekPending = false
+        val position = observedPosition.takeUnless { seekPending }?.let {
             if (duration == null) it else it.coerceAtMost(duration)
         }
-        publish(previous.copy(phase = phase, positionMs = position, durationMs = duration,
-            executionPlan = plan.copy(capabilities = plan.capabilities.copy(canSeek = canSeek))))
+        val observed = previous.copy(phase = phase, positionMs = position, durationMs = duration,
+            executionPlan = plan.copy(capabilities = plan.capabilities.copy(canSeek = canSeek)))
+        val variant = selectedVariant
+        val entryId = observed.currentEntryId
+        val schedule = if (variant != null && entryId != null && phase != PlaybackPhase.IDLE) {
+            calculatePlaybackSchedule(
+                observed,
+                listOf(QueueEntry(entryId, variant.variantId)),
+                mapOf(variant.variantId to variant.copy(durationMs = duration ?: variant.durationMs)),
+                speed,
+                QueueRepeatMode.OFF,
+                observedAtEpochMs,
+            )
+        } else {
+            PlaybackSchedule.Unknown
+        }
+        publish(observed, schedule)
     }
 
-    private fun publish(value: PlaybackSnapshot) {
+    private fun publish(value: PlaybackSnapshot, schedule: PlaybackSchedule = PlaybackSchedule.Unknown) {
+        mutableSchedule.value = schedule
         mutableSnapshot.value = value.copy(revision = snapshot.value.revision + 1)
     }
 }

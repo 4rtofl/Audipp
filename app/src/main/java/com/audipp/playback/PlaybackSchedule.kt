@@ -9,21 +9,29 @@ import com.audipp.domain.model.QueueEntryId
 import com.audipp.domain.model.TrackVariant
 import com.audipp.domain.model.VariantId
 import kotlin.math.roundToLong
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class RemainingPlaybackTime(
     val currentItemMs: Long?,
     val upcomingItemsMs: Map<QueueEntryId, Long>,
     val queueMs: Long?,
 )
 
+@Serializable
 sealed interface PlaybackSchedule {
+    @Serializable
     data object Unknown : PlaybackSchedule
+    @Serializable
     data class Repeating(val currentItemMs: Long?) : PlaybackSchedule
+    @Serializable
     data class RemainingDurationOnly(val remaining: RemainingPlaybackTime) : PlaybackSchedule
+    @Serializable
     data class Partial(
         val remaining: RemainingPlaybackTime,
         val expectedStartsEpochMs: Map<QueueEntryId, Long>,
     ) : PlaybackSchedule
+    @Serializable
     data class Estimated(
         val remaining: RemainingPlaybackTime,
         val expectedStartsEpochMs: Map<QueueEntryId, Long>,
@@ -34,6 +42,7 @@ sealed interface PlaybackSchedule {
 /**
  * Use the playback owner's current order (including shuffle), speed, and snapshot together.
  * Leave the order or speed null if unobserved and omit untrusted variant durations.
+ * Speeds outside 0.25x to 4.0x are treated as unknown.
  */
 fun calculatePlaybackSchedule(
     snapshot: PlaybackSnapshot,
@@ -44,7 +53,7 @@ fun calculatePlaybackSchedule(
     nowEpochMs: Long,
 ): PlaybackSchedule {
     val order = effectiveOrder ?: return PlaybackSchedule.Unknown
-    val speed = playbackSpeed?.takeIf { it.isFinite() && it > 0 } ?: return PlaybackSchedule.Unknown
+    val speed = playbackSpeed?.takeIf { it in 0.25..4.0 } ?: return PlaybackSchedule.Unknown
     val currentIndex = order.indexOfFirst { it.entryId == snapshot.currentEntryId }
     if (currentIndex < 0) return PlaybackSchedule.Unknown
 

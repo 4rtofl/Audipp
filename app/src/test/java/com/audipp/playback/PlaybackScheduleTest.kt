@@ -1,6 +1,7 @@
 package com.audipp.playback
 
 import com.audipp.data.db.QueueRepeatMode
+import com.audipp.domain.model.Availability
 import com.audipp.domain.model.ExecutionMode
 import com.audipp.domain.model.ExecutionPlan
 import com.audipp.domain.model.PlaybackCapabilities
@@ -15,7 +16,10 @@ import com.audipp.domain.model.TrackId
 import com.audipp.domain.model.TrackVariant
 import com.audipp.domain.model.TransitionId
 import com.audipp.domain.model.VariantId
+import com.audipp.playback.source.SourceDescriptor
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class PlaybackScheduleTest {
@@ -138,6 +142,76 @@ class PlaybackScheduleTest {
         }
         assertEquals(PlaybackSchedule.Unknown, schedule(speed = 0.0))
         assertEquals(PlaybackSchedule.Unknown, schedule(speed = Double.NaN))
+    }
+
+    @Test
+    fun speedsOutsideEstimateRangeReturnUnknownWithoutClockTimes() {
+        for (speed in listOf(1e-20, 0.249, 4.001, Double.POSITIVE_INFINITY)) {
+            assertEquals(
+                "speed=$speed",
+                PlaybackSchedule.Unknown,
+                schedule(playing.copy(positionMs = 0), listOf(current), speed = speed),
+            )
+        }
+        for ((speed, remainingMs) in listOf(0.25 to 1_680_000L, 4.0 to 105_000L)) {
+            assertEquals(
+                PlaybackSchedule.Estimated(
+                    RemainingPlaybackTime(remainingMs, emptyMap(), remainingMs), emptyMap(), now + remainingMs,
+                ),
+                schedule(playing.copy(positionMs = 0), listOf(current), speed = speed),
+            )
+        }
+    }
+
+    @Test
+    fun localPlaybackWithholdsScheduleUntilItObservesTheSeekPosition() = runBlocking {
+        val engine = object : LocalPlaybackEngine {
+            override fun prepare(entryId: QueueEntryId, document: SourceDescriptor.LocalDocument) = Unit
+            override fun reset() = Unit
+        }
+        val playback = LocalPlayback(engine, { Availability.PLAYABLE })
+        val localSource = SourceRef(SourceId("local"), SourceKind.LOCAL,
+            localDocumentUri = "content://fixture/song", availability = Availability.PLAYABLE)
+        assertNull(playback.start(current.entryId, seven.copy(source = localSource)))
+
+        playback.onEngineState(PlaybackPhase.PLAYING, 60_000, 420_000, true, 1.0, now)
+        assertEquals(
+            PlaybackSchedule.Estimated(RemainingPlaybackTime(360_000, emptyMap(), 360_000), emptyMap(), now + 360_000),
+            playback.schedule.value,
+        )
+
+        playback.onSeekRequested()
+        assertNull(playback.snapshot.value.positionMs)
+        assertEquals(PlaybackSchedule.Unknown, playback.schedule.value)
+        playback.onEngineState(PlaybackPhase.PLAYING, 60_000, 420_000, true, 1.0, now + 1_000)
+        assertNull(playback.snapshot.value.positionMs)
+        assertEquals(PlaybackSchedule.Unknown, playback.schedule.value)
+
+        playback.onEngineState(PlaybackPhase.PLAYING, 360_000, 420_000, true, 1.0, now + 2_000,
+            seekPositionObserved = true)
+        assertEquals(360_000L, playback.snapshot.value.positionMs)
+        assertEquals(
+            PlaybackSchedule.Estimated(RemainingPlaybackTime(60_000, emptyMap(), 60_000), emptyMap(), now + 62_000),
+            playback.schedule.value,
+        )
+
+        playback.onEngineState(PlaybackPhase.PLAYING, 360_000, 480_000, true, 1.0, now + 3_000)
+        assertEquals(
+            PlaybackSchedule.Estimated(RemainingPlaybackTime(120_000, emptyMap(), 120_000), emptyMap(), now + 123_000),
+            playback.schedule.value,
+        )
+        playback.onEngineState(PlaybackPhase.PLAYING, 360_000, 480_000, true, 2.0, now + 4_000)
+        assertEquals(
+            PlaybackSchedule.Estimated(RemainingPlaybackTime(60_000, emptyMap(), 60_000), emptyMap(), now + 64_000),
+            playback.schedule.value,
+        )
+        playback.onEngineState(PlaybackPhase.PAUSED, 360_000, 480_000, true, 2.0, now + 5_000)
+        assertEquals(
+            PlaybackSchedule.RemainingDurationOnly(RemainingPlaybackTime(60_000, emptyMap(), 60_000)),
+            playback.schedule.value,
+        )
+        playback.stop()
+        assertEquals(PlaybackSchedule.Unknown, playback.schedule.value)
     }
 
     private fun schedule(
