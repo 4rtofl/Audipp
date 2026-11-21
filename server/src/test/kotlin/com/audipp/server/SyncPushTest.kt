@@ -71,6 +71,18 @@ class SyncPushTest {
         assertEquals(101L, dataCount())
     }
 
+    @Test fun `preset and playlist names can contain ordinary words and punctuation`() = testApplication {
+        application { ownershipApi(database, verifier) }
+        val device = client.register()
+        client.enableSync(device)
+        val preset = syncEvent("audio_preset", UUID.randomUUID().toString(), """{"name":"Basic EQ"}""")
+        val playlist = syncEvent("playlist", UUID.randomUUID().toString(), """{"name":"NFS: Heat OST","tracks":[]}""")
+
+        assertEquals(1, client.push(device, preset).revisions().size)
+        assertEquals(1, client.push(device, playlist).revisions().size)
+        assertEquals(2L, dataCount())
+    }
+
     @Test fun `malformed input or disallowed source anywhere in a batch stores nothing`() = testApplication {
         application { ownershipApi(database, verifier) }
         val device = client.register()
@@ -83,7 +95,12 @@ class SyncPushTest {
             profile().replace("\"base_revision\":0", "\"base_revision\":0,\"base_revision\":0"),
             profile().replace("\"base_revision\":0", "\"user_id\":\"other\",\"base_revision\":0"),
             profile(name = "content://private/library"),
+            profile(name = "Source HTTPS://private/library"),
+            profile(name = "content:/private/library"),
+            profile(name = "file:/private/library"),
+            profile(name = "data:text/plain,fixture"),
             profile(name = "Bearer fixture-token"),
+            profile(name = "Basic dTpwYXNzIQ=="),
             profile(name = "\\uD800"),
             syncEvent("profile", UUID.randomUUID().toString(), """{"name":"DAC","token":"fixture-secret"}"""),
             history(UUID.randomUUID()).replace("2026-11-20T07:00:00Z", "invalidZ"),
