@@ -242,7 +242,7 @@ class SourceResolver(
             else -> ResolutionUse.PLAYBACK_CONTROL
         }
 
-    private fun contextFailure(context: ResolutionContext): ResolutionFailure? {
+    internal fun contextFailure(context: ResolutionContext): ResolutionFailure? {
         val current = currentContext()
         return when {
             current.target != context.target || current.routeRevision != context.routeRevision ->

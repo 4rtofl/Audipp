@@ -64,6 +64,7 @@ class PlaybackService : MediaLibraryService() {
     private lateinit var playback: LocalPlayback
     private lateinit var audioManager: AudioManager
     private var preparation: Job? = null
+    private var playWhenPrepared = true
     private var unregisterModeListener: (() -> Unit)? = null
     private val outputCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
@@ -99,23 +100,27 @@ class PlaybackService : MediaLibraryService() {
                     .setTag(transitionId)
                     .setMediaMetadata(MediaMetadata.Builder().setTitle(getString(R.string.app_name))
                         .setIsBrowsable(false).setIsPlayable(true).build()).build())
-                player.playWhenReady = !audioManager.mode.isCallMode()
+                val mode = audioManager.mode
+                player.playWhenReady = playWhenPrepared && !mode.isPhoneCallMode() &&
+                    mode != AudioManager.MODE_IN_COMMUNICATION
                 player.prepare()
             }
 
             override fun reset() {
+                playWhenPrepared = true
                 player.pause()
                 player.stop()
                 player.clearMediaItems()
             }
         }, AndroidDocumentAccess(contentResolver)::check)
         player.addListener(object : Player.Listener {
-            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY) pauseForInterruption()
-            }
-
             override fun onEvents(player: Player, events: Player.Events) {
-                if (player.isSuppressedForSafety()) pauseForInterruption()
+                if (player.playWhenReady && when (player.playbackSuppressionReason) {
+                    Player.PLAYBACK_SUPPRESSION_REASON_UNSUITABLE_AUDIO_OUTPUT -> true
+                    Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS ->
+                        Build.VERSION.SDK_INT < 31 || audioManager.mode.isPhoneCallMode()
+                    else -> false
+                }) pauseForInterruption()
                 updateEngineSnapshot()
             }
         })
@@ -137,8 +142,9 @@ class PlaybackService : MediaLibraryService() {
 
             override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
                 if (!playWhenReady) {
-                    pauseForInterruption()
-                } else if (playback.isCurrentTransition(currentTransition()) && !audioManager.mode.isCallMode()) {
+                    if (playback.snapshot.value.phase == PlaybackPhase.RESOLVING) stopPlayback()
+                    else pauseForInterruption()
+                } else if (playback.isCurrentTransition(currentTransition()) && !audioManager.mode.isPhoneCallMode()) {
                     player.play()
                 }
                 return Futures.immediateVoidFuture()
@@ -220,7 +226,7 @@ class PlaybackService : MediaLibraryService() {
     private fun pauseForInterruption() {
         if (!scope.isActive) return
         if (playback.snapshot.value.phase == PlaybackPhase.RESOLVING) {
-            stopPlayback()
+            playWhenPrepared = false
         } else if (player.playWhenReady) {
             player.pause()
         }
@@ -234,7 +240,7 @@ class PlaybackService : MediaLibraryService() {
     @RequiresApi(31)
     private fun watchCallMode(handler: Handler): () -> Unit {
         val listener = AudioManager.OnModeChangedListener { mode ->
-            if (mode.isCallMode()) pauseForInterruption()
+            if (mode.isPhoneCallMode()) pauseForInterruption()
         }
         audioManager.addOnModeChangedListener({ task -> handler.post(task) }, listener)
         return { audioManager.removeOnModeChangedListener(listener) }
@@ -309,16 +315,7 @@ class PlaybackService : MediaLibraryService() {
     }
 }
 
-private fun Player.isSuppressedForSafety() = playWhenReady && when (playbackSuppressionReason) {
-    Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS,
-    Player.PLAYBACK_SUPPRESSION_REASON_UNSUITABLE_AUDIO_OUTPUT -> true
-    else -> false
-}
-
-private fun Int.isCallMode() = when (this) {
-    AudioManager.MODE_RINGTONE, AudioManager.MODE_IN_CALL, AudioManager.MODE_IN_COMMUNICATION -> true
-    else -> false
-}
+private fun Int.isPhoneCallMode() = this == AudioManager.MODE_RINGTONE || this == AudioManager.MODE_IN_CALL
 
 // Android reports device inventory here, including removals before a route is observable.
 private fun AudioDeviceInfo.isExternalOutput(): Boolean {
