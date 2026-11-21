@@ -13,6 +13,8 @@
 
 Linux amd64 のマニフェスト digest を Compose と Dockerfile に固定します。Ktor と JDBC の版は #34 の Gradle lockfile を使います。DB 接続は専用の内部ネットワークで SCRAM 認証を使います。ここでは DB 通信の暗号化を省いているため、配備先でもこのネットワーク境界が成り立つかを確認します。[Keycloak の対応 DB](https://www.keycloak.org/server/db) · [Keycloak の管理インターフェース](https://www.keycloak.org/server/management-interface)
 
+既知の制約として、両方の `CREATE DATABASE` が完了した後、`REVOKE CONNECT` が完了する前に初期化が中断すると、同じボリュームでの再起動時に初期化スクリプトは再実行されません。DB 間の接続権限が残っていても PostgreSQL は healthy になり得ます。API は起動時の DB 分離検査で起動を拒否します。初期化が中断した場合は、空のボリュームで初期化からやり直します。
+
 ## ローカルで確かめる
 
 専用のローカル Docker Engine 28.0 以降、Docker Compose v2 以降の CLI、JDK 17、OpenSSL 3、curl、Python 3 を使います。Docker Engine 28.0 未満では、ループバックに限定した公開ポートに同じ L2 セグメントから到達できる場合があるため、この構成を起動しないでください。[Docker のポート公開](https://docs.docker.com/engine/network/port-publishing/)
@@ -28,16 +30,20 @@ server/compose/smoke-test.sh
 
 ### 停止・バックアップ・復元を手動で試す
 
-作業中は同じシェルで実行します。 `compose` はこの手順で定義する関数です。ホストポートが使用中の場合は、空いているポートを `AUDIPP_AUTH_PORT` と `AUDIPP_API_PORT` で選びます。curl は `--connect-to api.audipp.test:9443:127.0.0.1:<公開ポート>` で接続先だけを変更できます。
+作業中は同じシェルで実行します。検証のたびに作る秘密ディレクトリの識別子から起動元と復元先のプロジェクト名を決めます。ホストポートが使用中の場合は、空いているポートを `AUDIPP_AUTH_PORT` と `AUDIPP_API_PORT` で選びます。curl は `--connect-to api.audipp.test:9443:127.0.0.1:<公開ポート>` で接続先だけを変更できます。
 
 ```sh
-export AUDIPP_SECRETS_DIR="$(server/compose/create-local-secrets.sh)"
+AUDIPP_SECRETS_DIR=$(server/compose/create-local-secrets.sh)
+export AUDIPP_SECRETS_DIR
+project="audipp-local-$(printf '%s' "${AUDIPP_SECRETS_DIR##*.}" | tr 'A-Z' 'a-z')"
+restore_project="$project-restore"
 export AUDIPP_API_IMAGE="audipp-api:$(git rev-parse HEAD)"
 docker build --platform linux/amd64 -f server/compose/Dockerfile \
   -t "$AUDIPP_API_IMAGE" server/build/install/audipp-server
 docker image inspect --format '{{.Id}}' "$AUDIPP_API_IMAGE"
 
-compose() { docker compose -p audipp-local-check -f server/compose/compose.yaml "$@"; }
+compose() { docker compose -p "$project" -f server/compose/compose.yaml "$@"; }
+restore() { docker compose -p "$restore_project" -f server/compose/compose.yaml "$@"; }
 compose config --quiet
 compose up -d --wait --wait-timeout 210
 compose ps
@@ -56,7 +62,6 @@ compose run --rm -T --no-deps worker dump auth > "$backup_dir/auth.dump"
 (cd "$backup_dir" && sha256sum api.dump auth.dump > SHA256SUMS)
 compose down
 
-restore() { docker compose -p audipp-local-restore -f server/compose/compose.yaml "$@"; }
 (cd "$backup_dir" && sha256sum --check SHA256SUMS)
 restore up -d --wait db
 restore run --rm -T --no-deps worker restore api < "$backup_dir/api.dump"
@@ -64,7 +69,7 @@ restore run --rm -T --no-deps worker restore auth < "$backup_dir/auth.dump"
 restore up -d --wait --wait-timeout 210
 ```
 
-各コマンドが成功したことを確かめてから次に進みます。ダンプの対象は各 DB の中身です。DB とロールの作成は復元先の初期化処理で行います。2 つの DB を同じ時点の状態にするため、ダンプ中は認証と API を停止します。復元はサービス停止中の新規ボリュームに対して行います。片方でも復元に失敗したらサービスを起動せず、新しい復元用プロジェクトで両方をやり直します。DB 初期化が中断した場合も、既存データには触れず空のボリュームで初期化からやり直します。試験を終えたら両方のプロジェクトを `down` します。通常の `down` はデータボリュームを保持します。
+各コマンドが成功したことを確かめてから次に進みます。ダンプの対象は各 DB の中身です。DB とロールの作成は復元先の初期化処理で行います。2 つの DB を同じ時点の状態にするため、ダンプ中は認証と API を停止します。復元はサービス停止中の新規ボリュームに対して行います。片方でも復元に失敗したらサービスを起動せず、新しい復元用プロジェクトで両方をやり直します。起動元はダンプ後の `compose down` で停止済みです。試験を終えたら `restore down` で復元先を停止します。通常の `down` はデータボリュームを保持します。
 
 設定だけを戻すときは、停止後に更新前の Compose・設定・API イメージ ID に戻し、同じボリュームで起動します。DB migration を伴った場合は、更新前の構成と更新前のダンプを新規ボリュームに復元し、認証と API の両方を確かめてから切り替えます。今回の試験は設定の切り戻しと同じ版での復元を扱います。
 
@@ -83,6 +88,6 @@ restore up -d --wait --wait-timeout 210
 
 | 要求・試験 | 証跡 |
 | --- | --- |
-| NFR-SEC-03 / DD-CLOUD-01 / TEST-SEC-01 | ループバック限定、DB ポート非公開、信頼していない証明書の拒否、HTTPS で得た署名鍵と issuer の一致、認証 DB への接続拒否をスモーク試験で確認する。 |
-| NFR-OPS-01 / DD-RELEASE-01 / TEST-GOV-01 | 起動、障害時の API 応答、再試行、停止、設定の切り戻し、両 DB の復元をスモーク試験で確認する。検証対象コミットと結果は #53 の PR と CI に記録する。 |
+| NFR-SEC-03 / DD-CLOUD-01 / TEST-SEC-01 | ループバック限定、DB ポート非公開、API コンテナーから Keycloak の管理 HTTP への接続拒否、信頼していない証明書の拒否、HTTPS で得た署名鍵と issuer の一致、認証 DB への接続拒否をスモーク試験で確認する。 |
+| NFR-OPS-01 / DD-RELEASE-01 / TEST-GOV-01 | 起動、障害時の API 応答、再試行、停止、設定の切り戻し、両 DB の復元をスモーク試験で確認する。検証対象コミットと結果は[試験結果の台帳](../traceability/results.json)に記録する。 |
 | FR-USE-03 | #34 の本人 ID が復元前後で変わらないことを確認する。実 Google、招待運用、Android 接続はこの試験の対象外。 |

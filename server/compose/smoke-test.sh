@@ -149,6 +149,14 @@ for service in db keycloak api; do
         exit 1
     fi
 done
+management_result=0
+compose exec -T api curl --noproxy '*' --connect-timeout 2 --max-time 4 \
+    --silent --show-error --output /dev/null \
+    http://auth.audipp.test:9000/health/ready || management_result=$?
+if [[ $management_result != 7 ]]; then
+    printf >&2 'Keycloak management HTTP probe returned %s, expected curl exit code 7.\n' "$management_result"
+    exit 1
+fi
 tls_result=0
 "${https[@]}" --connect-to "api.audipp.test:9443:127.0.0.1:$api_port" \
     -o /dev/null "$api" 2>/dev/null || tls_result=$?
