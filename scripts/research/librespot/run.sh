@@ -42,7 +42,7 @@ cd -- "$AUDIPP_SPOTIFY_FIXTURES"
 for name in stereo 48k mono; do
     flac="$name.flac"
     if [[ $name == stereo ]]; then flac=player/stereo.flac; fi
-    ffmpeg -nostdin -v error -fflags +bitexact -i "$name.wav" \
+    ffmpeg -nostdin -v error -i "$name.wav" -fflags +bitexact \
         -c:a flac -flags:a +bitexact -metadata title=audipp-fixture "$flac"
 done
 ffmpeg -nostdin -v error -i stereo.wav -fflags +bitexact \
