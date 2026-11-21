@@ -27,12 +27,16 @@ class LocalPlaybackTest {
 
     private class Engine : LocalPlaybackEngine {
         val prepared = mutableListOf<QueueEntryId>()
+        private val transitions = mutableListOf<TransitionId>()
+        val transition get() = transitions.last()
         var active = false
         var failure: RuntimeException? = null
-        override fun prepare(entryId: QueueEntryId, document: SourceDescriptor.LocalDocument) {
+        override fun prepare(entryId: QueueEntryId, transitionId: TransitionId,
+            document: SourceDescriptor.LocalDocument) {
             failure?.let { throw it }
             active = true
             prepared += entryId
+            transitions += transitionId
         }
         override fun reset() { active = false }
     }
@@ -52,11 +56,12 @@ class LocalPlaybackTest {
         assertNull(state.durationMs)
         assertFalse(state.executionPlan.capabilities.canSeek)
         assertFalse(state.executionPlan.capabilities.canAccessPcm)
-        playback.onEngineState(PlaybackPhase.PLAYING, 150, 100, true)
+        playback.onEngineState(engine.transition, LocalEnginePhase.READY, true, true, 150, 100, true)
         assertEquals(100L, playback.snapshot.value.positionMs)
         assertTrue(playback.snapshot.value.executionPlan!!.capabilities.canSeek)
-        playback.onEngineState(PlaybackPhase.PAUSED, 40, null, false)
+        playback.onEngineState(engine.transition, LocalEnginePhase.READY, false, false, 40, null, true)
         assertNull(playback.snapshot.value.durationMs)
+        assertFalse(playback.snapshot.value.executionPlan!!.capabilities.canSeek)
         assertEquals(PlaybackPhase.PAUSED, playback.snapshot.value.phase)
     }
 
@@ -80,6 +85,40 @@ class LocalPlaybackTest {
         assertFalse(playback.snapshot.value.executionPlan!!.capabilities.canAccessPcm)
         playback.stop()
         assertEquals(PcmOpenResult.Rejected.STALE_PLAYBACK, open(format))
+    }
+
+    @Test
+    fun pausedBufferingKeepsPositionAndNaturalEndAdvancesWithoutPreparingAnotherItem() = runBlocking {
+        val engine = Engine()
+        val playback = LocalPlayback(engine, { Availability.PLAYABLE })
+        playback.start(entry, variant)
+        playback.onEngineState(engine.transition, LocalEnginePhase.BUFFERING, false, false, 40, 100, true)
+        assertEquals(PlaybackPhase.PAUSED, playback.snapshot.value.phase)
+        assertEquals(40L, playback.snapshot.value.positionMs)
+        playback.onEngineState(engine.transition, LocalEnginePhase.ENDED, true, false, 100, 100, true)
+        assertEquals(PlaybackPhase.ADVANCING, playback.snapshot.value.phase)
+        assertEquals(listOf(entry), engine.prepared)
+        val plan = playback.snapshot.value.executionPlan!!
+        val format = PcmFormat(PcmSample.SIGNED_32, 48_000, AudioFormat.CHANNEL_OUT_STEREO)
+        assertEquals(PcmOpenResult.Rejected.NO_LOCAL_PLAYBACK, playback.openPcmProcessor(
+            plan.transitionId, plan.routeRevision, format, PcmTransform.PRESERVE_INTEGER,
+        ))
+    }
+
+    @Test
+    fun readyForStoppedTransitionCannotReplaceIdleOrANewAttemptForTheSameEntry() = runBlocking {
+        val engine = Engine()
+        val playback = LocalPlayback(engine, { Availability.PLAYABLE })
+        playback.start(entry, variant)
+        val stopped = engine.transition
+        playback.stop()
+        playback.onEngineState(stopped, LocalEnginePhase.READY, true, true, 0, 100, true)
+        assertEquals(PlaybackPhase.IDLE, playback.snapshot.value.phase)
+        assertFalse(engine.active)
+        playback.start(entry, variant)
+        val newAttempt = playback.snapshot.value
+        playback.onEngineState(stopped, LocalEnginePhase.READY, true, true, 0, 100, true)
+        assertEquals(newAttempt, playback.snapshot.value)
     }
 
     @Test
@@ -196,7 +235,7 @@ class LocalPlaybackTest {
         playback.start(entry, variant)
         val error = playbackError(ErrorDomain.FORMAT_UNSUPPORTED, "LOCAL_FORMAT_UNSUPPORTED", false)
         playback.fail(error)
-        playback.onEngineState(PlaybackPhase.PLAYING, 0, null, true)
+        playback.onEngineState(engine.transition, LocalEnginePhase.READY, true, true, 0, null, true)
         assertFalse(engine.active)
         assertEquals(error, playback.snapshot.value.error)
         assertEquals(PlaybackPhase.ERROR, playback.snapshot.value.phase)

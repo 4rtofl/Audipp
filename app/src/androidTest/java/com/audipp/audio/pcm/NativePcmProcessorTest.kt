@@ -10,6 +10,7 @@ import com.audipp.domain.model.SourceKind
 import com.audipp.domain.model.SourceRef
 import com.audipp.domain.model.TrackId
 import com.audipp.domain.model.TrackVariant
+import com.audipp.domain.model.TransitionId
 import com.audipp.domain.model.VariantId
 import com.audipp.playback.LocalPlayback
 import com.audipp.playback.LocalPlaybackEngine
@@ -174,7 +175,8 @@ class NativePcmProcessorTest {
                 localDocumentUri = "content://pcm-test/generated"))
         var accessAllowed = true
         val playback = LocalPlayback(object : LocalPlaybackEngine {
-            override fun prepare(entryId: QueueEntryId, document: SourceDescriptor.LocalDocument) = Unit
+            override fun prepare(entryId: QueueEntryId, transitionId: TransitionId,
+                document: SourceDescriptor.LocalDocument) = Unit
             override fun reset() = Unit
         }, {
             if (!accessAllowed) throw SecurityException("test document grant revoked")

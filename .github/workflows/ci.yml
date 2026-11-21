@@ -117,6 +117,8 @@ jobs:
           ./gradlew -p server --no-daemon --console=plain test installDist distTar "${lock_args[@]}"
           sha256sum server/build/distributions/audipp-server.tar > server/build/distributions/SHA256SUMS
           git diff --exit-code -- 'server/*.lockfile'
+      - name: Private Compose smoke test
+        run: server/compose/smoke-test.sh
       - name: Upload server test reports
         if: ${{ always() && !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
