@@ -4,11 +4,14 @@ import com.audipp.domain.model.ExecutionMode
 import com.audipp.domain.model.SourceKind
 import com.audipp.domain.model.TrackVariant
 import com.audipp.domain.model.TransitionId
+import com.audipp.domain.model.UserAction
+import com.audipp.domain.model.VariantId
 import com.audipp.integrations.network.DirectoryRequest
 import com.audipp.integrations.network.NetworkCallPolicy
 import com.audipp.integrations.network.NetworkCalls
 import com.audipp.integrations.network.NetworkFailure
 import com.audipp.integrations.network.NetworkResult
+import com.audipp.playback.toPlaybackError
 import com.audipp.playback.source.AdapterKey
 import com.audipp.playback.source.NetworkLibrarySourceAdapter
 import com.audipp.playback.source.PlaybackTarget
@@ -33,8 +36,10 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
 import mockwebserver3.MockResponse
 import mockwebserver3.SocketEffect
+import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -76,7 +81,10 @@ class WebDavLibraryTest {
             assertEquals(ExecutionMode.LOCAL_DIRECT, plan.plan.mode)
             assertTrue(plan.plan.capabilities.canSeek)
             assertTrue(plan.descriptor is SourceDescriptor.DeviceResource)
-            assertFalse(plan.plan.toString().contains("first%20track"))
+            assertEquals("first%20track.flac", plan.plan.source.providerItemId)
+            val serializedPlan = plan.plan.toString()
+            assertFalse(serializedPlan.contains("://") || serializedPlan.contains("/music/") ||
+                serializedPlan.contains(plan.deviceResource().handle))
             val renderer = deviceContext.copy(target = PlaybackTarget("renderer", TargetKind.RENDERER))
             assertEquals(SourceResolution.Unavailable(ResolutionFailure.ADAPTER_UNAVAILABLE), library.resolve(first.variant, renderer))
             assertTrue(fixture.requests.filter { it.method == "PROPFIND" }.all {
@@ -130,6 +138,67 @@ class WebDavLibraryTest {
         }
     }
 
+    @Test fun sequentialBodyCanTakeLongerThanTheOperationTimeout() = runBlocking {
+        WebDavFixture().use { fixture ->
+            fixture.handler = {
+                when {
+                    it.method == "PROPFIND" -> directory()
+                    it.headers["Range"] != null -> reply(200, "abcdef".toByteArray())
+                    else -> reply(200, "abcdef".toByteArray()).newBuilder()
+                        .throttleBody(1, 300, TimeUnit.MILLISECONDS).build()
+                }
+            }
+            val library = fixture.library(timeout = 1_000)
+            val selected = library.resolve(library.song()).playback().deviceResource()
+            val data = ByteArrayOutputStream()
+            assertEquals(6L, library.readSequential(selected) { buffer, size -> data.write(buffer, 0, size) }.value())
+            assertEquals("abcdef", data.toString("UTF-8"))
+        }
+    }
+
+    @Test fun unsupportedFileNamesDoNotHideOtherEntries() = runBlocking {
+        WebDavFixture().use { fixture ->
+            fixture.handler = { directory(xml(
+                entry("/music/", collection = true),
+                entry("/music/Track%25201.flac"),
+                entry("/music/back%5Cslash.flac"),
+                entry("/music/%82%A0.flac"),
+                entry("/music/album/", collection = true),
+                entry("/music/song.flac"),
+            )) }
+            val library = fixture.library()
+            val root = DirectoryRequest(library.rootDirectoryId)
+            assertEquals("song.flac", library.client.listMedia(root).value().single().name)
+            assertEquals("album", library.client.listDirectory(root).value().single().name)
+        }
+    }
+
+    @Test fun resolvesAStoredVariantWithoutListingInTheNewLibrary() = runBlocking {
+        WebDavFixture().use { fixture ->
+            fixture.handler = {
+                if (it.method == "PROPFIND") directory(xml(
+                    entry("/music/", collection = true), entry("/music/100%25%20%3F%2B.flac"),
+                )) else range(0, 0)
+            }
+            val variant = fixture.library().song()
+            assertEquals("100%25%20%3F%2B.flac", variant.source.providerItemId)
+            val restored = Json.decodeFromString(
+                TrackVariant.serializer(),
+                Json.encodeToString(TrackVariant.serializer(), variant),
+            )
+            val reopened = fixture.library()
+            assertTrue(reopened.resolve(restored).playback().plan.capabilities.canSeek)
+            assertEquals("/music/100%25%20%3F%2B.flac", fixture.requests.last().path)
+            assertEquals(SourceResolution.Unavailable(ResolutionFailure.REFRESH_REQUIRED),
+                reopened.resolve(restored.copy(source = restored.source.copy(providerItemId = null))))
+            for (path in listOf("../other.flac", "/other.flac", "other.flac", "x%2fy.flac")) {
+                assertEquals(SourceResolution.Unavailable(ResolutionFailure.INVALID_DESCRIPTOR),
+                    reopened.resolve(restored.copy(source = restored.source.copy(providerItemId = path))))
+            }
+            assertEquals(2, fixture.requests.size)
+        }
+    }
+
     @Test fun subsequent200DowngradesSeekWithoutReturningUnrequestedBytes() = runBlocking {
         WebDavFixture().use { fixture ->
             fixture.handler = {
@@ -165,7 +234,7 @@ class WebDavLibraryTest {
                     else range(2, 3, contents, tag, modified)
                 }
                 assertEquals(NetworkFailure.STALE_RESPONSE, library.readRange(old, 2, 2).reason())
-                assertEquals(NetworkFailure.STALE_RESPONSE, library.readRange(old, 0, 1).reason())
+                assertEquals(NetworkFailure.REFRESH_REQUIRED, library.readRange(old, 0, 1).reason())
                 val fresh = library.resolve(song).playback().deviceResource()
                 assertNotEquals(old.handle, fresh.handle)
                 assertEquals("CD", library.readRange(fresh, 2, 2).value().decodeToString())
@@ -174,6 +243,55 @@ class WebDavLibraryTest {
             val stale = library.resolve(song).playback().deviceResource()
             fixture.handler = { reply(412) }
             assertEquals(NetworkFailure.STALE_RESPONSE, library.readRange(stale, 2, 2).reason())
+        }
+    }
+
+    @Test fun sequentialChangesInvalidateTheHandle() = runBlocking {
+        WebDavFixture().use { fixture ->
+            val library = fixture.library()
+            fixture.handler = { directory() }
+            val song = library.song()
+            for ((response, maximumDelivered) in listOf(
+                reply(200, "ABCDEF".toByteArray(), "ETag" to "\"changed\"") to 0,
+                reply(412) to 0,
+                reply(200, "ABCDEFG".toByteArray(), "ETag" to "\"original\"", chunked = true) to 6,
+            )) {
+                fixture.handler = { range(0, 0) }
+                val resource = library.resolve(song).playback().deviceResource()
+                fixture.handler = { response }
+                var delivered = 0
+                assertEquals(NetworkFailure.STALE_RESPONSE, library.readSequential(resource) { _, size -> delivered += size }.reason())
+                assertTrue(delivered <= maximumDelivered)
+                assertEquals(NetworkFailure.REFRESH_REQUIRED, library.readSequential(resource) { _, _ -> error("Invalidated handle") }.reason())
+            }
+        }
+    }
+
+    @Test fun distinguishesMissingSourcesAndUnsupportedProbeRanges() = runBlocking {
+        WebDavFixture().use { fixture ->
+            val library = fixture.library()
+            fixture.handler = { directory(xml(
+                entry("/music/", collection = true), entry("/music/album/", collection = true),
+                entry("/music/song.flac"),
+            )) }
+            val request = DirectoryRequest(library.rootDirectoryId)
+            val song = library.song()
+            val child = library.client.listDirectory(request).value().single()
+            assertEquals(NetworkFailure.REFRESH_REQUIRED,
+                fixture.library().client.listMedia(DirectoryRequest(child.id)).reason())
+            fixture.handler = { range(0, 0) }
+            val selected = library.resolve(song).playback().deviceResource()
+            val alternate = song.copy(variantId = VariantId("alternative"))
+            for (status in listOf(404, 410)) {
+                fixture.handler = { reply(status) }
+                assertEquals(NetworkFailure.MISSING, library.client.listMedia(request).reason())
+                assertEquals(SourceResolution.Unavailable(ResolutionFailure.SOURCE_MISSING, listOf(alternate.variantId)),
+                    library.resolver { deviceContext }.resolve(ResolutionRequest(song, deviceContext), listOf(alternate)))
+            }
+            assertEquals(NetworkFailure.MISSING, library.readRange(selected, 0, 1).reason())
+            assertEquals(NetworkFailure.REFRESH_REQUIRED, library.readRange(selected, 0, 1).reason())
+            fixture.handler = { reply(416, headers = arrayOf("Content-Range" to "bytes */0")) }
+            assertEquals(SourceResolution.Unavailable(ResolutionFailure.PLAYBACK_UNSUPPORTED), library.resolve(song))
         }
     }
 
@@ -204,7 +322,7 @@ class WebDavLibraryTest {
         }
     }
 
-    @Test fun refusesDtdExternalEntitiesOversizedXmlExcessiveDepthAndEntryCount() = runBlocking {
+    @Test fun refusesDtdExternalEntitiesAndExcessiveDepth() = runBlocking {
         WebDavFixture().use { fixture ->
             val library = fixture.library()
             val root = entry("/music/", collection = true)
@@ -213,8 +331,6 @@ class WebDavLibraryTest {
                 (dtd + xml(root)).toByteArray(),
                 ("<?xml version=\"1.0\" encoding=\"UTF-16\"?>" + dtd + xml(root)).toByteArray(Charsets.UTF_16),
                 xml(root, "<x>".repeat(32) + "</x>".repeat(32)).toByteArray(),
-                xml(root, "<!--" + " ".repeat(2 * 1024 * 1024) + "-->").toByteArray(),
-                xml(root, *(1..1_001).map { entry("/music/" + it + ".flac") }.toTypedArray()).toByteArray(),
             )) {
                 fixture.handler = { reply(207, payload, chunked = true) }
                 assertEquals(NetworkFailure.INVALID_RESPONSE, library.client.listMedia(DirectoryRequest(library.rootDirectoryId)).reason())
@@ -225,13 +341,37 @@ class WebDavLibraryTest {
         }
     }
 
+    @Test fun pagesTenThousandEntriesAndReportsLargerDirectoriesAsLimitExceeded() = runBlocking {
+        WebDavFixture().use { fixture ->
+            val library = fixture.library()
+            val request = DirectoryRequest(library.rootDirectoryId, limit = 1_000)
+            fun child(index: Int) = "<D:response><D:href>/music/$index.flac</D:href><D:propstat><D:prop>" +
+                "<D:resourcetype/></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>"
+            val root = entry("/music/", collection = true)
+            val entries = (1..10_000).joinToString("", transform = ::child)
+            fixture.handler = { if (it.method == "PROPFIND") directory(xml(root, entries)) else range(0, 0) }
+            val first = library.client.listMedia(request).value().first().variant
+            for (offset in 1_000..9_000 step 1_000) {
+                assertEquals(1_000, library.client.listMedia(request.copy(offset = offset)).value().size)
+            }
+            library.resolve(first).playback()
+            assertEquals("/music/1.flac", fixture.requests.last().path)
+            fixture.handler = { directory(xml(root, entries, child(10_001))) }
+            assertEquals(NetworkFailure.DIRECTORY_LIMIT_EXCEEDED, library.client.listMedia(request).reason())
+            val oversized = xml(root, "<!--" + " ".repeat(2 * 1024 * 1024) + "-->").toByteArray()
+            fixture.handler = { reply(207, oversized, chunked = true) }
+            assertEquals(NetworkFailure.DIRECTORY_LIMIT_EXCEEDED, library.client.listMedia(request).reason())
+        }
+    }
+
     @Test fun refusesCrossOriginOrRecursiveHrefsBeforeAnyMediaGet() = runBlocking {
         WebDavFixture().use { fixture ->
             val library = fixture.library()
             val root = DirectoryRequest(library.rootDirectoryId)
             for (href in listOf(
                 "https://other.invalid/music/test.flac", "/other/test.flac", "/music/nested/test.flac",
-                "/music/%2E%2E/test.flac", "/music/%2ftest.flac", "/music/%252Ftest.flac", "/music/%ff.flac",
+                "/music/%2E%2E/test.flac", "/music/%252e%252e", "/music/%2ftest.flac", "/music/%252Ftest.flac",
+                "/other/%ff.flac", "https://other.invalid/music/Track%25201.flac",
                 "/music/test.flac?secret=x", "/music/test.flac#fragment", "//127.0.0.1/music/test.flac",
             )) {
                 fixture.handler = { directory(xml(entry("/music/", collection = true), entry(href))) }
@@ -239,6 +379,28 @@ class WebDavLibraryTest {
             }
             assertEquals(NetworkFailure.INVALID_INPUT, library.client.listMedia(DirectoryRequest("/music/")).reason())
             assertTrue(fixture.requests.all { it.method == "PROPFIND" })
+        }
+    }
+
+    @Test fun rateLimitUsesRemainingBudgetAndIgnoresExcessiveDelays() = runBlocking {
+        WebDavFixture().use { fixture ->
+            val library = fixture.library(timeout = 1_200, attempts = 3)
+            val request = DirectoryRequest(library.rootDirectoryId)
+            for (retryAfter in listOf("999999999999999999999", "Fri, 01 Jan 2100 00:00:00 GMT")) {
+                fixture.handler = { reply(429, headers = arrayOf("Retry-After" to retryAfter)) }
+                assertEquals(NetworkFailure.RATE_LIMITED, library.client.listMedia(request).reason())
+                fixture.handler = { directory() }
+                assertEquals(1, library.client.listMedia(request).value().size)
+            }
+            fixture.handler = {
+                Thread.sleep(400)
+                reply(429, headers = arrayOf("Retry-After" to "1"))
+            }
+            assertEquals(NetworkFailure.RATE_LIMITED, library.client.listMedia(request).reason())
+            assertEquals(5, fixture.requests.size)
+            val error = ResolutionFailure.RATE_LIMITED.toPlaybackError()
+            assertTrue(error.retryable)
+            assertEquals(UserAction.RETRY, error.userAction)
         }
     }
 
@@ -254,7 +416,7 @@ class WebDavLibraryTest {
             val (first, second) = fixture.requests.toList()
             assertTrue(TimeUnit.NANOSECONDS.toMillis(second.receivedNanos - first.receivedNanos) >= 950)
             val retryAt = DateTimeFormatter.ofPattern("EEE, dd MMM uuuu HH:mm:ss 'GMT'", Locale.US)
-                .withZone(ZoneOffset.UTC).format(Instant.now().plusSeconds(60))
+                .withZone(ZoneOffset.UTC).format(Instant.now().plusSeconds(10))
             fixture.handler = { reply(429, headers = arrayOf("Retry-After" to retryAt)) }
             assertEquals(NetworkFailure.RATE_LIMITED, library.client.listMedia(root).reason())
             assertEquals(NetworkFailure.RATE_LIMITED, library.client.listMedia(root).reason())
@@ -370,7 +532,7 @@ internal fun WebDavFixture.library(
     timeout: Long = 5_000,
     attempts: Int = 1,
     isAllowed: () -> Boolean = { true },
-): WebDavLibrary = WebDavLibrary(endpoint, isAllowed, callPolicy(timeout, attempts))
+): WebDavLibrary = WebDavLibrary(endpoint, isAllowed, callPolicy(timeout, attempts), null, null, OkHttpClient.Builder())
 
 internal fun callPolicy(timeout: Long = 5_000, attempts: Int = 1) =
     NetworkCalls(NetworkCallPolicy(operationTimeoutMs = timeout, connectTimeoutMs = 1_000,

@@ -368,6 +368,7 @@ Android公式：<https://developer.android.com/training/data-storage/shared/docu
 | ADR-006 | DB競合・曲の一意性 | 08_design_decisions.mdの所有権・event_id・revision・cursor・原子的バッチ規則を採用。誤同定は解除可能 |
 | ADR-007 | OS/ABI互換性維持 | API23/compile36を維持し、Media3 1.11.1/Room 2.8.5/DataStore 1.2.1を設計採用。推移依存と実ビルドは導入時に確認 |
 | ADR-008 | 観測結果・Bit-perfect表示基準 | 実証された端末とテスト条件を公開一覧に紐づける |
+| ADR-009 | WebDAVのHTTPクライアント | PROPFINDと本文読込の取消に対応するOkHttp 5.4.0を採用 |
 
 ## 15. 要件への対応表
 

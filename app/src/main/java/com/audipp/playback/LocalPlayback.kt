@@ -132,8 +132,9 @@ internal fun ResolutionFailure.toPlaybackError(): PlaybackError = when (this) {
     ResolutionFailure.ADAPTER_UNAVAILABLE -> playbackError(ErrorDomain.FORMAT_UNSUPPORTED,
         name, false, UserAction.RESELECT_SOURCE)
     ResolutionFailure.SOURCE_IO, ResolutionFailure.SOURCE_MISSING,
-    ResolutionFailure.SOURCE_UNAVAILABLE, ResolutionFailure.TIMEOUT ->
+    ResolutionFailure.SOURCE_UNAVAILABLE, ResolutionFailure.TIMEOUT, ResolutionFailure.REFRESH_REQUIRED ->
         playbackError(ErrorDomain.SOURCE_IO, name, true, UserAction.RESELECT_SOURCE)
+    ResolutionFailure.RATE_LIMITED -> playbackError(ErrorDomain.SOURCE_IO, name, true, UserAction.RETRY)
     else -> playbackError(ErrorDomain.PLAYBACK_ENGINE, name, false)
 }
 

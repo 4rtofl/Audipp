@@ -1,6 +1,7 @@
 package com.audipp.integrations.network.webdav
 
 import com.audipp.integrations.network.NetworkCallPolicy
+import com.audipp.integrations.network.NetworkDeadline
 import com.audipp.integrations.network.NetworkFailure
 import com.audipp.integrations.network.NetworkResult
 import java.io.IOException
@@ -8,6 +9,7 @@ import java.io.InterruptedIOException
 import java.net.ConnectException
 import java.net.Proxy
 import java.net.UnknownHostException
+import java.net.UnknownServiceException
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.text.ParsePosition
@@ -16,6 +18,8 @@ import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -24,9 +28,9 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import okhttp3.OkHttpClient
 import okio.ByteString.Companion.toByteString
 
 internal class WebDavHttp(
@@ -44,14 +48,17 @@ internal class WebDavHttp(
         .followSslRedirects(false)
         .retryOnConnectionFailure(false)
         .build()
+    private val streamingClient = client.newBuilder().callTimeout(0, TimeUnit.MILLISECONDS).build()
     private var retryUntilNanos: Long? = null
 
     suspend fun <T> exchange(
         request: Request,
         credential: ByteArray?,
+        streaming: Boolean = false,
         receive: (Response, checkAccess: () -> Unit) -> NetworkResult<T>,
     ): NetworkResult<T> {
         val job = currentCoroutineContext()
+        val deadline = job[NetworkDeadline] ?: NetworkDeadline(policy.operationTimeoutMs)
         fun checkAccess() {
             job.ensureActive()
             if (!isLanReadAllowed()) throw SecurityException()
@@ -73,11 +80,14 @@ internal class WebDavHttp(
                 checkAccess()
                 val waitMs = retryDelayMs()
                 if (waitMs <= 0) break
-                if (waitMs >= policy.operationTimeoutMs) return NetworkResult.Failure(NetworkFailure.RATE_LIMITED)
+                if (TimeUnit.MILLISECONDS.toNanos(waitMs) >= deadline.remainingNanos()) {
+                    return NetworkResult.Failure(NetworkFailure.RATE_LIMITED)
+                }
                 delay(waitMs)
             }
+            var retryThrottled = false
             val result = try {
-                val call = client.newCall(prepared)
+                val call = (if (streaming) streamingClient else client).newCall(prepared)
                 coroutineScope {
                     // A blocked socket read cannot observe coroutine cancellation by itself.
                     val cancellation = launch(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
@@ -94,7 +104,7 @@ internal class WebDavHttp(
                                 401 -> NetworkResult.Failure(NetworkFailure.AUTH_REQUIRED)
                                 403 -> NetworkResult.Failure(NetworkFailure.PERMISSION_REQUIRED)
                                 429 -> {
-                                    deferRequests(response.header("Retry-After"))
+                                    retryThrottled = deferRequests(response.header("Retry-After"))
                                     NetworkResult.Failure(NetworkFailure.RATE_LIMITED)
                                 }
                                 in 300..399 -> NetworkResult.Failure(NetworkFailure.INVALID_RESPONSE)
@@ -111,8 +121,14 @@ internal class WebDavHttp(
                         cancellation.cancel()
                     }
                 }
-            } catch (_: WebDavResponseException) {
-                NetworkResult.Failure(NetworkFailure.INVALID_RESPONSE)
+            } catch (failure: WebDavResponseException) {
+                NetworkResult.Failure(failure.reason)
+            } catch (_: UnknownServiceException) {
+                NetworkResult.Failure(NetworkFailure.UNSUPPORTED)
+            } catch (_: SSLHandshakeException) {
+                NetworkResult.Failure(NetworkFailure.UNSUPPORTED)
+            } catch (_: SSLPeerUnverifiedException) {
+                NetworkResult.Failure(NetworkFailure.UNSUPPORTED)
             } catch (_: UnknownHostException) {
                 NetworkResult.Failure(NetworkFailure.OFFLINE)
             } catch (_: ConnectException) {
@@ -124,7 +140,7 @@ internal class WebDavHttp(
                 throw failure
             }
             checkAccess()
-            if (result != NetworkResult.Failure(NetworkFailure.RATE_LIMITED)) return result
+            if (!retryThrottled) return result
         }
         return NetworkResult.Failure(NetworkFailure.RATE_LIMITED)
     }
@@ -141,17 +157,21 @@ internal class WebDavHttp(
     }
 
     @Synchronized
-    private fun deferRequests(header: String?) {
-        val maxDelayMs = Long.MAX_VALUE / 1_000_000
+    private fun deferRequests(header: String?): Boolean {
+        val maxDelayMs = policy.operationTimeoutMs * 3
         val seconds = header?.takeIf { it.isNotEmpty() && it.all { char -> char in '0'..'9' } }
         val delayMs = if (seconds != null) {
-            (seconds.toLongOrNull() ?: Long.MAX_VALUE).coerceAtMost(maxDelayMs / 1_000) * 1_000
+            val value = seconds.toLongOrNull() ?: return false
+            if (value > maxDelayMs / 1_000) return false
+            value * 1_000
         } else {
             val date = header?.let(::httpDate)
-            (date?.minus(System.currentTimeMillis()) ?: 1_000).coerceIn(0, maxDelayMs)
+            (date?.minus(System.currentTimeMillis()) ?: 1_000).coerceAtLeast(0)
         }
+        if (delayMs > maxDelayMs) return false
         val nowNanos = System.nanoTime()
         if (delayMs > retryDelayMs(nowNanos)) retryUntilNanos = nowNanos + delayMs * 1_000_000
+        return true
     }
 }
 
@@ -197,11 +217,11 @@ internal fun Response.singleHeader(name: String): String? {
     return values.singleOrNull()
 }
 
-internal fun Response.boundedBody(maxBytes: Int): ByteArray {
+internal fun Response.boundedBody(maxBytes: Int, oversized: NetworkFailure = NetworkFailure.INVALID_RESPONSE): ByteArray {
     val source = body.source()
-    if (body.contentLength() > maxBytes || source.request(maxBytes.toLong() + 1)) invalidResponse()
+    if (body.contentLength() > maxBytes || source.request(maxBytes.toLong() + 1)) throw WebDavResponseException(oversized)
     return source.readByteArray()
 }
 
-internal class WebDavResponseException : RuntimeException()
+internal class WebDavResponseException(val reason: NetworkFailure = NetworkFailure.INVALID_RESPONSE) : RuntimeException()
 internal fun invalidResponse(): Nothing = throw WebDavResponseException()

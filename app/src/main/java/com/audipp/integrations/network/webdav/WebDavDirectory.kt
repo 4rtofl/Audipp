@@ -1,5 +1,6 @@
 package com.audipp.integrations.network.webdav
 
+import com.audipp.integrations.network.NetworkFailure
 import com.audipp.integrations.network.validNetworkText
 import java.io.ByteArrayInputStream
 import java.net.URI
@@ -19,7 +20,7 @@ import org.xml.sax.ext.DefaultHandler2
 
 private const val MAX_XML_BYTES = 2 * 1024 * 1024
 private const val MAX_XML_DEPTH = 32
-private const val MAX_DIRECTORY_ENTRIES = 1_000
+private const val MAX_DIRECTORY_ENTRIES = 10_000
 private const val MAX_HREF = 8_192
 private const val DAV = "DAV:"
 
@@ -38,7 +39,7 @@ internal fun propfind(directory: HttpUrl): Request = Request.Builder()
 internal fun webDavRoot(value: String): HttpUrl {
     val uri = checkedHref(value)
     val root = value.toHttpUrlOrNull()
-    require(uri != null && root != null) { "Invalid WebDAV root" }
+    require(uri != null && root != null && root.path.none(::hasUnsupportedEncoding)) { "Invalid WebDAV root" }
     return root.asDirectory().also {
         require(it.toString().length <= MAX_HREF) { "Invalid WebDAV root" }
     }
@@ -48,7 +49,8 @@ internal class WebDavEntry(val url: HttpUrl, val collection: Boolean, val name: 
 
 internal fun parseDirectory(response: Response, directory: HttpUrl): List<WebDavEntry> {
     val handler = MultiStatus(directory)
-    val bytes = response.boundedBody(MAX_XML_BYTES)
+    // Typical PROPFIND entries reach 2 MiB before 10,000 items; treat it as a large directory, not a malformed reply.
+    val bytes = response.boundedBody(MAX_XML_BYTES, NetworkFailure.DIRECTORY_LIMIT_EXCEEDED)
     try {
         val parser = SAXParserFactory.newInstance().apply { isNamespaceAware = true }.newSAXParser().xmlReader
         parser.setFeature("http://xml.org/sax/features/external-general-entities", false)
@@ -67,9 +69,17 @@ internal fun parseDirectory(response: Response, directory: HttpUrl): List<WebDav
 }
 
 private val nestedEscape = Regex("%[0-9a-fA-F]{2}")
+private val encodedSlash = Regex("%(?:25)*+2f", RegexOption.IGNORE_CASE)
+private val dotSegment = Regex("(?:\\.|%(?:25)*+2e){1,2}", RegexOption.IGNORE_CASE)
+
+private fun hasUnsupportedEncoding(segment: String): Boolean =
+    nestedEscape.containsMatchIn(segment) || segment.any { it == '\\' || it == '\uFFFD' || it.isISOControl() }
+
+private fun representableSegment(segment: String): Boolean =
+    validNetworkText(segment) && !hasUnsupportedEncoding(segment)
 
 private fun checkedHref(value: String): URI? {
-    if (value.length !in 1..MAX_HREF || value.any { it.isISOControl() || it == '\\' } ||
+    if (value.isEmpty() || value.any { it.isISOControl() || it == '\\' } ||
         value.toByteArray(Charsets.UTF_8).toString(Charsets.UTF_8) != value
     ) return null
     val uri = try {
@@ -85,8 +95,8 @@ private fun checkedHref(value: String): URI? {
     if (uri.rawPath.orEmpty().contains("//")) return null
     for (segment in segments) {
         val decoded = URI("/" + segment).path.removePrefix("/")
-        if (decoded == "." || decoded == ".." || nestedEscape.containsMatchIn(decoded) ||
-            decoded.any { it == '/' || it == '\\' || it == '\uFFFD' || it.isISOControl() }
+        if (dotSegment.matches(decoded) || dotSegment.matches(segment) || '/' in decoded ||
+            encodedSlash.containsMatchIn(decoded) || encodedSlash.containsMatchIn(segment)
         ) return null
     }
     return uri
@@ -96,6 +106,24 @@ private fun HttpUrl.asDirectory(): HttpUrl =
     if (encodedPath.endsWith('/')) this else newBuilder().addPathSegment("").build()
 
 private val HttpUrl.path get() = pathSegments.dropLastWhile { it.isEmpty() }
+
+internal fun relativeMediaPath(root: HttpUrl, url: HttpUrl): String {
+    val path = url.encodedPathSegments.drop(root.pathSegments.size - 1).joinToString("/")
+    return nestedEscape.replace(path) { match ->
+        val char = match.value.substring(1).toInt(16).toChar()
+        // Escaped reserved characters can have a different meaning at the server.
+        if (char in 'a'..'z' || char in 'A'..'Z' || char in '0'..'9' || char in "-._~") char.toString()
+        else match.value
+    }
+}
+
+internal fun resolveMediaPath(root: HttpUrl, relativePath: String): HttpUrl? {
+    if (relativePath.length > MAX_HREF) return null
+    val path = checkedHref("/$relativePath")?.path ?: return null
+    if (path.drop(1).split('/').any { !representableSegment(it) }) return null
+    val url = root.newBuilder().addEncodedPathSegments(relativePath).build()
+    return url.takeIf { it.toString().length <= MAX_HREF }
+}
 
 private val rootTag = listOf("multistatus")
 private val responseTag = rootTag + "response"
@@ -128,6 +156,7 @@ private class MultiStatus(private val directory: HttpUrl) : DefaultHandler2() {
     private val tags = mutableListOf<String>()
     private val children = mutableListOf<WebDavEntry>()
     private val seen = mutableSetOf<List<String>>()
+    private var responseCount = 0
     private var selfFound = false
     private var href: String? = null
     private var status: Int? = null
@@ -148,7 +177,9 @@ private class MultiStatus(private val directory: HttpUrl) : DefaultHandler2() {
         if (tags.size == 1 && tags != rootTag) invalidResponse()
         when (tags) {
             responseTag -> {
-                if (seen.size == MAX_DIRECTORY_ENTRIES + 1) invalidResponse()
+                if (++responseCount > MAX_DIRECTORY_ENTRIES + 1) {
+                    throw WebDavResponseException(NetworkFailure.DIRECTORY_LIMIT_EXCEEDED)
+                }
                 href = null
                 status = null
                 properties = Properties()
@@ -165,7 +196,7 @@ private class MultiStatus(private val directory: HttpUrl) : DefaultHandler2() {
 
     override fun characters(ch: CharArray, start: Int, length: Int) {
         val target = text ?: return
-        if (target.length + length > MAX_HREF) invalidResponse()
+        if (tags != hrefTag && tags != displayNameTag && target.length + length > MAX_HREF) invalidResponse()
         target.append(ch, start, length)
     }
 
@@ -211,18 +242,18 @@ private class MultiStatus(private val directory: HttpUrl) : DefaultHandler2() {
             return
         }
         if (path.size != directory.path.size + 1 || path.dropLast(1) != directory.path) invalidResponse()
+        if (!representableSegment(path.last())) return
         if ((status ?: 200) !in 200..299) return
         val collection = properties.collection ?: return
         if (!collection && url.encodedPath.endsWith('/')) invalidResponse()
         val name = properties.name?.takeIf(::validNetworkText) ?: path.last()
-        if (!validNetworkText(name)) invalidResponse()
         val resource = if (collection) url.asDirectory() else url
-        if (resource.toString().length > MAX_HREF) invalidResponse()
+        if (resource.toString().length > MAX_HREF) return
         children += WebDavEntry(resource, collection, name, properties.contentType)
     }
 
     fun entries(): List<WebDavEntry> {
-        if (!selfFound || children.size > MAX_DIRECTORY_ENTRIES) invalidResponse()
+        if (!selfFound) invalidResponse()
         return children.toList()
     }
 }

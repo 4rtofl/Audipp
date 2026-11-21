@@ -12,13 +12,16 @@ import com.audipp.playback.source.SourceResolution
 import java.io.File
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.net.ssl.SSLPeerUnverifiedException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import mockwebserver3.MockResponse
 import mockwebserver3.RecordedRequest
+import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -38,6 +41,29 @@ class WebDavAuthenticationTest {
     }
     private val bundle = "fixture-user:fixture-password:with-colon".toByteArray()
     private val basic = "Basic " + Base64.getEncoder().encodeToString(bundle)
+
+    @Test fun rejectsCleartextAndDoesNotRetryCertificateFailures() = runBlocking {
+        WebDavFixture().use { fixture ->
+            val library = WebDavLibrary(fixture.endpoint, { true }, callPolicy(attempts = 3))
+            assertEquals(NetworkFailure.UNSUPPORTED, library.client.listMedia(DirectoryRequest(library.rootDirectoryId)).reason())
+            assertTrue(fixture.requests.isEmpty())
+        }
+        val tls = FixtureTls(File(temporary.root, "untrusted.p12"))
+        WebDavFixture(tls).use { fixture ->
+            for (failPeerVerification in listOf(false, true)) {
+                val attempts = AtomicInteger()
+                val builder = OkHttpClient.Builder().addInterceptor { chain ->
+                    attempts.incrementAndGet()
+                    if (failPeerVerification) throw SSLPeerUnverifiedException("fixture")
+                    chain.proceed(chain.request())
+                }
+                val library = WebDavLibrary(fixture.endpoint, { true }, callPolicy(attempts = 3), null, null, builder)
+                assertEquals(NetworkFailure.UNSUPPORTED, library.client.listMedia(DirectoryRequest(library.rootDirectoryId)).reason())
+                assertEquals(1, attempts.get())
+            }
+            assertTrue(fixture.requests.isEmpty())
+        }
+    }
 
     @Test fun server401AndLocalRevocationRequireFreshCredentialsAndReselection() = runBlocking {
         val tls = FixtureTls(File(temporary.root, "fixture.p12"))
@@ -76,7 +102,7 @@ class WebDavAuthenticationTest {
             val recovered = WebDavLibrary(fixture.endpoint, { true }, callPolicy(8_000), credentials, fresh, tls.client())
             val refreshed = recovered.resolve(recovered.song()).playback().deviceResource()
             assertNotEquals(old.handle, refreshed.handle)
-            assertEquals(NetworkFailure.STALE_RESPONSE, recovered.readRange(old, 2, 2).reason())
+            assertEquals(NetworkFailure.REFRESH_REQUIRED, recovered.readRange(old, 2, 2).reason())
             assertEquals("cd", recovered.readRange(refreshed, 2, 2).value().decodeToString())
 
             fixture.handler = {
