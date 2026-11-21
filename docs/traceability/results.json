@@ -127,5 +127,21 @@
     "reason": "指定ADBシリアルがないため、API23/36の端末試験と実通話・実フォーカス・実BT/USB切断は未実施。",
     "evidence": [],
     "limitations": "スピーカーへの切替過渡、実機のフォーカス・通話通知、画面ロック中の挙動は未確認。"
+  },
+  {
+    "case_id": "E02-05-host-playback-owner",
+    "requirement_ids": ["FR-PLY-07"],
+    "test_ids": ["TEST-QUEUE-01"],
+    "commit": "748629aa9accbca2069acdae0ae4b41cfd3254d4",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "CoordinatorとSourceResolverを接続したホスト試験9件で停止状態の観測、開始前の再検査、取消後の遅延成功への停止再要求、期限切れ、手動継続と外部引き渡しを確認した。全ユニットテスト208件、Debugビルド、Lintが成功した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackOwnerCoordinatorTest.kt",
+      "docs/contracts/playback-owner.md"
+    ],
+    "limitations": "#61の停止確認と状態・効果の契約をホストで確認した。実Serviceの効果接続と連続再生、外部サービスや実機の再生状態は未確認。"
   }
 ]
