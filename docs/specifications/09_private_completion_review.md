@@ -99,13 +99,15 @@ IRは係数を読み込んで長さ・ch・rate・有限性・利得上限を検
 | 領域 | 採用する実装 | 入力・異常・復帰の契約 |
 |---|---|---|
 | SMB | SMBJ 0.13.0、SMB2/3。ファイルAPIを使い、未完成のNIO providerへ依存しない | 明示したhost/share/pathだけ。資格情報は端末内暗号化。SMB1への自動降格なし。接続10秒/操作30秒、途中読込失敗は同じoffsetから再取得し、変更済みファイルを旧bufferと結合しない |
-| WebDAV | AndroidのHTTPクライアント＋XML parser。RFC4918のPROPFIND Depth:1、GET/Rangeで読込 | 無限再帰のDepth:infinityは使わない。ETag/Last-Modifiedと長さを保存し、変更時は再読込。Range無視の200を206と扱わず、seek不可を表示。401は本人の再入力、他hostへのredirectへ秘密を渡さない |
+| WebDAV | OkHttp 5.4.0＋Android標準のXMLパーサー。RFC4918のPROPFIND Depth:1、GET/Rangeで読込 | 無限再帰のDepth:infinityは使わない。ETag/Last-Modifiedと長さを保存し、変更時は再読込。Range無視の200を206と扱わず、seek不可を表示。401は本人の再入力、他hostへのredirectへ秘密を渡さない |
 | MPD | Audippの小規模なTCP protocol client。操作/idle監視を別接続 | 接続応答・commandsで機能判定、status/songid/playlist versionを照合。失われた操作ACKを成功と推測しない。外部queue変更は再取得し、停止・再試行後も同じ所有者規則を通す |
 | UPnP AV | 汎用フレームワークは追加せず、SSDP＋device/SCPD取得＋SOAPを実装。ContentDirectory:1/AVTransport:1/RenderingControl:1を基準 | Browse、SetAVTransportURI/Play/Pause/Stop/Seek/GetTransportInfo/GetPositionInfo、取得できる音量操作だけ。advertiseされたservice/actionを検査。SetNextAVTransportURIの有無とgapless保証を同一視しない |
 | OpenHome | Playlist:1/Volume:1等の公開service定義へ対応するSOAP client | Insert/Delete/ReadList/IdArray/IdArrayChanged/TransportState等を定義と照合。返却IDとtokenを記録し、外部変更で再取得。MPD/UPnP AVとqueueの所有権・IDを混同しない |
 | タグ/画像 | TagLib 2.1.1のC++ APIをJNIで使う。AndroidのURIは一時ファイルまたはseek可能なIOStreamへ明示変換 | アプリ内overrideを正本に保持し、原曲書込みは本人の明示操作。未知フィールドを無断削除しない。書換え後に再読込・音声packet/形式/長さを検証 |
 
 SMBJは公式buildのJava release=8を確認したが、Androidでの暗号provider・推移依存・API23動作は未検証。導入時に実機SMB2/3の認証・署名・seekを試す。UPnP/OpenHomeを自前実装する判断は「相互運用確認不要」という意味ではなく、BubbleUPnP/upmpdcli/MPDとの契約試験を必須にする。
+
+当初の Android 標準 HTTP クライアントから OkHttp へ変更する判断は、PR #184 の利用者承認に基づく。PROPFIND と本文読込の取消に必要な差分を [ADR-009](08_design_decisions.md#adr-009webdav-の-http-クライアント) に記録する。WebDAV の接続条件と XML 上限は [WebDAV ライブラリ契約](../contracts/webdav-v1.md) に従う。
 
 SSDP探索は利用者が選んだネットワークで10秒に制限し、常時multicastしない。LOCATION/制御URLを検査し、外部ホストや他ネットワークへの移動を自動で追わない。XMLは外部entity/DTDを無効、単一応答2 MiB/深さ32/一覧1000件を上限とし、続きがある場合はページを取得する。初期状態監視は接続中だけ2秒間隔のpollとし、操作直後は応答と状態を照合する。GENA callbackや端末音源配信用のHTTP listenerを暗黙に追加しない。発見できない場合は手動host指定を用意する。Android版ごとのLAN/multicast権限拒否は理由表示と再要求にする。
 

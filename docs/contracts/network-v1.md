@@ -4,7 +4,7 @@
 
 ## Libraryと再生所有者
 
-`NetworkLibraryAdapter`は`listDirectory` / `listMedia` / `resolveStream`を提供する。`NetworkLibraryClient`がページ上限・ID・解決応答を検査し、`NetworkLibrarySourceAdapter`から既存`SourceResolver`へ接続する。登録キーは`NETWORK + DEVICE`、`NETWORK + RENDERER`。アプリへの製品アダプターの登録は接続先Issueで行う。
+`NetworkLibraryAdapter`は`listDirectory` / `listMedia` / `resolveStream`を提供する。`NetworkLibraryClient`がページ上限・ID・解決応答を検査し、`NetworkLibrarySourceAdapter`から既存`SourceResolver`へ接続する。登録キーは`NETWORK + DEVICE`、`NETWORK + RENDERER`。アプリへの製品アダプターの登録は接続先Issueで行う。 WebDAVの具体アダプターは[WebDAV ライブラリ v1](webdav-v1.md)を参照。
 
 同じNASの`TrackVariant`でも、選択した端末出力なら`LOCAL_DIRECT`、選択した外部機器なら`NETWORK_REMOTE`を解決する。NETWORKのSource自体からremote所有者を推定しない。Libraryの切断は音源IOの失敗であり、端末の出力機器を切り替える指示にしない。別音源・別Rendererへのfallbackを行わない。
 

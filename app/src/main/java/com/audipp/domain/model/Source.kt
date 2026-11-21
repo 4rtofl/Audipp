@@ -23,9 +23,10 @@ data class SourceRef(
         require(providerKey == null || providerKey.isNotBlank())
         require(providerItemId == null || providerItemId.isNotBlank())
         require(localDocumentUri == null || localDocumentUri.isNotBlank())
-        require((providerKey == null) == (providerItemId == null))
         require(kind != SourceKind.PROVIDER || providerKey != null)
         require(kind == SourceKind.PROVIDER || providerKey == null)
+        require(kind != SourceKind.PROVIDER || providerItemId != null)
+        require(kind != SourceKind.LOCAL || providerItemId == null)
         require(kind == SourceKind.LOCAL || localDocumentUri == null)
     }
 }
