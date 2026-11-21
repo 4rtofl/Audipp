@@ -31,9 +31,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 internal interface LocalPlaybackEngine {
-    fun prepare(entryId: QueueEntryId, document: SourceDescriptor.LocalDocument)
+    fun prepare(entryId: QueueEntryId, transitionId: TransitionId, document: SourceDescriptor.LocalDocument)
     fun reset()
 }
+
+internal enum class LocalEnginePhase { BUFFERING, READY, ENDED }
 
 // The service's application looper serializes commands and engine events, including Stop during IO.
 internal class LocalPlayback(
@@ -74,7 +76,7 @@ internal class LocalPlayback(
                 // The grant may have been revoked after resolution; the engine also opens under OS checks.
                 publish(snapshot.value.copy(phase = PlaybackPhase.BUFFERING,
                     effectiveSource = result.plan.source, executionPlan = result.plan))
-                engine.prepare(entryId, descriptor)
+                engine.prepare(entryId, attempt.transitionId, descriptor)
                 return null
             }
             return fail(playbackError(ErrorDomain.AUDIO_ROUTE, "ROUTE_CHANGED_DURING_RESOLUTION",
@@ -115,21 +117,40 @@ internal class LocalPlayback(
         if (previous.executionPlan != null) publish(previous.copy(executionPlan = null))
     }
 
-    fun onEngineState(phase: PlaybackPhase, positionMs: Long?, durationMs: Long?, canSeek: Boolean) {
+    // A route change retires the plan while the prepared media item keeps playing under this transition.
+    fun isCurrentTransition(transitionId: TransitionId?): Boolean =
+        transitionId == context.transitionId && snapshot.value.effectiveSource != null
+
+    fun onEngineState(
+        transitionId: TransitionId,
+        enginePhase: LocalEnginePhase,
+        playRequested: Boolean,
+        isPlaying: Boolean,
+        positionMs: Long?,
+        durationMs: Long?,
+        canSeek: Boolean,
+    ) {
+        if (!isCurrentTransition(transitionId)) return
         val previous = snapshot.value
-        if (previous.effectiveSource == null) return
         val plan = previous.executionPlan
-        if (previous.phase == PlaybackPhase.ERROR) return
+        val phase = when (enginePhase) {
+            LocalEnginePhase.BUFFERING -> if (playRequested) PlaybackPhase.BUFFERING else PlaybackPhase.PAUSED
+            LocalEnginePhase.READY -> if (isPlaying) PlaybackPhase.PLAYING else PlaybackPhase.PAUSED
+            LocalEnginePhase.ENDED -> PlaybackPhase.ADVANCING
+        }
         val duration = durationMs?.takeIf { it >= 0 }
         val position = positionMs?.takeIf { it >= 0 }?.let {
             if (duration == null) it else it.coerceAtMost(duration)
         }
         publish(previous.copy(phase = phase, positionMs = position, durationMs = duration,
-            executionPlan = plan?.copy(capabilities = plan.capabilities.copy(canSeek = canSeek))))
+            executionPlan = plan?.copy(capabilities = plan.capabilities.copy(canSeek = canSeek && duration != null))))
     }
 
     private fun publish(value: PlaybackSnapshot) {
-        mutableSnapshot.value = value.copy(revision = snapshot.value.revision + 1)
+        val previous = snapshot.value
+        if (value.copy(revision = previous.revision) != previous) {
+            mutableSnapshot.value = value.copy(revision = previous.revision + 1)
+        }
     }
 }
 
