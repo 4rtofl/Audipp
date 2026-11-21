@@ -189,5 +189,136 @@
       "docs/evidence/issue-43/local.txt"
     ],
     "limitations": "実バイト列・出力経路・DACのロックとアナログ過渡を観測してから機器別の対応を判定する。"
+  },
+  {
+    "case_id": "E11-01-host-fixture-2026-11-20",
+    "requirement_ids": [
+      "NFR-TEST-01"
+    ],
+    "test_ids": [
+      "TEST-GOV-01"
+    ],
+    "commit": "f73e7ea95d59b7e73890ec4cdf61cdacda6b7972",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "既存の音声ホスト試験22件、既定fixtureのmanifest一致、未実行の測定証跡3件のschema検査が成功した。",
+    "evidence": [
+      "docs/evidence/issue-26/host-checks-pr-190.txt",
+      "docs/evidence/issue-26/README.md",
+      "tests/audio/manifest.json",
+      "scripts/audio/test_audio.py"
+    ],
+    "limitations": "試料の再生成、独立比較器と証跡形式のホスト検査に限る。"
+  },
+  {
+    "case_id": "E11-01-device-inventory-2026-11-20",
+    "requirement_ids": [
+      "FR-PLT-01",
+      "NFR-COMP-01",
+      "FR-DEV-02"
+    ],
+    "test_ids": [
+      "TEST-COMP-01",
+      "TEST-DEVICE-01"
+    ],
+    "commit": "55bdc2cbe37954ac456e1fa1e6e60accb7fe24e1",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "S25、M21、追加S20の対象ADBシリアルと操作承認が未確保。",
+    "evidence": [
+      "docs/evidence/issue-26/README.md"
+    ],
+    "limitations": "API 23/36のinstrumented試験、実OS・ABI・firmware、DAC接続と個体の能力は未確認。"
+  },
+  {
+    "case_id": "E11-01-usb-digital-2026-11-20",
+    "requirement_ids": [
+      "NFR-AUD-02",
+      "FR-AUD-04",
+      "FR-AUD-05",
+      "NFR-COMP-01"
+    ],
+    "test_ids": [
+      "TEST-AUD-02",
+      "TEST-COMP-01"
+    ],
+    "commit": "55bdc2cbe37954ac456e1fa1e6e60accb7fe24e1",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "UNESTABLISHED",
+    "permission": "UNKNOWN",
+    "reason": "USB捕捉系、対象実機・DACの成立組合せ、操作承認と既知DSD列が未確保。",
+    "evidence": [
+      "docs/evidence/issue-26/README.md",
+      "docs/evidence/issue-26/usb-digital.json"
+    ],
+    "limitations": "QLT-02/09の外部デジタル列、Native/DoP、384 kHzと安全切替は未確認。"
+  },
+  {
+    "case_id": "E11-01-dsd-analog-2026-11-20",
+    "requirement_ids": [
+      "NFR-AUD-02",
+      "FR-AUD-05"
+    ],
+    "test_ids": [
+      "TEST-AUD-02",
+      "TEST-FORMAT-02"
+    ],
+    "commit": "55bdc2cbe37954ac456e1fa1e6e60accb7fe24e1",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "UNESTABLISHED",
+    "permission": "UNKNOWN",
+    "reason": "広帯域測定系、負荷、操作承認とDSD試料が未確保。",
+    "evidence": [
+      "docs/evidence/issue-26/README.md",
+      "docs/evidence/issue-26/dsd-analog.json"
+    ],
+    "limitations": "QLT-08/09の帯域内・帯域外、DACロック・過渡および負荷別安全性は未測定。"
+  },
+  {
+    "case_id": "E11-01-multichannel-2026-11-20",
+    "requirement_ids": [
+      "FR-AUD-05",
+      "NFR-COMP-01"
+    ],
+    "test_ids": [
+      "TEST-FORMAT-02",
+      "TEST-COMP-01"
+    ],
+    "commit": "55bdc2cbe37954ac456e1fa1e6e60accb7fe24e1",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "UNESTABLISHED",
+    "permission": "UNKNOWN",
+    "reason": "6ch出力経路、同時収録系と操作承認が未確保。",
+    "evidence": [
+      "docs/evidence/issue-26/README.md",
+      "docs/evidence/issue-26/multichannel.json"
+    ],
+    "limitations": "物理6ch配置・漏れおよび非対応時のステレオ復帰は未確認。"
+  },
+  {
+    "case_id": "E11-01-research-dac-constraints-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-11"
+    ],
+    "test_ids": [
+      "TEST-RESEARCH-01"
+    ],
+    "commit": "55bdc2cbe37954ac456e1fa1e6e60accb7fe24e1",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "UNESTABLISHED",
+    "permission": "UNKNOWN",
+    "reason": "DAC制約を評価できる実機と捕捉経路が未確保。",
+    "evidence": [
+      "docs/evidence/issue-26/README.md"
+    ],
+    "limitations": "DAC制約の準備部分。実サービスの操作、用途別許諾、移植可能性、依存ライセンスの確認は未実施。"
   }
 ]
