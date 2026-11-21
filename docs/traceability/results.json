@@ -612,12 +612,12 @@
       "TEST-PLY-01",
       "TEST-QUEUE-01"
     ],
-    "commit": "335b0a499a6c2084cdc332ece6b61688d0aeaf85",
+    "commit": "6e90108a268822aa9b03668429e1d20034612ab8",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
     "permission": "NOT_REQUIRED",
-    "reason": "RoomとSourceResolverを接続した8件で有限探索、設定保存、並べ替えと取消による候補破棄を確認した。実装ブランチではユニットテスト全200件、#37の4892af0を重ねた構成では再生ServiceとDBを含む対象46件が成功した。",
+    "reason": "RoomとSourceResolverを接続した9件で、全曲不可でも期限内に一巡で終了すること、設定保存、並べ替えと取消による候補破棄を確認した。音源解決後のrevision照会中に遷移IDを変えると、旧候補の確認要求を返さずCancelledで終了した。",
     "evidence": [
       "app/src/test/java/com/audipp/playback/QueueOrchestratorTest.kt",
       "docs/contracts/queue-orchestrator.md"
