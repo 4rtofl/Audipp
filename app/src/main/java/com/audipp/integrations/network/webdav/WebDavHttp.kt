@@ -12,6 +12,7 @@ import java.net.UnknownHostException
 import java.net.UnknownServiceException
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
+import java.security.cert.CertificateException
 import java.text.ParsePosition
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -125,8 +126,6 @@ internal class WebDavHttp(
                 NetworkResult.Failure(failure.reason)
             } catch (_: UnknownServiceException) {
                 NetworkResult.Failure(NetworkFailure.UNSUPPORTED)
-            } catch (_: SSLHandshakeException) {
-                NetworkResult.Failure(NetworkFailure.UNSUPPORTED)
             } catch (_: SSLPeerUnverifiedException) {
                 NetworkResult.Failure(NetworkFailure.UNSUPPORTED)
             } catch (_: UnknownHostException) {
@@ -137,7 +136,13 @@ internal class WebDavHttp(
                 NetworkResult.Failure(NetworkFailure.TIMEOUT)
             } catch (failure: IOException) {
                 checkAccess()
-                throw failure
+                if (failure is SSLHandshakeException &&
+                    generateSequence(failure.cause) { it.cause }.any { it is CertificateException }
+                ) {
+                    NetworkResult.Failure(NetworkFailure.UNSUPPORTED)
+                } else {
+                    throw failure
+                }
             }
             checkAccess()
             if (!retryThrottled) return result

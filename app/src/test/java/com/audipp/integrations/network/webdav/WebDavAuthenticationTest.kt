@@ -6,7 +6,9 @@ import com.audipp.data.secrets.SecretState
 import com.audipp.data.secrets.SecretStore
 import com.audipp.integrations.network.DirectoryRequest
 import com.audipp.integrations.network.NetworkCredentials
+import com.audipp.integrations.network.NetworkEndpoint
 import com.audipp.integrations.network.NetworkFailure
+import com.audipp.integrations.network.NetworkProtocol
 import com.audipp.playback.source.ResolutionFailure
 import com.audipp.playback.source.SourceResolution
 import java.io.File
@@ -15,6 +17,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLPeerUnverifiedException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
@@ -63,6 +66,18 @@ class WebDavAuthenticationTest {
             }
             assertTrue(fixture.requests.isEmpty())
         }
+    }
+
+    @Test fun retriesHandshakeFailureWithoutCertificateCause() = runBlocking {
+        val attempts = AtomicInteger()
+        val builder = OkHttpClient.Builder().addInterceptor {
+            attempts.incrementAndGet()
+            throw SSLHandshakeException("fixture")
+        }
+        val endpoint = NetworkEndpoint(NetworkProtocol.WEBDAV, "https://fixture.invalid/music/")
+        val library = WebDavLibrary(endpoint, { true }, callPolicy(attempts = 3), null, null, builder)
+        assertEquals(NetworkFailure.IO, library.client.listMedia(DirectoryRequest(library.rootDirectoryId)).reason())
+        assertEquals(3, attempts.get())
     }
 
     @Test fun server401AndLocalRevocationRequireFreshCredentialsAndReselection() = runBlocking {
