@@ -75,7 +75,7 @@ class SyncPushTest {
         application { ownershipApi(database, verifier) }
         val device = client.register()
         client.enableSync(device)
-        for (name in listOf("Basic EQ", "Basic 2026-11-21")) {
+        for (name in listOf("Basic EQ", "Basic 2026-11-21", "Basic 2026-11-21-remaster")) {
             val preset = syncEvent("audio_preset", UUID.randomUUID().toString(), """{"name":"$name"}""")
             assertEquals(1, client.push(device, preset).revisions().size)
         }
@@ -83,7 +83,7 @@ class SyncPushTest {
             val playlist = syncEvent("playlist", UUID.randomUUID().toString(), """{"name":"$name","tracks":[]}""")
             assertEquals(1, client.push(device, playlist).revisions().size)
         }
-        assertEquals(5L, dataCount())
+        assertEquals(6L, dataCount())
     }
 
     @Test fun `malformed input or disallowed source anywhere in a batch stores nothing`() = testApplication {
@@ -105,8 +105,6 @@ class SyncPushTest {
             profile(name = "data:;base64,Zml4dHVyZQ=="),
             profile(name = "data:;charset=UTF-8;base64,Zml4dHVyZQ=="),
             profile(name = "data:,fixture"),
-            profile(name = "Bearer Zml4dHVyZS10b2tl"),
-            profile(name = "Basic dXNlcjpmaXh0dXJlLXBhc3M="),
             profile(name = "\\uD800"),
             syncEvent("profile", UUID.randomUUID().toString(), """{"name":"DAC","token":"fixture-secret"}"""),
             history(UUID.randomUUID()).replace("2026-11-20T07:00:00Z", "invalidZ"),
@@ -213,7 +211,7 @@ class SyncPushTest {
         assertEquals(1L, dataCount())
     }
 
-    @Test fun `history deletion suppresses late and re-IDed events without reapplying old receipts`() = testApplication {
+    @Test fun `history deletion erases payloads and hashes and rejects deleted receipts`() = testApplication {
         application { ownershipApi(database, verifier) }
         val device = client.register()
         client.enableSync(device, history = true)
@@ -221,28 +219,32 @@ class SyncPushTest {
         val userId = UUID.fromString(owner.jsonObject.getValue("user_id").jsonPrimitive.content)
         val originalId = UUID.randomUUID()
         val original = history(originalId)
-        val first = client.push(device, original).revisions()
+        assertEquals(1, client.push(device, original).revisions().size)
         val tombstoned = UUID.randomUUID()
         database.tombstoneHistory(userId, tombstoned)
         client.push(device, history(tombstoned)).assertConflict("history_deleted")
 
         assertEquals(1L, database.advanceHistoryEpoch(userId, 0))
         assertEquals(1L, database.advanceHistoryEpoch(userId, 0))
-        assertEquals(first, client.push(device, original).revisions())
-        assertEquals(0L, scalar("SELECT count(*) FROM sync_events WHERE entity_type = 'history' AND payload IS NOT NULL"))
+        assertEquals(0L, scalar("SELECT count(*) FROM sync_events WHERE entity_type = 'history' AND (payload IS NOT NULL OR request_sha256 IS NOT NULL)"))
+        client.push(device, original).assertConflict("history_deleted")
+        client.push(device, original.replace("\"history_epoch\":0", "\"history_epoch\":1"))
+            .assertConflict("history_deleted")
         client.push(device, profile(), history(UUID.randomUUID())).assertConflict("history_epoch_conflict")
         client.push(device, history(originalId)).assertConflict("history_epoch_conflict")
         client.push(device, history(originalId, epoch = 1)).assertConflict("revision_conflict")
         client.push(device, history(tombstoned, epoch = 1)).assertConflict("history_deleted")
         val currentId = UUID.randomUUID()
         val current = history(currentId, epoch = 1)
-        val receipt = client.push(device, current).revisions()
+        assertEquals(1, client.push(device, current).revisions().size)
         assertEquals(2L, dataCount())
         database.tombstoneHistory(userId, currentId)
         database.tombstoneHistory(userId, currentId)
-        assertEquals(receipt, client.push(device, current).revisions())
+        client.push(device, current).assertConflict("history_deleted")
+        client.push(device, current.replace("\"listened_ms\":2000", "\"listened_ms\":3000"))
+            .assertConflict("history_deleted")
         client.push(device, history(currentId, epoch = 1)).assertConflict("history_deleted")
-        assertEquals(0L, scalar("SELECT count(*) FROM sync_events WHERE entity_type = 'history' AND payload IS NOT NULL"))
+        assertEquals(0L, scalar("SELECT count(*) FROM sync_events WHERE entity_type = 'history' AND (payload IS NOT NULL OR request_sha256 IS NOT NULL)"))
         assertEquals(2L, scalar("SELECT count(*) FROM history_tombstones"))
     }
 

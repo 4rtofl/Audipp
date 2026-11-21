@@ -68,7 +68,8 @@ private fun Connection.replayedRevision(userId: UUID, event: SyncEvent): Long? =
     it.setObject(2, event.id)
     it.executeQuery().use { rows ->
         if (!rows.next()) return null
-        if (!rows.getBytes(1).contentEquals(event.requestHash)) throw SyncConflict("event_id_conflict")
+        val storedHash = rows.getBytes(1) ?: throw SyncConflict("history_deleted")
+        if (!storedHash.contentEquals(event.requestHash)) throw SyncConflict("event_id_conflict")
         rows.getLong(2)
     }
 }
@@ -117,7 +118,7 @@ internal suspend fun Database.advanceHistoryEpoch(userId: UUID, expectedEpoch: L
         it.executeUpdate()
     }
     connection.prepareStatement("""
-        UPDATE sync_events SET payload = NULL
+        UPDATE sync_events SET payload = NULL, request_sha256 = NULL
         WHERE user_id = ? AND entity_type = 'history' AND history_epoch <= ? AND payload IS NOT NULL
     """.trimIndent()).use {
         it.setObject(1, userId)
@@ -138,7 +139,7 @@ internal suspend fun Database.tombstoneHistory(userId: UUID, entityId: UUID) = t
         it.executeUpdate()
     }
     connection.prepareStatement("""
-        UPDATE sync_events SET payload = NULL
+        UPDATE sync_events SET payload = NULL, request_sha256 = NULL
         WHERE user_id = ? AND entity_type = 'history' AND entity_id = ? AND payload IS NOT NULL
     """.trimIndent()).use {
         it.setObject(1, userId)

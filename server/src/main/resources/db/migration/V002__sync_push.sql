@@ -11,7 +11,8 @@ CREATE TABLE sync_events (
     history_epoch bigint NOT NULL CHECK (history_epoch >= 0),
     server_revision bigint NOT NULL UNIQUE DEFAULT nextval('server_revision') CHECK (server_revision > 0),
     payload jsonb,
-    request_sha256 bytea NOT NULL CHECK (octet_length(request_sha256) = 32),
+    request_sha256 bytea CHECK (octet_length(request_sha256) = 32),
+    CHECK ((request_sha256 IS NULL) = (entity_type = 'history' AND payload IS NULL)),
     PRIMARY KEY (user_id, event_id),
     FOREIGN KEY (user_id, device_id) REFERENCES devices(user_id, device_id)
 );

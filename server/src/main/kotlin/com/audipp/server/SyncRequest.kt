@@ -84,7 +84,6 @@ private fun parseSyncEvent(node: JsonNode, deviceId: UUID): SyncEvent {
         }
         else -> throw IllegalArgumentException()
     }
-    // Persist the digest separately so a deleted history receipt can still be replayed.
     val digest = MessageDigest.getInstance("SHA-256")
     digest.update(deviceId.toString().toByteArray())
     val hash = digest.digest(syncJson.writeValueAsBytes(node))
@@ -150,15 +149,14 @@ private fun validateTrack(track: JsonNode): Boolean {
 
 private const val dataUrlToken = """(?:[a-z0-9_.!~*'&+$-]|%[0-9a-f]{2})++"""
 
-private val externalReference = Regex(
+private val uriReference = Regex(
     """(?i)(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://|\b(?:content|file):/""" +
-        """|\bdata:(?:$dataUrlToken/$dataUrlToken)?(?:;$dataUrlToken=$dataUrlToken)*+(?:;base64)?,""" +
-        """|\A *(?:bearer|basic) +(?=[a-z0-9._~+/=-]{16})(?=[a-z]*[0-9._~+/=-])[a-z0-9._~+/-]+=* *\z""",
+        """|\bdata:(?:$dataUrlToken/$dataUrlToken)?(?:;$dataUrlToken=$dataUrlToken)*+(?:;base64)?,""",
 )
 
 private fun validateName(node: JsonNode) {
     val name = node.string()
-    require(name.isNotBlank() && name.none { it.isISOControl() } && !externalReference.containsMatchIn(name))
+    require(name.isNotBlank() && name.none { it.isISOControl() } && !uriReference.containsMatchIn(name))
     name.encodeToByteArray(throwOnInvalidSequence = true)
 }
 
