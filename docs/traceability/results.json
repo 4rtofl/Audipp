@@ -85,5 +85,21 @@
       "docs/evidence/issue-20/kotlin-local.txt"
     ],
     "limitations": "加入契約は確認済みで、アプリ資格とは別に保持する。実サービス試験の前提不足をQobuz必須要件の削除やKotlin実装全体の停止理由にはしない。資格取得後に実応答・報告受理・失効を検証し、Playerへ接続する。"
+  },
+  {
+    "case_id": "E02-04-host-queue-orchestrator",
+    "requirement_ids": ["FR-PLY-01", "FR-PLY-04", "FR-PLY-07"],
+    "test_ids": ["TEST-PLY-01", "TEST-QUEUE-01"],
+    "commit": "335b0a499a6c2084cdc332ece6b61688d0aeaf85",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "RoomとSourceResolverを接続した8件で有限探索、設定保存、並べ替えと取消による候補破棄を確認した。実装ブランチではユニットテスト全200件、#37の4892af0を重ねた構成では再生ServiceとDBを含む対象46件が成功した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/QueueOrchestratorTest.kt",
+      "docs/contracts/queue-orchestrator.md"
+    ],
+    "limitations": "#60の候補探索とローカルの互換性を確認した。再生主体の停止確認・実際の切替は#61、Serviceの連続再生との結合と実機の確認は後続で扱う。"
   }
 ]
