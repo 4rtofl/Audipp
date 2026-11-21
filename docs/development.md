@@ -63,7 +63,7 @@ Debug APKは `app/build/outputs/apk/debug/app-debug.apk`、テスト結果は `a
 AndroidのCIで実行するコマンドは次のとおりです。
 
 ```sh
-./gradlew --no-daemon --console=plain :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
+./gradlew --no-daemon --console=plain :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
 ```
 
 Gradle設定・カタログ・Wrapper・lockfileを変更した場合だけ、CIでも `--write-locks` を追加し、再生成したlockfileとコミット済みの内容が一致することを検査します。依存変更時は同じコマンドに `--write-locks` を付けてローカル検証し、生成差分をコミットしてください。解決結果が変わらなければlockfileの差分は不要です。CIの通常実行でlockfileを更新することはありません。
@@ -104,6 +104,8 @@ Issue #17の生成音源・Float64独立比較・版付き測定結果の使い�
 ## PCMのnative処理
 
 Issue #41のPCMバッファ契約、世代の取消、ABIと検証の追跡は [PCM処理 v1](contracts/native-pcm-v1.md) を参照してください。
+
+CIではJNI試験のAPKをビルドし、試験の実行は起動済みのエミュレーターをADBシリアルで指定して手動で行います（`ANDROID_SERIAL=SERIAL ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.audipp.audio.pcm.NativePcmProcessorTest` の `SERIAL` を対象のシリアルに置き換えます）。
 
 ## 小規模設定と同意の保存
 

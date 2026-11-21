@@ -41,14 +41,14 @@ class NativePcmProcessorTest {
                 position(1)
                 samples.forEach { putInt(it) }
                 position(1)
-            }
+            }.asReadOnlyBuffer()
             val output = direct(2 + samples.size * 4).apply {
                 put(0, 0x55)
                 position(2)
             }
 
             assertEquals(PcmBlockResult.PROCESSED, pcm.process(pcm.generation, 3, 42,
-                input.asReadOnlyBuffer(), output))
+                input, output))
             assertEquals(1, input.position())
             assertEquals(2, output.position())
             assertEquals(0x55.toByte(), output.get(0))
