@@ -23,6 +23,8 @@ import com.audipp.domain.model.*
 import com.google.common.util.concurrent.ListenableFuture
 import java.io.File
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -178,6 +180,66 @@ class PlaybackServiceTest {
         assertEquals(0L, cancelled.count)
         assertEquals(PlaybackPhase.IDLE, PlaybackConnection.snapshot(controller.sessionExtras)!!.phase)
         assertEquals(0, session.player.mediaItemCount)
+    }
+
+    @Test
+    fun seekWaitsForPlaybackReadyAfterTheMaskedPosition() {
+        val sampleRate = 8_000
+        val pcmBytes = sampleRate * 2 * 4
+        val wave = ByteBuffer.allocate(44 + pcmBytes).order(ByteOrder.LITTLE_ENDIAN)
+            .put("RIFF".toByteArray()).putInt(36 + pcmBytes).put("WAVEfmt ".toByteArray())
+            .putInt(16).putShort(1).putShort(1).putInt(sampleRate).putInt(sampleRate * 2)
+            .putShort(2).putShort(16).put("data".toByteArray()).putInt(pcmBytes)
+        val file = File(service.cacheDir, "seek.wav").apply { writeBytes(wave.array()) }
+        registerProvider("seek", object : DeniedProvider() {
+            override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor =
+                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        })
+        val session = service.onGetSession(ownApp)!!
+        val controller = connect(session.token)
+        val audio = variant().copy(source = variant().source.copy(localDocumentUri = "content://seek/song.wav"))
+        assertEquals(SessionResult.RESULT_SUCCESS,
+            await(PlaybackConnection.playLocal(controller, QueueEntryId("entry"), audio)).resultCode)
+        session.player.pause()
+
+        val player = ReflectionHelpers.getField<ExoPlayer>(service, "player")
+        val playbackLooper = shadowOf(player.playbackLooper)
+        val mainLooper = shadowOf(Looper.getMainLooper())
+        fun awaitPausedPosition(positionMs: Long? = null) {
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+            do {
+                playbackLooper.idleFor(20, TimeUnit.MILLISECONDS)
+                mainLooper.idleFor(20, TimeUnit.MILLISECONDS)
+                val snapshot = PlaybackConnection.snapshot(controller.sessionExtras)!!
+                if (snapshot.phase == PlaybackPhase.PAUSED &&
+                    (positionMs == null || snapshot.positionMs == positionMs)) return
+                Thread.sleep(5)
+            } while (System.nanoTime() < deadline)
+            fail("Expected a paused position of $positionMs, got ${PlaybackConnection.snapshot(controller.sessionExtras)}")
+        }
+        awaitPausedPosition()
+        assertTrue(controller.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM))
+
+        val targetMs = 3_000L
+        playbackLooper.pause()
+        try {
+            controller.seekTo(targetMs)
+            mainLooper.idle()
+            assertEquals(Player.STATE_BUFFERING, player.playbackState)
+            assertEquals(targetMs, player.currentPosition)
+            val snapshot = PlaybackConnection.snapshot(controller.sessionExtras)!!
+            assertEquals(PlaybackPhase.BUFFERING, snapshot.phase)
+            assertNull(snapshot.positionMs)
+            assertEquals(PlaybackSchedule.Unknown, PlaybackConnection.schedule(controller.sessionExtras))
+        } finally {
+            playbackLooper.unPause()
+        }
+
+        awaitPausedPosition(targetMs)
+        assertEquals(
+            PlaybackSchedule.RemainingDurationOnly(RemainingPlaybackTime(1_000, emptyMap(), 1_000)),
+            PlaybackConnection.schedule(controller.sessionExtras),
+        )
     }
 
     @Test

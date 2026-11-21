@@ -124,8 +124,7 @@ class PlaybackService : MediaLibraryService() {
                 Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
             .build()
         player.addListener(object : Player.Listener {
-            override fun onEvents(player: Player, events: Player.Events) =
-                updateEngineSnapshot(seekPositionObserved = events.contains(Player.EVENT_POSITION_DISCONTINUITY))
+            override fun onEvents(player: Player, events: Player.Events) = updateEngineSnapshot()
 
             override fun onPlayerError(error: PlaybackException) {
                 preparation?.cancel()
@@ -161,12 +160,15 @@ class PlaybackService : MediaLibraryService() {
         super.onDestroy()
     }
 
-    private fun updateEngineSnapshot(seekPositionObserved: Boolean = false) {
-        val phase = when (player.playbackState) {
+    private fun updateEngineSnapshot() {
+        val state = player.playbackState
+        val phase = when (state) {
             Player.STATE_BUFFERING -> PlaybackPhase.BUFFERING
             Player.STATE_READY -> if (player.isPlaying) PlaybackPhase.PLAYING else PlaybackPhase.PAUSED
             else -> PlaybackPhase.IDLE
         }
+        // ExoPlayer reports the requested position before applying the seek, with a masked BUFFERING state.
+        val seekPositionObserved = state == Player.STATE_READY || state == Player.STATE_ENDED
         playback.onEngineState(phase, player.currentPosition.takeUnless { it == C.TIME_UNSET },
             player.duration.takeUnless { it == C.TIME_UNSET }, player.isCurrentMediaItemSeekable,
             player.playbackParameters.speed.toDouble(), System.currentTimeMillis(), seekPositionObserved)
