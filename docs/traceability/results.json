@@ -88,8 +88,12 @@
   },
   {
     "case_id": "E02-02-host-state-and-seek-2026-11-20",
-    "requirement_ids": ["FR-PLY-01"],
-    "test_ids": ["TEST-PLY-01"],
+    "requirement_ids": [
+      "FR-PLY-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-01"
+    ],
     "commit": "3de907841349d113842c26801bb66ead38590cb0",
     "stage": "CURRENT",
     "outcome": "PASS",
@@ -104,21 +108,33 @@
   },
   {
     "case_id": "E02-02-host-interruptions-2026-11-20",
-    "requirement_ids": ["FR-PLY-03", "NFR-REL-01"],
-    "test_ids": ["TEST-PLY-02"],
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
     "commit": "3de907841349d113842c26801bb66ead38590cb0",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
     "permission": "NOT_REQUIRED",
     "reason": "Robolectric API23/35で一時フォーカス喪失、becoming noisy、USB出力取り外し通知による一時停止を確認した。API35の通話モードと、フォーカス復帰・通話終了・再接続の通知後も明示的な再生操作を待つことを確認した。",
-    "evidence": ["app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"],
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
     "limitations": "ホスト上でOSの通知を再現したケースに限定。端末のルーティングや、切断から一時停止までの実際の音声出力は実機確認が必要。"
   },
   {
     "case_id": "E02-02-device-interruptions-2026-11-20",
-    "requirement_ids": ["FR-PLY-03", "NFR-REL-01"],
-    "test_ids": ["TEST-PLY-02"],
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
     "commit": "3de907841349d113842c26801bb66ead38590cb0",
     "stage": "CURRENT",
     "outcome": "NOT_RUN",
@@ -130,8 +146,12 @@
   },
   {
     "case_id": "E02-05-host-playback-owner",
-    "requirement_ids": ["FR-PLY-07"],
-    "test_ids": ["TEST-QUEUE-01"],
+    "requirement_ids": [
+      "FR-PLY-07"
+    ],
+    "test_ids": [
+      "TEST-QUEUE-01"
+    ],
     "commit": "748629aa9accbca2069acdae0ae4b41cfd3254d4",
     "stage": "CURRENT",
     "outcome": "PASS",
@@ -143,5 +163,25 @@
       "docs/contracts/playback-owner.md"
     ],
     "limitations": "#61の停止確認と状態・効果の契約をホストで確認した。実Serviceの効果接続と連続再生、外部サービスや実機の再生状態は未確認。"
+  },
+  {
+    "case_id": "E02-05-host-playback-owner-review-200",
+    "requirement_ids": [
+      "FR-PLY-07"
+    ],
+    "test_ids": [
+      "TEST-QUEUE-01"
+    ],
+    "commit": "e5a35986ad706df77bac18afd942c15085c4f936",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Coordinatorのホスト試験16件で、期限切れ後の開始・引き渡し抑止、旧コマンド終端と停止観測の待機、旧開始の終端通知の欠落からの復旧、キュー読み取り中の状態変更、読み取り失敗と取消を確認した。全ユニットテスト215件が成功した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackOwnerCoordinatorTest.kt",
+      "docs/contracts/playback-owner.md"
+    ],
+    "limitations": "#61の切替契約をホストのFakeで確認した。実Serviceからの効果接続、実SDKでのコマンド終端・失効の保証、外部サービスと実機の再生状態は未確認。"
   }
 ]
