@@ -86,8 +86,10 @@ class QueueOrchestrator(
             } else {
                 resolver.resolve(ResolutionRequest(variant, context))
             }
+            val currentRevision = queues.revision(queueId)
             currentCoroutineContext().ensureActive()
-            if (queues.revision(queueId) != revision) return QueueAdvanceResult.QueueChanged
+            if (currentRevision != revision) return QueueAdvanceResult.QueueChanged
+            if (resolver.contextFailure(context) != null) return QueueAdvanceResult.Cancelled
             when (result) {
                 is SourceResolution.Resolved ->
                     return QueueAdvanceResult.Ready(queueId, revision, entry, result, unavailable.toList())

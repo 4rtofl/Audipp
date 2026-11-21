@@ -26,6 +26,7 @@ import com.audipp.playback.source.SourceAdapter
 import com.audipp.playback.source.SourceDescriptor
 import com.audipp.playback.source.SourceResolver
 import com.audipp.playback.source.TargetKind
+import java.util.concurrent.Executor
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
@@ -59,12 +60,13 @@ class QueueOrchestratorTest {
     private lateinit var db: LibraryDatabase
     private val queues get() = db.queueDao()
     private var currentContext = context
+    private var onQuery: (String) -> Unit = {}
 
     @Before
     fun setUp() {
         db = Room.inMemoryDatabaseBuilder(
             RuntimeEnvironment.getApplication(), LibraryDatabase::class.java,
-        ).build()
+        ).setQueryCallback({ sql, _ -> onQuery(sql) }, Executor { it.run() }).build()
     }
 
     @After
@@ -75,7 +77,7 @@ class QueueOrchestratorTest {
         seedQueue(listOf(Availability.MISSING, Availability.AUTH_REQUIRED, Availability.MISSING))
         queues.setPlaybackOrder(queueId, 1, false, QueueRepeatMode.ALL, 3)
 
-        val result = advance(orchestrator(), a.entryId)
+        val result = withTimeout(5_000) { advance(orchestrator(), a.entryId) }
 
         assertEquals(
             QueueAdvanceResult.NoPlayableItem(
@@ -139,6 +141,22 @@ class QueueOrchestratorTest {
         }
 
         assertEquals(QueueAdvanceResult.Cancelled, advance(orchestrator(adapter = adapter), a.entryId))
+    }
+
+    @Test
+    fun supersededTransitionDuringPostResolutionRevisionCheckDiscardsAskResult() = runBlocking {
+        seedQueue(listOf(Availability.PLAYABLE, Availability.AUTH_REQUIRED, Availability.PLAYABLE))
+        var revisionQueries = 0
+        onQuery = { sql ->
+            if (sql == "SELECT revision FROM queues WHERE queue_id = ?" && ++revisionQueries == 2) {
+                currentContext = context.copy(transitionId = TransitionId("select-another-entry"))
+            }
+        }
+
+        val result = advance(orchestrator(), a.entryId, policy = UnplayableItemPolicy.ASK)
+
+        assertEquals(2, revisionQueries)
+        assertEquals(QueueAdvanceResult.Cancelled, result)
     }
 
     @Test
