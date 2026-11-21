@@ -400,5 +400,50 @@
       "docs/evidence/issue-25/test_contract.py"
     ],
     "limitations": "現行CIではfixture未実行。Last.fmの実callbackとコード29の扱いは要確認。Gateway・outboxの製品実装と実サービスは未検証。"
+  },
+  {
+    "case_id": "E06-06-ytdlp-loopback-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-11",
+      "FR-SRC-12"
+    ],
+    "test_ids": [
+      "TEST-RESEARCH-01",
+      "TEST-YTDLP-01",
+      "TEST-SAVE-01"
+    ],
+    "commit": "159ecc2dec014cd70d62cdbec8b7323b54e4514f",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "試験対象159ecc2dec014cd70d62cdbec8b7323b54e4514fで、自作AAC/fMP4を使ったループバック契約試験8件が成功した。音声専用中継、全体取得前の先頭デコード、Rangeの対象バイト一致、失効・断線からの同一媒体の再取得、別主体・保存未許可時の拒否を確認した。",
+    "evidence": [
+      "docs/evidence/issue-24/README.md",
+      "docs/evidence/issue-24/local.txt"
+    ],
+    "limitations": "自作音源と架空の配信元を使う部分ケースに限定。指定時刻からのデコード・再開、Debian・HTTPS、AndroidのSAF・実機音声は未実施。"
+  },
+  {
+    "case_id": "E06-06-ytdlp-live-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-11",
+      "FR-SRC-12"
+    ],
+    "test_ids": [
+      "TEST-RESEARCH-01",
+      "TEST-YTDLP-01",
+      "TEST-SAVE-01"
+    ],
+    "commit": "c1bb9efbee44429b8cf40ae1edcb91c62bf052e7",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "YouTubeとYouTube Musicの認証不要・本人認証の各ケースで、利用資格、取得・中継と端末保存の用途別許諾、試料の権利を確認できず、実サービス試験を実施していない。",
+    "evidence": [
+      "docs/evidence/issue-24/README.md"
+    ],
+    "limitations": "実サービスでの取得・中継と端末保存の試験に限定。再開にはサービスと音源双方の資格・用途別許諾の確認が必要。製品の配布可否は別途確認する。"
   }
 ]
