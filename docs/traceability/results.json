@@ -95,7 +95,7 @@
     "test_ids": [
       "TEST-SYNC-01"
     ],
-    "commit": "0c015f99d17a1a95eff06c8d4d2aa3a39a54167f",
+    "commit": "8d9741deaa725a3bbacee26b94c180f20daa54fe",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -115,12 +115,12 @@
     "test_ids": [
       "TEST-SYNC-01"
     ],
-    "commit": "0c015f99d17a1a95eff06c8d4d2aa3a39a54167f",
+    "commit": "8d9741deaa725a3bbacee26b94c180f20daa54fe",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
     "permission": "NOT_REQUIRED",
-    "reason": "一時PostgreSQLで本人と登録端末の分離、同意の適用と撤回、Provider由来の申告に対する403を確認した。Basic EQ、Basic 2026-11-21、NFS: Heat OST、Big Data: Remix、Data:Remix, Vol 2は200。メディア型を省略したdata URIを含む名前、その他の対象URIや認証値の形に一致する名前、未定義のtoken項目は400。削除時の履歴payload消去と、旧世代・削除済み履歴IDの再適用拒否を検査した。",
+    "reason": "一時PostgreSQLで本人と登録端末の分離、同意の適用と撤回、Provider由来の申告に対する403を確認した。Basic 2026-11-21-remasterなどの通常名は200、メディア型を省略したdata URIを含む名前、その他の対象URIを含む名前、未定義のtoken項目は400。全削除と個別削除で履歴payloadとrequest_sha256を消去し、旧世代の再適用と削除済みイベントIDの再送を409で拒否することを確認した。",
     "evidence": [
       "server/src/test/kotlin/com/audipp/server/SyncPushTest.kt"
     ],
