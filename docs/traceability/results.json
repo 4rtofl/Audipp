@@ -85,5 +85,134 @@
       "docs/evidence/issue-20/kotlin-local.txt"
     ],
     "limitations": "加入契約は確認済みで、アプリ資格とは別に保持する。実サービス試験の前提不足をQobuz必須要件の削除やKotlin実装全体の停止理由にはしない。資格取得後に実応答・報告受理・失効を検証し、Playerへ接続する。"
+  },
+  {
+    "case_id": "E04-01-jni-x86_64-api23",
+    "requirement_ids": [
+      "FR-AUD-01",
+      "FR-AUD-02",
+      "FR-AUD-07",
+      "FR-OBS-07",
+      "NFR-COMP-01"
+    ],
+    "test_ids": [
+      "TEST-AUD-02",
+      "TEST-TAP-01",
+      "TEST-COMP-01"
+    ],
+    "commit": "05580493dbc0f28f18762f18fdad0f13d5081bbe",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "PR #179 の作者が de213045c9d9baa4718a2388c33cd8158c518f4f でローカルの x86_64 API 23 エミュレーターを使い、NativePcmProcessorTest 6件の合格を報告した。固定 PCM の整数・Float32 出力、無効入力、世代の取消と再試行を検査した。",
+    "evidence": [
+      "https://github.com/4rtoflow/Audipp/pull/179"
+    ],
+    "limitations": "記録の根拠は PR 本文にある作者の実行報告。PCM 境界の部分ケースに限り、修正後の再実行、実際の再生中の Tap、外部出力は未確認。"
+  },
+  {
+    "case_id": "E04-01-jni-x86_64-api36",
+    "requirement_ids": [
+      "FR-AUD-01",
+      "FR-AUD-02",
+      "FR-AUD-07",
+      "FR-OBS-07",
+      "NFR-COMP-01"
+    ],
+    "test_ids": [
+      "TEST-AUD-02",
+      "TEST-TAP-01",
+      "TEST-COMP-01"
+    ],
+    "commit": "05580493dbc0f28f18762f18fdad0f13d5081bbe",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "PR #179 の作者が de213045c9d9baa4718a2388c33cd8158c518f4f でローカルの x86_64 API 36 エミュレーターを使い、NativePcmProcessorTest 6件の合格を報告した。固定 PCM の整数・Float32 出力、無効入力、世代の取消と再試行を検査した。",
+    "evidence": [
+      "https://github.com/4rtoflow/Audipp/pull/179"
+    ],
+    "limitations": "記録の根拠は PR 本文にある作者の実行報告。PCM 境界の部分ケースに限り、修正後の再実行、実際の再生中の Tap、外部出力は未確認。"
+  },
+  {
+    "case_id": "E04-01-jni-arm",
+    "requirement_ids": [
+      "NFR-COMP-01"
+    ],
+    "test_ids": [
+      "TEST-COMP-01"
+    ],
+    "commit": "05580493dbc0f28f18762f18fdad0f13d5081bbe",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "ARM の JNI 実行は未実施。利用者決定4により、ARM 実機での JNI 試験は #41 の完了条件から外して後続で扱う。",
+    "evidence": [
+      "https://github.com/4rtoflow/Audipp/pull/179"
+    ],
+    "limitations": "arm64-v8a / armeabi-v7a の証跡は APK 内の ABI とリンク先の確認まで。JNI の実行、取消・解放は未確認。"
+  },
+  {
+    "case_id": "E04-01-physical-devices",
+    "requirement_ids": [
+      "NFR-COMP-01"
+    ],
+    "test_ids": [
+      "TEST-COMP-01"
+    ],
+    "commit": "05580493dbc0f28f18762f18fdad0f13d5081bbe",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "Galaxy S25 / FiiO M21 / S20 での実機試験は未実施。",
+    "evidence": [
+      "https://github.com/4rtoflow/Audipp/pull/179"
+    ],
+    "limitations": "対象機器での動作と音声コールバックの実時間性能は後続で検証する。"
+  },
+  {
+    "case_id": "E04-01-dac-output",
+    "requirement_ids": [
+      "FR-AUD-01",
+      "FR-AUD-02",
+      "NFR-COMP-01"
+    ],
+    "test_ids": [
+      "TEST-AUD-02",
+      "TEST-COMP-01"
+    ],
+    "commit": "05580493dbc0f28f18762f18fdad0f13d5081bbe",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "DAC の出力とデジタル列の測定は未実施。",
+    "evidence": [
+      "https://github.com/4rtoflow/Audipp/pull/179"
+    ],
+    "limitations": "アプリ内バッファの一致は PCM 境界の証跡に限る。外部出力経路と Bit-perfect の判定は後続で扱う。"
+  },
+  {
+    "case_id": "E04-01-playback-tap",
+    "requirement_ids": [
+      "FR-OBS-07"
+    ],
+    "test_ids": [
+      "TEST-TAP-01"
+    ],
+    "commit": "05580493dbc0f28f18762f18fdad0f13d5081bbe",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "実際の再生中の Tap 取得と取得位置ごとの信号比較は未実施。",
+    "evidence": [
+      "https://github.com/4rtoflow/Audipp/pull/179"
+    ],
+    "limitations": "PCM の取得・認可と取得位置の証跡は #76 以降で扱う。EQ 前後の比較も後続で検証する。"
   }
 ]
