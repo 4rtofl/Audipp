@@ -610,7 +610,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -629,7 +629,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -648,7 +648,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -667,7 +667,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -687,7 +687,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -707,7 +707,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -726,7 +726,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -764,7 +764,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -783,7 +783,7 @@
     "test_ids": [
       "TEST-SCHEDULE-01"
     ],
-    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -793,5 +793,43 @@
       "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
     ],
     "limitations": "LocalPlayback と偽の再生エンジンを使った接続試験。実機でのシークと外部経路は未検証。"
+  },
+  {
+    "case_id": "E02-07-service-seek-before-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "ef9f92e7fd9c4a4b5bf72b9d236be35a5e2d8d46",
+    "stage": "CURRENT",
+    "outcome": "FAIL",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "修正前の再生サービスでは、再生スレッドを停止した状態でコントローラから3,000 msへシークすると、暫定位置がセッションに公開され、位置が未知であることを期待した試験が失敗した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "作業開始時の実装を、追加した回帰試験で検証した。Robolectric 上の Media3 とローカル WAV が対象。"
+  },
+  {
+    "case_id": "E02-07-service-seek-ready-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "4秒の WAV を一時停止して3,000 msへシークした。Media3 が暫定位置を返す間はセッションの位置と予定が未知のままで、READY 復帰後に位置3,000 msと残り1,000 msを公開した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "API 23・35 の Robolectric 上で、ローカルの Media3 と再生サービスをコントローラ経由で検証した。実機と外部経路は未検証。"
   }
 ]
