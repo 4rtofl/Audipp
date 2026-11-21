@@ -600,5 +600,100 @@
       "docs/contracts/queue-db-v2.md"
     ],
     "limitations": "API 23・36 の端末でのキュー編集、チェックポイントの更新、Room 移行は未確認。"
+  },
+  {
+    "case_id": "E02-08-playlist-crud-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-05"
+    ],
+    "test_ids": [
+      "TEST-PLAYLIST-01"
+    ],
+    "commit": "1f0936b9224d6cdcfea235e62d4a1834ce0b4367",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で、作成・一覧・改名・削除を確認した。同名での作成と改名、および古い revision での改名と削除は拒否された。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/PlaylistDaoTest.kt"
+    ],
+    "limitations": "DAO の操作を検証した。画面からの操作は #86 で扱う。"
+  },
+  {
+    "case_id": "E02-08-playlist-order-rollback-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-05"
+    ],
+    "test_ids": [
+      "TEST-PLAYLIST-01"
+    ],
+    "commit": "1f0936b9224d6cdcfea235e62d4a1834ce0b4367",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で、項目の追加・削除・並べ替え後に指定した順序で読めることと、存在しない Variant の挿入に失敗したときに項目と revision が編集前の状態に戻ることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/PlaylistDaoTest.kt"
+    ],
+    "limitations": "固定データでの並べ替えと外部キー違反によるロールバックを検証した。"
+  },
+  {
+    "case_id": "E02-08-playlist-queue-copy-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-05"
+    ],
+    "test_ids": [
+      "TEST-PLAYLIST-01"
+    ],
+    "commit": "1f0936b9224d6cdcfea235e62d4a1834ce0b4367",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で、重複を含む A, A, B を新しい項目 ID でキュー末尾に順序どおり複製し、消失した音源への参照を保持した。複製後の双方向の編集とプレイリスト削除を行い、キュー項目とチェックポイントが保持されることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/PlaylistDaoTest.kt"
+    ],
+    "limitations": "DAO 上のキューとチェックポイントを検証した。再生 Service と接続した再生継続は未検証。"
+  },
+  {
+    "case_id": "E02-08-playlist-stale-copy-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-05"
+    ],
+    "test_ids": [
+      "TEST-PLAYLIST-01"
+    ],
+    "commit": "1f0936b9224d6cdcfea235e62d4a1834ce0b4367",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で、プレイリストかキューの revision が古い場合に複製を拒否し、対象キューの項目と revision が変わらないことを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/PlaylistDaoTest.kt"
+    ],
+    "limitations": "古い revision を指定した DAO 呼び出しを検証した。"
+  },
+  {
+    "case_id": "E02-08-playlist-migration-v2-v3-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-05"
+    ],
+    "test_ids": [
+      "TEST-PLAYLIST-01"
+    ],
+    "commit": "1f0936b9224d6cdcfea235e62d4a1834ce0b4367",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で、Room v2 から v3 への移行後に、キュー項目 ID と順序、キューとチェックポイントの revision 7、チェックポイントの項目 ID と再生位置 9,000 ms が保持され、プレイリストを作成できた。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/PlaylistDaoTest.kt"
+    ],
+    "limitations": "エクスポート済み v2 スキーマからの移行を検証した。API 23・36 の実機での移行は未検証。"
   }
 ]
