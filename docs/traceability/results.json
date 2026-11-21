@@ -164,7 +164,7 @@
     "outcome": "BLOCKED",
     "execution": "NOT_RUN",
     "permission": "UNKNOWN",
-    "reason": "本人Premium、Audippのアプリ資格、librespot経由のアクセス・鍵取得自体の許諾、用途別許諾、音源の利用権を確認できないため、ブラウザー認可、鍵取得、実曲取得、失効・通信断、検索の実試験を行わなかった。",
+    "reason": "利用者決定により、本人のSpotify Premiumアカウントを使った実試験は実施しない。本人Premium、Audippのアプリ資格、librespot経由のアクセス・鍵取得の許諾、用途別許諾、音源の利用権は未確認で、ブラウザー認可、鍵取得、実曲取得、失効・通信断、検索は未実施。",
     "evidence": [
       "docs/specifications/13_spotify_spike.md",
       "https://github.com/librespot-org/librespot/issues/1649",
@@ -191,7 +191,7 @@
       "docs/specifications/13_spotify_spike.md",
       "https://developer.spotify.com/policy"
     ],
-    "limitations": "公開条件の文書照合。Audippへの個別許諾の可否は未確認。Spotify実データの処理は未実施。"
+    "limitations": "公開条件の文書照合。利用者決定によりSpotifyへの許諾の問い合わせは行わない。Audippへの個別許諾は未確認で、Spotify実データの処理は未実施。"
   },
   {
     "case_id": "E06-03-distribution-2026-11-20",
@@ -212,7 +212,7 @@
       "docs/evidence/issue-21/local.txt",
       "docs/specifications/13_spotify_spike.md"
     ],
-    "limitations": "NFR-LEGAL-02は未判定。製品採用と配布の可否は保留。試験IDはDD-TRACEの現行対応による。ライセンス台帳はTEST-GOV-01の範囲。ストア向けの一般公開試験は今回の範囲外。"
+    "limitations": "NFR-LEGAL-02は未判定。利用者決定によりlibrespotの製品採用は保留とした。配布の可否は未判定。試験IDはDD-TRACEの現行対応による。ライセンス台帳はTEST-GOV-01の範囲。ストア向けの一般公開試験は今回の範囲外。"
   },
   {
     "case_id": "E06-03-android-runtime-2026-11-20",

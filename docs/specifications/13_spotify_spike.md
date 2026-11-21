@@ -11,7 +11,7 @@ Audippでホスト試験・Androidリンクを実施したcommitは `27219bdf7b1
 | サービス用途条件（librespot経由のアクセス・鍵取得） | 公開条件では **FAIL** | librespotは公式API・SDKの外で互換プロトコルを使う非公式クライアント。日本向け利用規約第3条とユーザーガイドラインの禁止事項1・9を照合し、この経路を明示的に許可する根拠を確認できなかった。鍵取得やPremiumログインの技術的成功は許諾の証拠にならない。 [日本向け利用規約](https://www.spotify.com/jp/legal/end-user-agreement/) [ユーザーガイドライン](https://www.spotify.com/jp/legal/user-guidelines/) |
 | サービス用途条件（混在・解析） | 公開条件での混在・解析は **FAIL**。Audippの個別許諾は **BLOCKED** | 公開条件と要求が衝突する。Audippの契約、地域、対象利用者、配布範囲に対する許諾の証跡なし |
 
-**採用判断の提案**。現時点でlibrespot v0.8.0を製品のSpotify直接再生経路として採用しない。ローカルPCM境界とAndroidリンクには再現可能な証拠がある。本人認可の安全性、アカウントによる鍵取得の技術的可否、librespot経由のアクセス・鍵取得自体の許諾、混在・解析等の用途別許諾が採用判断に残る。Spotify直接再生は引き続き必須要件として追跡する。
+**採用判断**。利用者決定（#185、20〜22）により、本人のSpotify Premiumアカウントを使った実試験とSpotifyへの許諾の問い合わせは行わず、librespot v0.8.0の製品採用は保留とした。本人認可の安全性、鍵取得の技術的可否、librespot経由のアクセス・鍵取得の許諾、混在・解析等の用途別許諾は未確認。Spotify直接再生は引き続き必須要件として追跡する。
 
 ## 本人認可・鍵取得・直接再生
 
@@ -36,7 +36,7 @@ git clone --depth 1 --branch v0.8.0 https://github.com/librespot-org/librespot.g
 bash scripts/research/librespot/run.sh librespot-v0.8.0 new-issue-21-output
 ```
 
-`run.sh` はNDK指定時にABI別のライセンス一覧をファイルに出力する。一覧はリポジトリに収録していない。ライセンス一覧の件数・一致・SHA-256、ELFのインタープリターとAndroidノート、試験プロセスのネットワークインターフェースは手動で確認した記録で、スクリプトの出力には含まれない。
+`run.sh` はNDK指定時にABI別のライセンス一覧をファイルに出力する。一覧はリポジトリに収録していない。ライセンス一覧の件数・一致・SHA-256、ELFのインタープリターとAndroidノート、試験プロセスのネットワークインターフェースが `lo` のみだったことは、スクリプト外の手動観測として検証記録に残した。
 
 ## ライセンスと用途条件
 
@@ -61,6 +61,6 @@ bash scripts/research/librespot/run.sh librespot-v0.8.0 new-issue-21-output
 | 鍵取得失敗後に保護を迂回せず、採否根拠を引き継ぐ | **PASS** | 上流報告を根拠とした。資格確認後も鍵取得失敗は停止・失敗通知とし、製品採用の条件を記録 |
 | 関連要求・試験・commitを記録し、未達を成功表示しない | **PASS** | [結果台帳](../traceability/results.json)にローカル試験、Androidリンク、実サービスの保留を記録 |
 
-- **FR-SRC-08/09・DD-PROV-04/07・TEST-PROV-01 / TEST-RESEARCH-01**。Spotifyのフル音源、本人認可・取消、鍵取得、検索、失効・通信切断の実サービス試験は **BLOCKED**。アプリ資格、本人契約、試料の利用権、アクセス・鍵取得経路および用途別の許諾を確認した後に試験する。
+- **FR-SRC-08/09・DD-PROV-04/07・TEST-PROV-01 / TEST-RESEARCH-01**。Spotifyのフル音源、本人認可・取消、鍵取得、検索、失効・通信切断の実サービス試験は **BLOCKED**。アプリ資格、本人契約、試料の利用権、アクセス・鍵取得経路および用途別の許諾は未確認。本人のPremiumアカウントを使った実試験は、利用者決定により実施しない。
 - **FR-OBS-07・TEST-TAP-01**。デコード後（librespot Sink入口、音量・正規化は無効）の既知信号検査のみ **PASS**。SpotifyのDSP/Tap、Android API 23/36のinstrumented試験およびGalaxy S25・FiiO M21・S20・DACの測定は **NOT_RUN**。JNI実装と指定ADBシリアルが揃った後に #71 で追跡する。
 - **NFR-LEGAL-01/02・R-06・ADR-004**。候補依存のライセンスとAndroid向けリンクは確認済み。NFR-LEGAL-02は未判定。librespot経由の取得が保護・アクセス制限の回避や許諾外の取得に該当するかの判定、個別用途許諾、最終配布物の依存監査が残る。要件・ADRの変更は提案していない。承認済み仕様本文は参照し、結果を台帳と本報告書に追記した。
