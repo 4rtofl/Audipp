@@ -147,5 +147,46 @@
       "docs/contracts/webdav-v1.md"
     ],
     "limitations": "Androidビルド・JVM fixtureの成功は、実機権限、実サービス利用許可、音声出力の確認には使わない。"
+  },
+  {
+    "case_id": "E07-03-webdav-lan-fixture-2026-11-22",
+    "requirement_ids": [
+      "FR-NET-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "764fc10cca95c17b9f4729c83b51c0fa34919b86",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "PR #184のレビュー修正後、ループバックfixtureと実SourceResolverで、本文転送が操作timeoutより長い逐次読込の成功、表現できない名前の項目だけを読み飛ばす一覧、保存した相対パスによる別ライブラリでの再解決、10,000件のページ取得と件数・容量超過の区別、404・410の消失分類と代替候補の維持、逐次読込中の変更・412・長さ超過によるハンドル破棄を確認した。WebDAV fixtureは23件、全JVM単体テストは211件が成功した。Debugビルドに成功し、Lintはエラー0件、警告15件だった。",
+    "evidence": [
+      "docs/contracts/webdav-v1.md",
+      "app/src/test/java/com/audipp/integrations/network/webdav/WebDavLibraryTest.kt"
+    ],
+    "limitations": "WebDAVの端末向けネットワーク読込まで。HTTP fixtureの成功は、Androidの平文通信ポリシー下での動作を示さない（製品の接続先はHTTPSに限る）。実サーバーで2 MiBに収まる件数、NAS相互運用、Serviceでの実再生、音声出力、外部Rendererおよび試験ファミリーの残りはこの結果の対象外。"
+  },
+  {
+    "case_id": "E07-03-webdav-security-fixture-2026-11-22",
+    "requirement_ids": [
+      "NFR-SEC-03"
+    ],
+    "test_ids": [
+      "TEST-SEC-01"
+    ],
+    "commit": "764fc10cca95c17b9f4729c83b51c0fa34919b86",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "PR #184のレビュー修正後、ローカルHTTP・HTTPS fixtureで、別オリジン・配下外・符号化された親参照やスラッシュを含む応答全体の拒否、平文HTTPの接続先へ通信しないこと、未信頼の証明書とピア検証の失敗を再試行しないこと、過大なRetry-Afterを保存せず残り時間で打ち切ること、相対パスに接続先URLと資格を含めず、配下外の相対パスを拒否することを確認した。DTD・外部実体・深さ超過の拒否も同じ実行で成功した。",
+    "evidence": [
+      "docs/contracts/webdav-v1.md",
+      "app/src/test/java/com/audipp/integrations/network/webdav/WebDavLibraryTest.kt",
+      "app/src/test/java/com/audipp/integrations/network/webdav/WebDavAuthenticationTest.kt"
+    ],
+    "limitations": "XMLの防御はJVMのXercesで確認した。Androidの実行時XMLパーサー（Expat）でのDTD拒否と機能設定は未確認。HTTP fixtureの成功は、Androidの平文通信ポリシー下での動作を示さない。fixture用資格とテスト用TLSのみで、公的証明書を持つ実接続先、Androidの実権限・Keystore、実サービスの用途許諾と試験ファミリーの残りは別途確認する。"
   }
 ]
