@@ -45,6 +45,8 @@ class SafLibrary internal constructor(
 
     suspend fun registeredRoots(): List<String> = scans.roots()
 
+    suspend fun lastScanStatus(rootId: String): LibraryScanStatus? = scans.lastScanStatus(rootId)
+
     suspend fun registerLocalTree(selection: Intent?): LocalTreeRegistration {
         val uri = selection?.data ?: return LocalTreeRegistration.Rejected.INVALID_SELECTION
         val authority = uri.authority?.takeIf { it.isNotBlank() }
@@ -216,8 +218,11 @@ class SafLibrary internal constructor(
                         progress.value = before.copy(visited = before.visited + 1)
                         if (!remember(entry)) return@collect
                         if (entry.directory) {
-                            if (dir.depth == limits.depth) throw ScanInterrupted(LibraryScanIssue.DEPTH_LIMIT)
-                            pending.addLast(Directory(entry.id, dir.depth + 1))
+                            // The skipped directory stays pending, so the scan remains PARTIAL without
+                            // abandoning the sibling folders that are still within the limit.
+                            if (dir.depth == limits.depth) {
+                                issues += LibraryScanIssue.DEPTH_LIMIT
+                            } else pending.addLast(Directory(entry.id, dir.depth + 1))
                         } else {
                             val uri = DocumentsContract.buildDocumentUriUsingTree(tree, entry.id)
                             inspect(uri)
@@ -300,19 +305,22 @@ class SafLibrary internal constructor(
         suspend fun finish(status: LibraryScanStatus): LibraryScanResult {
             var finalStatus = status
             var missing = 0
-            if (status == LibraryScanStatus.COMPLETE) {
-                try {
-                    missing = db.withTransaction {
-                        if (scans.currentScanId(rootId) != scanId) throw SupersededScan()
-                        scans.markUnvisitedMissing(rootId, scanId, System.currentTimeMillis())
+            try {
+                missing = db.withTransaction {
+                    // Only the latest scan of a registered root matches, so superseded scans record nothing.
+                    val current = scans.recordStatus(rootId, scanId, status) == 1
+                    when {
+                        status != LibraryScanStatus.COMPLETE -> 0
+                        current -> scans.markUnvisitedMissing(rootId, scanId, System.currentTimeMillis())
+                        else -> throw SupersededScan()
                     }
-                } catch (_: SupersededScan) {
-                    finalStatus = LibraryScanStatus.PARTIAL
-                    issues += LibraryScanIssue.SUPERSEDED
-                } catch (_: Exception) {
-                    finalStatus = LibraryScanStatus.PARTIAL
-                    issues += LibraryScanIssue.STORAGE_ERROR
                 }
+            } catch (_: SupersededScan) {
+                finalStatus = LibraryScanStatus.PARTIAL
+                issues += LibraryScanIssue.SUPERSEDED
+            } catch (_: Exception) {
+                if (status == LibraryScanStatus.COMPLETE) finalStatus = LibraryScanStatus.PARTIAL
+                issues += LibraryScanIssue.STORAGE_ERROR
             }
             return result(finalStatus, missing)
         }

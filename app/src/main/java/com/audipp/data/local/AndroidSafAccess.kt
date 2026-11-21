@@ -93,13 +93,19 @@ internal class AndroidSafAccess(private val resolver: ContentResolver) : SafAcce
     private fun audioStream(descriptor: AssetFileDescriptor): SafAudio? {
         val extractor = MediaExtractor()
         try {
-            if (descriptor.declaredLength < 0 && descriptor.startOffset == 0L) {
-                extractor.setDataSource(descriptor.fileDescriptor)
-            } else {
-                extractor.setDataSource(descriptor.fileDescriptor, descriptor.startOffset, descriptor.length)
+            try {
+                if (descriptor.declaredLength < 0 && descriptor.startOffset == 0L) {
+                    extractor.setDataSource(descriptor.fileDescriptor)
+                } else {
+                    extractor.setDataSource(descriptor.fileDescriptor, descriptor.startOffset, descriptor.length)
+                }
+            } catch (_: IOException) {
+                // Cover images, cue sheets and logs in album folders are not media, not failed analyses.
+                return null
             }
-            for (index in 0 until extractor.trackCount) {
-                val format = extractor.getTrackFormat(index)
+            val formats = List(extractor.trackCount, extractor::getTrackFormat)
+            if (formats.any { it.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true }) return null
+            for (format in formats) {
                 val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
                 if (mime.startsWith("audio/")) {
                     return SafAudio(

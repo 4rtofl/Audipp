@@ -108,6 +108,32 @@ class SafLibraryTest {
     }
 
     @Test
+    fun theLastFinalizedScanStatusSurvivesReopenSoAccessLossRemainsVisible() = runBlocking {
+        val (root, _) = indexSong(library, this)
+        assertEquals(LibraryScanStatus.COMPLETE, library.lastScanStatus(root))
+        val inListing = CompletableDeferred<Unit>()
+        access.afterListing = {
+            if (inListing.complete(Unit)) awaitCancellation()
+        }
+        val cancelled = library.startScan(root, this)
+        withTimeout(5_000) { inListing.await() }
+        cancelled.cancel()
+        assertEquals(LibraryScanStatus.CANCELLED, cancelled.await().status)
+        assertEquals(LibraryScanStatus.COMPLETE, library.lastScanStatus(root))
+        access.afterListing = {}
+
+        access.grants.remove(tree())
+        assertEquals(LibraryScanStatus.ACCESS_LOST, library.startScan(root, this).await().status)
+        db.close()
+        db = LibraryDatabase.open(context, DB_NAME)
+        assertEquals(LibraryScanStatus.ACCESS_LOST, library.lastScanStatus(root))
+        assertEquals(root, register(library))
+        assertEquals(LibraryScanStatus.ACCESS_LOST, library.lastScanStatus(root))
+        assertEquals(LibraryScanStatus.COMPLETE, library.startScan(root, this).await().status)
+        assertEquals(LibraryScanStatus.COMPLETE, library.lastScanStatus(root))
+    }
+
+    @Test
     fun aListedButUnanalyzableSourceRemainsPresentEvenAfterAPreviousMissingScan() = runBlocking {
         val scanner = library
         val (root, song) = indexSong(scanner, this)
@@ -148,7 +174,26 @@ class SafLibraryTest {
             assertEquals(0, result.missing)
             assertEquals(1, result.progress.indexed + result.progress.updated)
             assertEquals(Availability.PLAYABLE, availability(song))
+            assertEquals(LibraryScanStatus.PARTIAL, library.lastScanStatus(root))
         }
+    }
+
+    @Test
+    fun aTooDeepSubtreeIsSkippedWhileTheRemainingFoldersAreIndexed() = runBlocking {
+        val (root, song) = indexSong(library, this)
+        access.entries["root"] = listOf(directory("music"), directory("deep"))
+        access.entries["music"] = listOf(file("a"))
+        access.entries["deep"] = listOf(directory("d2"))
+        access.entries["d2"] = listOf(file("too-deep"))
+
+        val result = SafLibrary(db, access, ScanLimits(depth = 1)).startScan(root, this).await()
+        assertEquals(LibraryScanStatus.PARTIAL, result.status)
+        assertEquals(setOf(LibraryScanIssue.DEPTH_LIMIT), result.issues)
+        assertEquals(0, result.missing)
+        assertEquals(1, result.progress.indexed)
+        assertEquals(3, result.progress.directories)
+        assertEquals(Availability.PLAYABLE, availability(variant("root", "a")))
+        assertEquals(Availability.PLAYABLE, availability(song))
     }
 
     @Test
@@ -241,6 +286,7 @@ class SafLibraryTest {
             assertEquals(0, result.progress.indexed)
             assertEquals(0, result.missing)
             assertEquals(Availability.PLAYABLE, availability(song))
+            assertEquals(LibraryScanStatus.COMPLETE, scanner.lastScanStatus(root))
         }
     }
 
@@ -253,9 +299,9 @@ class SafLibraryTest {
         return root to variant("root")
     }
 
-    private fun variant(rootDocument: String): VariantId = db.openHelper.readableDatabase.query(
+    private fun variant(rootDocument: String, document: String = "song"): VariantId = db.openHelper.readableDatabase.query(
         "SELECT variant_id FROM track_variants JOIN sources USING (source_id) WHERE local_uri = ?",
-        arrayOf(DocumentsContract.buildDocumentUriUsingTree(tree(rootDocument), "song").toString()),
+        arrayOf(DocumentsContract.buildDocumentUriUsingTree(tree(rootDocument), document).toString()),
     ).use {
         assertTrue(it.moveToFirst())
         VariantId(it.getString(0))

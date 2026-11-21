@@ -10,12 +10,14 @@ import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Upsert
+import com.audipp.data.local.LibraryScanStatus
 
 @Entity(tableName = "local_scan_roots")
 internal data class LocalScanRoot(
     @PrimaryKey @ColumnInfo(name = "root_id") val id: String,
     @ColumnInfo(name = "tree_uri") val treeUri: String,
     @ColumnInfo(name = "scan_id") val scanId: String? = null,
+    @ColumnInfo(name = "last_scan_status") val lastScanStatus: LibraryScanStatus? = null,
 )
 
 @Entity(
@@ -48,6 +50,12 @@ internal interface SafScanDao {
 
     @Query("SELECT scan_id FROM local_scan_roots WHERE root_id = :rootId")
     suspend fun currentScanId(rootId: String): String?
+
+    @Query("UPDATE local_scan_roots SET last_scan_status = :status WHERE root_id = :rootId AND scan_id = :scanId")
+    suspend fun recordStatus(rootId: String, scanId: String, status: LibraryScanStatus): Int
+
+    @Query("SELECT last_scan_status FROM local_scan_roots WHERE root_id = :rootId")
+    suspend fun lastScanStatus(rootId: String): LibraryScanStatus?
 
     @Upsert
     suspend fun recordVisit(source: LocalScanSource)
