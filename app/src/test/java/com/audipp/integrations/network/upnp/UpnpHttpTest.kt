@@ -32,6 +32,16 @@ class UpnpHttpTest {
         }
     }
 
+    @Test fun sendsControlQueryAsPartOfTheRawRequestTarget() {
+        withResponse("HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n<x/>",
+            requestLine = "POST /control?instance=1&mode=a%2Fb HTTP/1.1",
+        ) { peer ->
+            val uri = peer.resolve(peer.location, "/control?instance=1&mode=a%2Fb", allowQuery = true)
+            val post = UpnpPost("$AV_TRANSPORT#Play", byteArrayOf())
+            assertEquals(200, Socket().use { upnpHttp(it, peer, uri, post) }.status)
+        }
+    }
+
     @Test fun rejectsRedirectsAndAmbiguousOversizeOrTruncatedBodies() {
         for (reply in listOf(
             "HTTP/1.1 302 Found\r\nLocation: http://outside.example/\r\n\r\n",
@@ -71,11 +81,15 @@ class UpnpHttpTest {
         }
     }
 
-    private fun withResponse(reply: String, block: (UpnpPeer) -> Unit) {
+    private fun withResponse(
+        reply: String,
+        requestLine: String = "GET /device.xml HTTP/1.1",
+        block: (UpnpPeer) -> Unit,
+    ) {
         ServerSocket(0, 1, loopback).use { server ->
             val serverTask = FutureTask {
                 server.accept().use {
-                    readRequest(it)
+                    readRequest(it, requestLine)
                     it.getOutputStream().write(reply.toByteArray(Charsets.US_ASCII))
                 }
             }
@@ -85,10 +99,10 @@ class UpnpHttpTest {
         }
     }
 
-    private fun readRequest(socket: Socket) {
+    private fun readRequest(socket: Socket, requestLine: String = "GET /device.xml HTTP/1.1") {
         socket.soTimeout = 3_000
         val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.US_ASCII))
-        assertEquals("GET /device.xml HTTP/1.1", reader.readLine())
+        assertEquals(requestLine, reader.readLine())
         while (reader.readLine().orEmpty().isNotEmpty()) Unit
     }
 

@@ -20,7 +20,7 @@ internal fun advertisement(
 ): UpnpAdvertisement? = parseSsdp(
     ("HTTP/1.1 200 OK\r\nCACHE-CONTROL: max-age=$maxAge\r\n" +
         "LOCATION: $url\r\nST: $target\r\nUSN: $udn::$target\r\n$additionalHeader\r\n")
-        .toByteArray(Charsets.US_ASCII),
+        .toByteArray(Charsets.UTF_8),
     sender,
 )
 

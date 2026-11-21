@@ -20,6 +20,8 @@ class UpnpProtocolTest {
         assertEquals(1800L, checkNotNull(advertisement(maxAge = 4000)).maxAgeSeconds)
         assertNull(advertisement(maxAge = 0))
         assertNull(advertisement(target = "ssdp:all"))
+        assertNull(advertisement(target = "${UPNP_DEVICE_PREFIX}MediaRenderer:0"))
+        assertNotNull(advertisement(target = "${UPNP_DEVICE_PREFIX}MediaRenderer:2"))
         assertNull(advertisement(additionalHeader = "LOCATION: $TEST_URL\r\n"))
         assertNull(advertisement(additionalHeader = "X-Excess: ${"a".repeat(MAX_SSDP_PACKET)}\r\n"))
         for (location in listOf(
@@ -27,6 +29,35 @@ class UpnpProtocolTest {
             "http://user:secret@192.168.10.20:8000/device.xml", "$TEST_URL#fragment", "$TEST_URL?token=1",
             "file:///upnp/device.xml", "http://192.168.10.20:8000/%0d%0aHost",
         )) assertNull(location, advertisement(url = location))
+    }
+
+    @Test fun ssdpAcceptsUda11ExtensionsAndIgnoresUnrelatedHeaderContents() {
+        val response = advertisement(
+            udn = "uuid:RINCON_000E5800000001400_MR",
+            additionalHeader = listOf(
+                "BOOTID.UPNP.ORG: 1",
+                "CONFIGID.UPNP.ORG: 2",
+                "SEARCHPORT.UPNP.ORG: 1901",
+                "OPT: \"http://schemas.upnp.org/upnp/1/0/\"; ns=01",
+                "01-NLS: test",
+                "X-User-Agent: Fixture",
+                "SERVER: Fixture/1.0 UPnP/1.1 機器/1.0",
+                "Ignored header: \u0000",
+            ).joinToString("\r\n", postfix = "\r\n"),
+        )
+        assertEquals("uuid:rincon_000e5800000001400_mr", response?.udn)
+        assertNull(advertisement(additionalHeader = "ST: $RENDERER_TYPE\r\n"))
+        assertNull(advertisement(udn = "uuid:invalid\u0000"))
+        assertNull(advertisement(udn = "uuid:機器"))
+    }
+
+    @Test fun udnAcceptsPrintableCharactersWithinItsOriginalLengthLimit() {
+        assertEquals("uuid:rincon_123.mr:2", upnpUdn("UUID:RINCON_123.MR:2"))
+        assertEquals("uuid:機器", upnpUdn("uuid:機器"))
+        assertNotNull(upnpUdn("uuid:" + "a".repeat(128)))
+        for (id in listOf("", "a b", "a\u00a0b", "a\u0001b", "a::b", "a".repeat(129))) {
+            assertNull(id, upnpUdn("uuid:$id"))
+        }
     }
 
     @Test fun localSubnetRejectsPublicDifferentSubnetOwnAddressAndBroadcast() {
@@ -47,9 +78,15 @@ class UpnpProtocolTest {
         assertEquals("Fixture & Renderer", normal.name)
         assertEquals("/base/transport.xml", normal.services.getValue(AV_TRANSPORT).description.path)
         assertEquals("/control", normal.services.getValue(AV_TRANSPORT).control.path)
+        val withQuery = parse(deviceXml(control = "/control?instance=1&amp;mode=a%2Fb"))
+        assertEquals("instance=1&mode=a%2Fb", withQuery.services.getValue(AV_TRANSPORT).control.rawQuery)
+        val queryOnly = parse(deviceXml(control = "?instance=1")).services.getValue(AV_TRANSPORT).control
+        assertEquals("$TEST_URL?instance=1", queryOnly.toString())
+        assertFailure(NetworkFailure.INVALID_RESPONSE) { parse(deviceXml(scpd = "/scpd?instance=1")) }
+        assertFailure(NetworkFailure.INVALID_RESPONSE) { parse(deviceXml(control = "/control?arg=%0d%0a")) }
         for (ref in listOf(
             "//192.168.10.21:8000/control", "http://192.168.10.20:8001/control",
-            "http://192.168.10.20:8000/control?secret=123", "http://user@192.168.10.20:8000/control",
+            "http://user@192.168.10.20:8000/control", "//192.168.10.21:8000/control?token=1",
             "https://192.168.10.20:8000/control", "file:///etc/passwd",
         )) {
             assertFailure(NetworkFailure.INVALID_RESPONSE) { parse(deviceXml(control = ref)) }

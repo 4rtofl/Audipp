@@ -1,5 +1,6 @@
 package com.audipp.integrations.network.upnp
 
+import com.audipp.integrations.network.NetworkFailure
 import java.net.URI
 
 internal const val DEVICE_XML = "urn:schemas-upnp-org:device-1-0"
@@ -27,17 +28,25 @@ internal class UpnpDescription(
     override fun toString() = "UpnpDescription(redacted)"
 }
 
-internal fun deviceDescription(root: UpnpXml, peer: UpnpPeer, expected: UpnpCandidate?): UpnpDescription {
+internal fun deviceDescription(
+    root: UpnpXml,
+    peer: UpnpPeer,
+    expected: UpnpCandidate?,
+    targets: Set<String> = upnpSearchTargets,
+): UpnpDescription {
     if (root.name != "root" || root.namespace != DEVICE_XML) invalidUpnpResponse()
     val top = root.element("device") ?: invalidUpnpResponse()
     val device = if (expected != null) {
         devices(top).filter { upnpUdn(it.value("UDN")) == expected.udn }.singleOrNull()
             ?: invalidUpnpResponse()
     } else {
-        devices(top).firstOrNull { it.value("deviceType") in upnpSearchTargets } ?: invalidUpnpResponse()
+        devices(top).firstOrNull { node -> targets.any { upnpTypeMatches(node.value("deviceType"), it) } }
+            ?: if (devices(top).any { node -> upnpSearchTargets.any { upnpTypeMatches(node.value("deviceType"), it) } }) {
+                throw UpnpException(NetworkFailure.UNSUPPORTED)
+            } else invalidUpnpResponse()
     }
-    val type = device.value("deviceType")?.takeIf { it in upnpSearchTargets } ?: invalidUpnpResponse()
-    if (expected != null && type != expected.type) invalidUpnpResponse()
+    val type = device.value("deviceType") ?: invalidUpnpResponse()
+    if (expected != null && !upnpTypeMatches(type, expected.type)) invalidUpnpResponse()
     val udn = upnpUdn(device.value("UDN")) ?: invalidUpnpResponse()
     val name = device.value("friendlyName")?.takeIf {
         it.length in 1..256 && it.none(Char::isISOControl)
@@ -50,7 +59,9 @@ internal fun deviceDescription(root: UpnpXml, peer: UpnpPeer, expected: UpnpCand
         val serviceType = service.value("serviceType")?.takeIf { it in services } ?: continue
         val description = service.value("SCPDURL")?.takeIf(String::isNotEmpty) ?: invalidUpnpResponse()
         val control = service.value("controlURL")?.takeIf(String::isNotEmpty) ?: invalidUpnpResponse()
-        val location = UpnpServiceLocation(serviceType, peer.resolve(base, description), peer.resolve(base, control))
+        val location = UpnpServiceLocation(
+            serviceType, peer.resolve(base, description), peer.resolve(base, control, allowQuery = true),
+        )
         if (locations.put(serviceType, location) != null) invalidUpnpResponse()
     }
     return UpnpDescription(udn, type, name, locations)

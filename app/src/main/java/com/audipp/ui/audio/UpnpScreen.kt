@@ -3,7 +3,6 @@ package com.audipp.ui.audio
 import android.Manifest
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -60,7 +59,6 @@ import com.audipp.playback.source.PlaybackTarget
 import com.audipp.playback.source.ResolutionContext
 import com.audipp.playback.source.TargetKind
 import java.net.Inet4Address
-import java.net.URI
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.awaitCancellation
@@ -86,7 +84,7 @@ internal fun UpnpScreen() {
     var openPermissionSettings by remember { mutableStateOf(false) }
     val access = remember(choice) { AtomicBoolean(choice != null) }
     val adapter = remember(context, choice, access) {
-        choice?.let { UpnpRendererAdapter(UpnpControlPoint(AndroidUpnpNetwork(context, it.network, access::get))) }
+        choice?.let { UpnpRendererAdapter(UpnpControlPoint(AndroidUpnpNetwork(context, it.network, allowed = access::get))) }
     }
 
     fun reset() {
@@ -128,13 +126,7 @@ internal fun UpnpScreen() {
     }
 
     fun canRequestPermission(reason: NetworkFailure?): Boolean =
-        Build.VERSION.SDK_INT == 36 && when (reason) {
-            NetworkFailure.PERMISSION_REQUIRED -> true
-            // Android can report a blocked TCP connection as a timeout. Keep the reason uncertain in that case.
-            NetworkFailure.TIMEOUT, NetworkFailure.IO ->
-                context.checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED
-            else -> false
-        }
+        Build.VERSION.SDK_INT == 36 && access.get() && reason == NetworkFailure.PERMISSION_REQUIRED
 
     val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         openPermissionSettings = !granted
@@ -210,16 +202,15 @@ internal fun UpnpScreen() {
     if (selected == null) {
         if (searched && devices.isEmpty()) Text(stringResource(R.string.upnp_no_devices))
         for (device in devices) {
+            val chosen = adapter ?: break
             TextButton(onClick = {
-                val chosen = adapter ?: return@TextButton
                 val resolution = ResolutionContext(
                     PlaybackTarget(device.id, TargetKind.RENDERER), 0, TransitionId(UUID.randomUUID().toString()),
                 )
                 failure = null
                 active = chosen.openSession(device, resolution) { resolution }
             }) {
-                val uri = URI(device.endpoint.uri)
-                Text(adapter?.label(device) ?: uri.rawAuthority)
+                Text(chosen.label(device))
             }
         }
     } else {

@@ -14,14 +14,15 @@ internal class UpnpPost(val soapAction: String, val body: ByteArray)
 private const val HTTP_HEADERS_LIMIT = 16 * 1024
 private const val HTTP_CHUNK_FRAMING_LIMIT = 128 * 1024
 private val httpStatus = Regex("HTTP/1\\.[01] ([1-5][0-9]{2})(?: [ -~]*)?")
-private val headerName = Regex("[!#%&'*+.^_`|~0-9A-Za-z-]+")
+internal val headerName = Regex("[!#\$%&'*+.^_`|~0-9A-Za-z-]+")
 private val chunkSize = Regex("[0-9a-fA-F]{1,8}")
 
 // The caller has already pinned the peer and bound the socket to its selected network.
 internal fun upnpHttp(socket: Socket, peer: UpnpPeer, uri: URI, post: UpnpPost?): UpnpResponse {
     socket.soTimeout = 3_000
     socket.connect(InetSocketAddress(peer.address, uri.httpPort), 3_000)
-    val path = URI(uri.toASCIIString()).rawPath.ifEmpty { "/" }
+    val asciiUri = URI(uri.toASCIIString())
+    val path = asciiUri.rawPath.ifEmpty { "/" } + asciiUri.rawQuery?.let { "?$it" }.orEmpty()
     val host = uri.host + if (uri.port == -1) "" else ":${uri.port}"
     val output = socket.getOutputStream()
     val headers = buildString {

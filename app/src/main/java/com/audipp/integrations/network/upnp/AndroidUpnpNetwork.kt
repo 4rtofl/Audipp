@@ -25,6 +25,7 @@ import kotlinx.coroutines.withContext
 internal class AndroidUpnpNetwork(
     context: Context,
     private val network: Network,
+    private val searchSocket: () -> MulticastSocket = { MulticastSocket(null) },
     private val allowed: () -> Boolean,
 ) : UpnpNetwork {
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
@@ -47,7 +48,7 @@ internal class AndroidUpnpNetwork(
     }
 
     override suspend fun search(requests: Set<String>, accept: (UpnpAdvertisement) -> Boolean) {
-        cancellableUpnpIo({ MulticastSocket(null) }) { socket, active ->
+        cancellableUpnpIo(searchSocket) { socket, active ->
             requireNetwork()
             val capabilities = connectivity?.getNetworkCapabilities(network)
                 ?: throw UpnpException(NetworkFailure.OFFLINE)
@@ -55,7 +56,7 @@ internal class AndroidUpnpNetwork(
             val address = links.linkAddresses.firstOrNull { it.address is Inet4Address }?.address
                 ?: throw UpnpException(NetworkFailure.UNSUPPORTED)
             val lock = if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                wifi?.createMulticastLock("Audipp SSDP") ?: throw UpnpException(NetworkFailure.PERMISSION_REQUIRED)
+                wifi?.createMulticastLock("Audipp SSDP") ?: throw UpnpException(NetworkFailure.UNSUPPORTED)
             } else null
             try {
                 lock?.acquire()
@@ -101,7 +102,7 @@ internal class AndroidUpnpNetwork(
         cancellableUpnpIo({ Socket() }) { socket, _ ->
             requireNetwork()
             if (!isLocal(peer.address)) throw UpnpException(NetworkFailure.OFFLINE)
-            val checked = peer.resolve(peer.location, uri.toString())
+            val checked = peer.resolve(peer.location, uri.toString(), allowQuery = post != null)
             mapSocketErrors {
                 network.bindSocket(socket)
                 upnpHttp(socket, peer, checked, post)

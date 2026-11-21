@@ -8,7 +8,7 @@ import java.net.URISyntaxException
 internal class UpnpException(val failure: NetworkFailure) : java.io.IOException()
 internal fun invalidUpnpResponse(): Nothing = throw UpnpException(NetworkFailure.INVALID_RESPONSE)
 
-internal fun httpUri(value: String): URI? {
+internal fun httpUri(value: String, allowQuery: Boolean = false): URI? {
     if (value.length !in 1..2048 || value.any { it.isISOControl() || it == '\\' }) return null
     val uri = try {
         URI(value)
@@ -16,7 +16,8 @@ internal fun httpUri(value: String): URI? {
         return null
     }
     if (!uri.scheme.equals("http", ignoreCase = true) || uri.host.isNullOrBlank() ||
-        uri.rawUserInfo != null || uri.rawFragment != null || uri.rawQuery != null ||
+        uri.rawUserInfo != null || uri.rawFragment != null || (!allowQuery && uri.rawQuery != null) ||
+        uri.query.orEmpty().any { it.isISOControl() || it == '\\' } ||
         uri.host.contains('%') || (uri.port != -1 && uri.port !in 1..65535) ||
         uri.rawAuthority.endsWith(':') || uri.path.any { it.isISOControl() || it == '\\' }
     ) return null
@@ -26,9 +27,10 @@ internal fun httpUri(value: String): URI? {
 internal val URI.httpPort: Int get() = if (port == -1) 80 else port
 
 internal class UpnpPeer(val location: URI, val address: InetAddress) {
-    fun resolve(base: URI, reference: String): URI {
+    fun resolve(base: URI, reference: String, allowQuery: Boolean = false): URI {
         val resolved = try {
-            httpUri(base.resolve(reference).toString())
+            val url = if (reference.startsWith('?')) "$base$reference" else base.resolve(reference).toString()
+            httpUri(url, allowQuery)
         } catch (_: IllegalArgumentException) {
             null
         } ?: invalidUpnpResponse()

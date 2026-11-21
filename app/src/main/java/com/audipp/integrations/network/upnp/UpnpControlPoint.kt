@@ -13,6 +13,7 @@ internal class UpnpCandidate(
     val type: String,
     val peer: UpnpPeer,
     val expiresAt: Long,
+    val lifetimeMs: Long,
     val selection: Any,
     val name: String? = null,
 ) {
@@ -20,7 +21,12 @@ internal class UpnpCandidate(
 }
 
 internal class UpnpService(val location: UpnpServiceLocation, val actions: Map<String, UpnpAction>)
-internal class UpnpDevice(val candidate: UpnpCandidate, val services: Map<String, UpnpService>)
+internal class UpnpDevice(
+    val candidate: UpnpCandidate,
+    val name: String,
+    val services: Map<String, UpnpService>,
+    @Volatile var expiresAt: Long,
+)
 
 internal class UpnpControlPoint(
     private val network: UpnpNetwork,
@@ -36,12 +42,15 @@ internal class UpnpControlPoint(
         require(limit in 1..MAX_UPNP_ITEMS && targets.isNotEmpty() && upnpSearchTargets.containsAll(targets))
         val found = linkedMapOf<String, UpnpCandidate>()
         network.search(targets) { advertisement ->
-            if (advertisement.target in targets && network.isLocal(advertisement.peer.address)) {
+            if (targets.any { upnpTypeMatches(advertisement.target, it) } &&
+                network.isLocal(advertisement.peer.address)
+            ) {
                 val existing = found[advertisement.udn]
                 if (existing == null) {
+                    val lifetimeMs = advertisement.maxAgeSeconds * 1000
                     found[advertisement.udn] = UpnpCandidate(
                         advertisement.udn, advertisement.target, advertisement.peer,
-                        now() + advertisement.maxAgeSeconds * 1000, selection,
+                        now() + lifetimeMs, lifetimeMs, selection,
                     )
                 }
             }
@@ -62,21 +71,26 @@ internal class UpnpControlPoint(
             }
             val address = addresses.firstOrNull(network::isLocal) ?: throw UpnpException(NetworkFailure.INVALID_INPUT)
             val peer = UpnpPeer(uri, address)
-            val description = deviceDescription(readXml(peer, uri), peer, null)
-            if (description.type !in targets) throw UpnpException(NetworkFailure.UNSUPPORTED)
-            UpnpCandidate(description.udn, description.type, peer, now() + 5 * 60_000, selection, description.name)
+            val description = deviceDescription(readXml(peer, uri), peer, null, targets)
+            val lifetimeMs = 5 * 60_000L
+            UpnpCandidate(description.udn, description.type, peer, now() + lifetimeMs, lifetimeMs, selection, description.name)
                 .also(::checkCandidate)
         }
+
+    suspend fun describe(candidate: UpnpCandidate): NetworkResult<String> = call(calls.policy.connectTimeoutMs) {
+        checkCandidate(candidate)
+        readDescription(candidate).name
+    }
 
     suspend fun load(candidate: UpnpCandidate): NetworkResult<UpnpDevice> = call(calls.policy.connectTimeoutMs) {
         checkCandidate(candidate)
         val peer = candidate.peer
-        val description = deviceDescription(readXml(peer, peer.location), peer, candidate)
+        val description = readDescription(candidate)
         val services = description.services.mapValues { (_, location) ->
             UpnpService(location, serviceActions(readXml(peer, location.description)))
         }
-        checkCandidate(candidate)
-        UpnpDevice(candidate, services)
+        checkLocal(peer)
+        UpnpDevice(candidate, description.name, services, now() + candidate.lifetimeMs)
     }
 
     suspend fun invoke(
@@ -85,7 +99,7 @@ internal class UpnpControlPoint(
         name: String,
         arguments: Map<String, String>,
     ): NetworkResult<UpnpSoapResult> = call(calls.policy.operationTimeoutMs) {
-        checkCandidate(device.candidate)
+        checkCandidate(device.candidate, device.expiresAt)
         val service = device.services[serviceType] ?: throw UpnpException(NetworkFailure.UNSUPPORTED)
         val action = service.actions[name] ?: throw UpnpException(NetworkFailure.UNSUPPORTED)
         val post = soapRequest(service.location, name, action, arguments)
@@ -94,8 +108,17 @@ internal class UpnpControlPoint(
         val result = soapResponse(
             parseUpnpXml(response.body) { context.ensureActive() }, response.status, service.location, name, action,
         )
-        checkCandidate(device.candidate)
+        checkLocal(device.candidate.peer)
+        context.ensureActive()
+        device.expiresAt = now() + device.candidate.lifetimeMs
         result
+    }
+
+    fun isExpired(device: UpnpDevice): Boolean = device.expiresAt <= now()
+
+    private suspend fun readDescription(candidate: UpnpCandidate): UpnpDescription {
+        val peer = candidate.peer
+        return deviceDescription(readXml(peer, peer.location), peer, candidate)
     }
 
     private suspend fun readXml(peer: UpnpPeer, uri: URI): UpnpXml {
@@ -105,10 +128,14 @@ internal class UpnpControlPoint(
         return parseUpnpXml(response.body) { context.ensureActive() }
     }
 
-    private fun checkCandidate(candidate: UpnpCandidate) {
+    private fun checkCandidate(candidate: UpnpCandidate, expiresAt: Long = candidate.expiresAt) {
         if (candidate.selection !== selection) throw UpnpException(NetworkFailure.STALE_RESPONSE)
-        if (candidate.expiresAt <= now()) throw UpnpException(NetworkFailure.EXPIRED)
-        if (!network.isLocal(candidate.peer.address)) throw UpnpException(NetworkFailure.OFFLINE)
+        if (expiresAt <= now()) throw UpnpException(NetworkFailure.EXPIRED)
+        checkLocal(candidate.peer)
+    }
+
+    private fun checkLocal(peer: UpnpPeer) {
+        if (!network.isLocal(peer.address)) throw UpnpException(NetworkFailure.OFFLINE)
     }
 
     private suspend fun <T> call(timeoutMs: Long, body: suspend () -> T): NetworkResult<T> =
@@ -117,6 +144,9 @@ internal class UpnpControlPoint(
                 NetworkResult.Success(body())
             } catch (failure: UpnpException) {
                 NetworkResult.Failure(failure.failure)
+            } catch (_: SecurityException) {
+                // Nearby Wi-Fi permission recovery requires a socket permission errno.
+                NetworkResult.Failure(NetworkFailure.IO)
             }
         }
 }

@@ -20,14 +20,17 @@ import java.net.URI
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TRANSPORT_INFO = "GetTransportInfo"
+private const val DISCOVERY_NAMES_MS = 1_000L
 private const val POLL_INTERVAL_MS = 2_000L
 private val rendererTypes = upnpSearchTargets - MEDIA_SERVER
 
 internal class UpnpRendererAdapter(private val point: UpnpControlPoint) : RendererAdapter {
     private val lock = Any()
     private var candidates = emptyMap<RendererDevice, UpnpCandidate>()
+    private var discoveryNames = emptyMap<RendererDevice, String>()
     private var generation = 0L
     private var selected: RendererDevice? = null
     private var loaded: UpnpDevice? = null
@@ -36,9 +39,21 @@ internal class UpnpRendererAdapter(private val point: UpnpControlPoint) : Render
     override suspend fun discover(limit: Int): NetworkResult<List<RendererDevice>> =
         when (val result = point.discover(limit, rendererTypes)) {
             is NetworkResult.Failure -> result
-            is NetworkResult.Success -> synchronized(lock) {
-                candidates = result.value.associateBy(::rendererDevice)
-                NetworkResult.Success(candidates.keys.toList())
+            is NetworkResult.Success -> {
+                val discovered = result.value.associateBy(::rendererDevice)
+                val names = mutableMapOf<RendererDevice, String>()
+                withTimeoutOrNull(DISCOVERY_NAMES_MS) {
+                    for ((device, candidate) in discovered) {
+                        val name = point.describe(candidate)
+                        if (name is NetworkResult.Success) names[device] = name.value
+                        if (name == NetworkResult.Failure(NetworkFailure.PERMISSION_REQUIRED)) break
+                    }
+                }
+                synchronized(lock) {
+                    candidates = discovered
+                    discoveryNames = names
+                    NetworkResult.Success(discovered.keys.toList())
+                }
             }
         }
 
@@ -48,11 +63,16 @@ internal class UpnpRendererAdapter(private val point: UpnpControlPoint) : Render
             is NetworkResult.Success -> synchronized(lock) {
                 val device = rendererDevice(result.value)
                 candidates = mapOf(device to result.value)
+                discoveryNames = emptyMap()
                 NetworkResult.Success(device)
             }
         }
 
-    fun label(device: RendererDevice): String? = synchronized(lock) { candidates[device]?.name }
+    fun label(device: RendererDevice): String = synchronized(lock) {
+        val name = loaded?.name?.takeIf { selected === device } ?: discoveryNames[device] ?: candidates[device]?.name
+        val label = name ?: URI(device.endpoint.uri).rawAuthority
+        "$label · ${device.id.takeLast(12)}"
+    }
 
     fun openSession(
         device: RendererDevice,
@@ -60,8 +80,13 @@ internal class UpnpRendererAdapter(private val point: UpnpControlPoint) : Render
         currentContext: () -> ResolutionContext,
     ): UpnpRendererSession? = synchronized(lock) {
         val candidate = candidates[device] ?: return@synchronized null
-        val connection = UpnpRendererAdapter(point).apply { candidates = mapOf(device to candidate) }
-        UpnpRendererSession(connection, device, context, currentContext)
+        // The control point owns the renewable deadline for this connection.
+        val sessionDevice = RendererDevice(device.id, device.endpoint, Long.MAX_VALUE)
+        val connection = UpnpRendererAdapter(point).apply {
+            candidates = mapOf(sessionDevice to candidate)
+            discoveryNames[device]?.let { discoveryNames = mapOf(sessionDevice to it) }
+        }
+        UpnpRendererSession(connection, sessionDevice, context, currentContext)
     }
 
     override suspend fun connect(device: RendererDevice, credential: ByteArray?): NetworkResult<String> {
@@ -87,6 +112,7 @@ internal class UpnpRendererAdapter(private val point: UpnpControlPoint) : Render
 
     override suspend fun getCapabilities(device: RendererDevice, credential: ByteArray?): NetworkResult<RendererCapabilities> =
         withDevice(device, credential) {
+            if (point.isExpired(it)) return@withDevice NetworkResult.Failure(NetworkFailure.EXPIRED)
             val info = it.services[AV_TRANSPORT]?.actions?.get(TRANSPORT_INFO)
             val canObserve = info?.input == setOf("InstanceID") && "CurrentTransportState" in info.output
             NetworkResult.Success(RendererCapabilities(canObserveState = canObserve))
@@ -164,7 +190,7 @@ internal class UpnpRendererSession(
         calls = NetworkCalls(NetworkCallPolicy(maxAttempts = 1)),
     )
     private val requests = Mutex()
-    val label: String = adapter.label(device) ?: URI(device.endpoint.uri).rawAuthority
+    val label: String get() = adapter.label(device)
     val state = client.state
 
     suspend fun connect(): NetworkResult<Unit> = when (val result = client.connect()) {
