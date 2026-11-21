@@ -1,0 +1,18 @@
+PR #190 レビュー修正時のホスト検査
+対象コミット: f73e7ea95d59b7e73890ec4cdf61cdacda6b7972
+
+$ git diff --exit-code HEAD -- scripts/audio tests/audio 'docs/evidence/issue-26/*.json'
+終了コード 0（検査対象の差分なし）
+
+$ python3 -B -m unittest discover -s scripts/audio -p 'test_*.py'
+Ran 22 tests in 0.350s
+OK
+
+$ python3 -B -m scripts.audio.fixtures build/issue-26-review-fixtures
+$ cmp tests/audio/manifest.json build/issue-26-review-fixtures/manifest.json
+終了コード 0（マニフェスト一致）
+
+$ for record in docs/evidence/issue-26/*.json; do python3 -I -B scripts/audio/evidence.py "$record"; done
+docs/evidence/issue-26/dsd-analog.json: Valid evidence record
+docs/evidence/issue-26/multichannel.json: Valid evidence record
+docs/evidence/issue-26/usb-digital.json: Valid evidence record
