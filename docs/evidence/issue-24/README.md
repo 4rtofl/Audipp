@@ -1,6 +1,6 @@
 # YouTube系の音声中継・保存条件の調査（E06-06 / #24）
 
-2026-11-20 JST・[Issue #24](https://github.com/4rtofl/Audipp/issues/24)。基準の `origin/main` は `ba8f18b2656d4508cfa381cbd7ded1f94a0a462a`。試験対象のコミットは [`159ecc2`](https://github.com/4rtofl/Audipp/commit/159ecc2dec014cd70d62cdbec8b7323b54e4514f)。実行結果は [local.txt](local.txt)。
+2026-11-20 JST・[Issue #24](https://github.com/4rtoflow/Audipp/issues/24)。基準の `origin/main` は `ba8f18b2656d4508cfa381cbd7ded1f94a0a462a`。試験対象のコミットは [`159ecc2`](https://github.com/4rtoflow/Audipp/commit/159ecc2dec014cd70d62cdbec8b7323b54e4514f)。実行結果は [local.txt](local.txt)。
 
 自作 AAC/fMP4 を使ったループバック試験では、全体取得前に先頭をデコードでき、Range 取得、同じ媒体への再解決、切断位置からの再取得が成立した。YouTube と YouTube Music の実サービス試験は利用資格・取得方法・用途別許諾の確認待ちで、どちらも **BLOCKED**。
 
@@ -63,9 +63,9 @@ uv pip install --python "$fixture_env/venv/bin/python" --only-binary=:all: --no-
 
 | Issue #24 受入条件 | 判定と対応 |
 | --- | --- |
-| 1. 事前全体保存なしの開始、Range、失効、断線 | PASS（ローカル）、BLOCKED（実サービス）。FR-SRC-11 / DD-PROV-04・05 / TEST-YTDLP-01・RESEARCH-01 の部分結果。 |
+| 1. 事前全体保存なしの開始、Range-seek、失効、断線 | ローカルでは、事前全体保存なしの開始、Range による対象バイト取得、URL 失効後の再解決、断線後の再取得が PASS。指定時刻からのデコード・再開は NOT_RUN。実サービスは BLOCKED。FR-SRC-11 / DD-PROV-04・05 / TEST-YTDLP-01・RESEARCH-01 の部分結果。 |
 | 2. 動画 UI、動画付き形式、上流 URL の受渡しを代替にしない | PASS（ローカル）。音声 body 中継と音声専用形式がない場合の失敗を確認。 |
 | 3. 保存希望と保存許可を分離 | PASS（ローカル拒否）、BLOCKED（実サービスの保存）。FR-SRC-12 / DD-PROV-08 / TEST-SAVE-01 の部分結果。SAF の保存成功・取消・容量不足・SD 切断・オフライン再読込は NOT_RUN。 |
 | 4. 結果・commit・判定を追跡 | PASS（調査証跡）。NFR-LEGAL-01・02 の個別許諾と製品配布可否は BLOCKED。Q-02 / ADR-004 の方針変更はなし。 |
 
-[#47](https://github.com/4rtofl/Audipp/issues/47) は Debian 上の worker、版更新回帰、HTTPS、資源制限、取消、実配信元で検証できる媒体同一性を引き継ぐ。認証不要ケースもサービスと音源双方の資格を確認できた時点で再試験する。[#48](https://github.com/4rtofl/Audipp/issues/48) は本人認証が必要なケースの利用資格と、ユーザー単位の預託・失効・撤回を確認する。端末実装では同じ媒体を確認できるときだけ中断分を再利用し、保存許可、保存先、確定・再読込を別に検査する。製品の再生・保存の完成判定は保留。
+[#47](https://github.com/4rtoflow/Audipp/issues/47) は Debian 上の worker、版更新回帰、HTTPS、資源制限、取消、実配信元で検証できる媒体同一性を引き継ぐ。認証不要ケースもサービスと音源双方の資格を確認できた時点で再試験する。[#48](https://github.com/4rtoflow/Audipp/issues/48) は本人認証が必要なケースの利用資格と、ユーザー単位の預託・失効・撤回を確認する。端末実装では同じ媒体を確認できるときだけ中断分を再利用し、保存許可、保存先、確定・再読込を別に検査する。製品の再生・保存の完成判定は保留。
