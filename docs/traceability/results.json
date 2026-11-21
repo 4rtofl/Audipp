@@ -845,5 +845,28 @@
       "app/src/test/java/com/audipp/data/db/PlaylistDaoTest.kt"
     ],
     "limitations": "エクスポート済み v2 スキーマからの移行を検証した。API 23・36 の実機での移行は未検証。"
+  },
+  {
+    "case_id": "E02-04-host-queue-orchestrator",
+    "requirement_ids": [
+      "FR-PLY-01",
+      "FR-PLY-04",
+      "FR-PLY-07"
+    ],
+    "test_ids": [
+      "TEST-PLY-01",
+      "TEST-QUEUE-01"
+    ],
+    "commit": "6e90108a268822aa9b03668429e1d20034612ab8",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "RoomとSourceResolverを接続した9件で、全曲不可でも期限内に一巡で終了すること、設定保存、並べ替えと取消による候補破棄を確認した。音源解決後のrevision照会中に遷移IDを変えると、旧候補の確認要求を返さずCancelledで終了した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/QueueOrchestratorTest.kt",
+      "docs/contracts/queue-orchestrator.md"
+    ],
+    "limitations": "#60の候補探索とローカルの互換性を確認した。再生主体の停止確認・実際の切替は#61、Serviceの連続再生との結合と実機の確認は後続で扱う。"
   }
 ]
