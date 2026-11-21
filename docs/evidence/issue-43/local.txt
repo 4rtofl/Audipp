@@ -1,0 +1,57 @@
+初回実行日: 2026-11-20 JST
+Audipp 起点: ba8f18b2656d4508cfa381cbd7ded1f94a0a462a
+調査コードと実行対象: 1ef6976f7002c3efc9b8efcaba28a5aafe12d308
+libusb: v1.0.29 / 15a7ebb4d426c5ce196684347d2b7cafad862626
+
+[ホスト契約試験 / 2026-11-21 JST 再実行]
+実行対象 commit（レビュー修正の確定時に差し替え）: 3e3b91ac021932e244e8101ada07e6b0a7077a18
+Linux 7.2.15-1-omarchy x86_64、GCC 16.2.1、uid=1000
+標準の --disable-udev ビルドは、この環境に /dev/bus/usb がなく libusb_init_context が
+could not find usbfs で失敗。固定版の未改変ソースを --enable-udev --enable-static
+--disable-shared で再ビルドし、-ludev を追加してリンク。デバイス探索は無効のまま実行。
+Clang の AST では修正前の一律の void * 取得が型照合で失敗し、修正後の型が呼び出し元と一致。
+43 byte の自作 descriptor SHA-256:
+d6bf91b9389c5300e9d18356cf7e21faebebe018363c890424519ffa0c5301dd
+ioctl と切断条件の poll を置き換え、他の FD 操作・libusb API は実際に実行
+PASS wrap failure retains caller FD
+PASS synthetic descriptor and EBUSY mapping
+PASS cancel returns before one CANCELLED callback
+PASS cancel race still reaps COMPLETED with lengths 8,5
+PASS successful wrap borrows FD through libusb_close
+PASS simulated POLLERR drains one NO_DEVICE callback before teardown
+
+[Android API / ABI / 初回実行]
+JDK 17.0.20.1、SDK Platform 36、Build Tools 35.0.0、NDK 28.2.13676358 (r28c)
+arm64-v8a   ELF64 AArch64                    API 23
+armeabi-v7a ELF32 ARM                        API 23
+x86_64      ELF64 Advanced Micro Devices X86-64 API 23
+両 .so で ELF class / machine と Android IDENT の先頭 4 byte (17 00 00 00) を照合。
+libusb-1.0.so の SONAME、init_context / wrap_sys_device / submit_transfer /
+cancel_transfer / handle_events_timeout / release_interface の実体と JNI エントリを確認。
+NEEDED は libusb が liblog/libc/libm/libdl、JNI が libusb-1.0/libdl/libc。
+検証 APK の minSdk=23、targetSdk=36、上記3 ABI と署名を確認。
+検証 APK SHA-256: 48a21d31022ee84a9253e4fb0d34ab9eee710921e59ead60f3a60a1ac7ab894e
+
+[Android JNI / 検証 APK]
+Android Emulator 37.2.12.0 (build 16428233)、x86_64。アプリ UID で /dev/null の FD を使用。
+emulator-5570
+Android/sdk_phone_x86_64/generic_x86_64:6.0/MASTER/4174734:userdebug/test-keys
+INSTRUMENTATION_RESULT: stream=PASS API 23 x86_64 uid=10056 libusb 1.0.29 JNI wrap failure and FD cleanup
+INSTRUMENTATION_CODE: -1
+emulator-5572
+Android/sdk_phone64_x86_64/emu64x:16/BE2A.250530.026.D1/13818094:userdebug/test-keys
+INSTRUMENTATION_RESULT: stream=PASS API 36 x86_64 uid=10151 libusb 1.0.29 JNI wrap failure and FD cleanup
+INSTRUMENTATION_CODE: -1
+先行の APK 外 app_process 試行では API 23 の共有ライブラリ探索が失敗した。
+上記の APK では別プロセスの探索環境に依存せず、アプリの通常のローダーでロードした。
+
+[製品アプリの所定検証]
+上記 Audipp 起点の製品ソース・構成で実行。調査コードは製品の Gradle 入力に含まれない。
+./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+BUILD SUCCESSFUL in 56s
+Unit 188件、失敗・エラー・skip 0。Lint エラー0、警告13。
+
+[残る検証]
+BLOCKED: 指定シリアルと試験構成がなく物理端末の USB 許可 FD、OS 出力停止・排他、
+実 isochronous 転送・切断回収および DAC 能力を計測していない。
+NOT_RUN: ARM 実行、QLT-09 実測、配布 APK のライセンス適合手順。
