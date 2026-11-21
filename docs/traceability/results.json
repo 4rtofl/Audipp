@@ -188,5 +188,24 @@
       "app/src/test/java/com/audipp/integrations/network/webdav/WebDavAuthenticationTest.kt"
     ],
     "limitations": "XMLの防御はJVMのXercesで確認した。Androidの実行時XMLパーサー（Expat）でのDTD拒否と機能設定は未確認。HTTP fixtureの成功は、Androidの平文通信ポリシー下での動作を示さない。fixture用資格とテスト用TLSのみで、公的証明書を持つ実接続先、Androidの実権限・Keystore、実サービスの用途許諾と試験ファミリーの残りは別途確認する。"
+  },
+  {
+    "case_id": "E07-03-webdav-tls-retry-fixture-2026-11-22",
+    "requirement_ids": [
+      "FR-NET-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "5bddeed50aa832bd82c9e4793523dc01b4f37c4d",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "WebDAVの一覧取得で、interceptorが原因例外のないSSLHandshakeExceptionを投げると、3回試行してIOを返した。未信頼証明書とピア検証の失敗は1回の試行でUNSUPPORTEDを返し、平文HTTPの接続先には通信しなかった。WebDAVのJVM単体テスト24件が成功した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/integrations/network/webdav/WebDavAuthenticationTest.kt"
+    ],
+    "limitations": "原因例外のないハンドシェイク失敗はJVMのinterceptorで模擬した。Android実機での通信断時の例外と、公的証明書を持つ実サーバーとの接続は未確認。"
   }
 ]
