@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "session_test_id": "e11-01-multichannel-prep-2026-11-20",
+  "test_ids": [
+    "TEST-FORMAT-02",
+    "TEST-COMP-01"
+  ],
+  "requirement_ids": [
+    "FR-AUD-05",
+    "NFR-COMP-01"
+  ],
+  "app_commit": null,
+  "recorded_at_utc": "2026-11-20T09:00:22Z",
+  "outcome": "BLOCKED",
+  "reason": "成立する6ch出力経路、同時収録系と端末操作承認が未確保。",
+  "known_limitations": "既存fixtureは48 kHzの単発impulse。物理ch配置・漏れとステレオ復帰は未確認。",
+  "device": {
+    "ABI": null,
+    "API_level": null,
+    "Android_version": null,
+    "DAC_vendor/product": null,
+    "DSP_state": null,
+    "USB_VID/PID": null,
+    "audio_output_type": null,
+    "bitDepth": null,
+    "build_fingerprint_hash": null,
+    "codec": null,
+    "device_vendor": null,
+    "model": null,
+    "playback_mode": null,
+    "sampleRate": null
+  },
+  "fixture": null,
+  "capture_point": null,
+  "evidence_type": "UNKNOWN",
+  "instrument": null,
+  "settings": {
+    "planned_capture_point": "6chの外部出力とステレオ復帰後の出力",
+    "planned_fixture_files": [
+      "impulse-24-5point1.wav"
+    ]
+  },
+  "result": null
+}

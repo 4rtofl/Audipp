@@ -1,5 +1,92 @@
 [
   {
+    "case_id": "E05-09-profile-persistence",
+    "requirement_ids": [
+      "FR-DEV-04"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01"
+    ],
+    "commit": "6615e4b1016756d4e953f54ec298d88fa2170187",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "追加の単体試験3件とAPI 23・36の専用エミュレーターで、版付き設定と根拠の再読込、NULL、同型機の個別登録、FK失敗・取消のロールバックと再試行を確認した。Debug build、単体試験全191件、Lintも成功。",
+    "evidence": [
+      "app/src/test/java/com/audipp/domain/device/DeviceProfileContractTest.kt",
+      "app/src/androidTest/java/com/audipp/data/device/DeviceProfileStoreTest.kt",
+      "docs/contracts/device-profiles-v1.md"
+    ],
+    "limitations": "端末内保存の部分ケース。USB識別・優先順位・音量の安全適用は対象外。"
+  },
+  {
+    "case_id": "E05-09-share-copy",
+    "requirement_ids": [
+      "FR-DEV-06"
+    ],
+    "test_ids": [
+      "TEST-SHARE-01"
+    ],
+    "commit": "6615e4b1016756d4e953f54ec298d88fa2170187",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23・36で共有コピーをJSONに変換し、公称・本人申告・OS申告・測定の区分と公開可能な条件を保持し、トークン・URI・シリアル・ローカルID・音量を含まないことを確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/data/device/DeviceProfileStoreTest.kt",
+      "docs/contracts/device-profiles-v1.md"
+    ],
+    "limitations": "各APIで実行したDB試験4件のうち共有コピーの部分ケース。共有画面・送信・サーバー権限は未実施。"
+  },
+  {
+    "case_id": "E05-09-hardware-and-sharing-workflow",
+    "requirement_ids": [
+      "FR-DEV-04",
+      "FR-DEV-06",
+      "FR-AUD-08"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01",
+      "TEST-SHARE-01",
+      "TEST-AUD-03"
+    ],
+    "commit": "6615e4b1016756d4e953f54ec298d88fa2170187",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "実機の指定ADBシリアルがなく、再生経路・安全適用・共有UIとサーバー側操作の接続は今回の保存・コピー実装の範囲外。",
+    "evidence": [
+      "docs/contracts/device-profiles-v1.md"
+    ],
+    "limitations": "物理端末/DAP/DACでの出力・音量・Bit-perfect測定、相手指定共有・認可・撤回等は所管Issueで検証する。"
+  },
+  {
+    "case_id": "E05-09-review-provenance-and-order",
+    "requirement_ids": [
+      "FR-DEV-01",
+      "FR-DEV-04",
+      "FR-DEV-06"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01",
+      "TEST-SHARE-01"
+    ],
+    "commit": "9db5d05ecd4570a0beef1f11879a49e7ab4d38d9",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric の API 35 で、同値の OS 取得・手入力と不明値の再読込、同じ値と条件でのアプリ観測・外部実測の再読込と共有 JSON、共有からの取得元名・証跡 ID の除外、不正な順序の読込拒否を確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/device/DeviceProfilePersistenceTest.kt",
+      "docs/contracts/device-profiles-v1.md"
+    ],
+    "limitations": "端末内保存とローカル共有コピーの回帰試験。Android 計装試験の実行、実機での USB 属性取得、音声出力、共有 UI とサーバー側操作は未実施。"
+  },
+  {
     "case_id": "E00-05-host-traceability-2026-10-31",
     "requirement_ids": [
       "NFR-MAINT-01",
@@ -85,6 +172,926 @@
       "docs/evidence/issue-20/kotlin-local.txt"
     ],
     "limitations": "加入契約は確認済みで、アプリ資格とは別に保持する。実サービス試験の前提不足をQobuz必須要件の削除やKotlin実装全体の停止理由にはしない。資格取得後に実応答・報告受理・失効を検証し、Playerへ接続する。"
+  },
+  {
+    "case_id": "E05-04-usbfs-fd-and-callback-2026-11-20",
+    "requirement_ids": [
+      "FR-AUD-03"
+    ],
+    "test_ids": [
+      "TEST-AUD-02"
+    ],
+    "commit": "1ef6976f7002c3efc9b8efcaba28a5aafe12d308",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "libusb 1.0.29のLinuxバックエンドで模擬usbfsを使用。wrap失敗・成功時のFD保持、取消と切断のcallback回収、EBUSYの変換を観測した。",
+    "evidence": [
+      "docs/evidence/issue-43/README.md",
+      "docs/evidence/issue-43/local.txt"
+    ],
+    "limitations": "単一URBのホスト契約試験。物理USB転送、Android権限とOS排他、アプリの並行停止は未評価。初回のioctlラッパーには可変長引数の型不一致があり、修正後の再実行は2026-11-21の記録を参照。"
+  },
+  {
+    "case_id": "E05-04-usbfs-fd-and-callback-2026-11-21",
+    "requirement_ids": [
+      "FR-AUD-03"
+    ],
+    "test_ids": [
+      "TEST-AUD-02"
+    ],
+    "commit": "3e3b91ac021932e244e8101ada07e6b0a7077a18",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "固定版のLinuxバックエンドが渡す型にioctlラッパーを合わせ、模擬usbfsによるFD保持、EBUSYの変換、取消と切断のcallback回収の6件を再実行した。",
+    "evidence": [
+      "docs/evidence/issue-43/README.md",
+      "docs/evidence/issue-43/local.txt"
+    ],
+    "limitations": "標準のudev無効ビルドは/dev/bus/usbがないため初期化に失敗し、udevを有効にしてデバイス探索を無効のまま実行した。単一URBのホスト試験で、物理USB転送、Android権限とOS排他、アプリの並行停止は未評価。"
+  },
+  {
+    "case_id": "E05-04-android-abi-and-jni-2026-11-20",
+    "requirement_ids": [
+      "FR-PLT-01"
+    ],
+    "test_ids": [
+      "TEST-COMP-01"
+    ],
+    "commit": "1ef6976f7002c3efc9b8efcaba28a5aafe12d308",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23向け3 ABIをリンクし、ELFとAPKを照合。x86_64のAPI 23/36のアプリUIDでJNIをロードし、失敗時に複製FDだけを閉じることを確認した。",
+    "evidence": [
+      "docs/evidence/issue-43/README.md",
+      "docs/evidence/issue-43/local.txt"
+    ],
+    "limitations": "Androidでは非USBのFDを使用。ARM実行、物理端末とDACの互換性、USB許可の成否は未評価。"
+  },
+  {
+    "case_id": "E05-04-usb-device-exclusivity-and-transfer-2026-11-20",
+    "requirement_ids": [
+      "FR-AUD-03",
+      "FR-AUD-05",
+      "FR-PLT-01"
+    ],
+    "test_ids": [
+      "TEST-AUD-02",
+      "TEST-COMP-01"
+    ],
+    "commit": "1ef6976f7002c3efc9b8efcaba28a5aafe12d308",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "対象の物理端末の指定ADBシリアルと試験構成が未提示。Android許可FDのwrap、OS出力停止とinterface取得、USB転送・切断回収を計測していない。",
+    "evidence": [
+      "docs/evidence/issue-43/README.md",
+      "docs/evidence/issue-43/local.txt"
+    ],
+    "limitations": "対象端末のOS/build/ABIとDACのVID/PID/firmware・能力は実機で確認する。模擬EBUSYは製品の排他判定に使わない。"
+  },
+  {
+    "case_id": "E05-04-usb-quality-2026-11-20",
+    "requirement_ids": [
+      "FR-AUD-03",
+      "FR-AUD-05"
+    ],
+    "test_ids": [
+      "TEST-AUD-02"
+    ],
+    "commit": "1ef6976f7002c3efc9b8efcaba28a5aafe12d308",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "QLT-09のUSB PCM/Native/DoP実測を実施していない。",
+    "evidence": [
+      "docs/evidence/issue-43/README.md",
+      "docs/evidence/issue-43/local.txt"
+    ],
+    "limitations": "実バイト列・出力経路・DACのロックとアナログ過渡を観測してから機器別の対応を判定する。"
+  },
+  {
+    "case_id": "E11-01-host-fixture-2026-11-20",
+    "requirement_ids": [
+      "NFR-TEST-01"
+    ],
+    "test_ids": [
+      "TEST-GOV-01"
+    ],
+    "commit": "f73e7ea95d59b7e73890ec4cdf61cdacda6b7972",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "既存の音声ホスト試験22件、既定fixtureのmanifest一致、未実行の測定証跡3件のschema検査が成功した。",
+    "evidence": [
+      "docs/evidence/issue-26/host-checks-pr-190.txt",
+      "docs/evidence/issue-26/README.md",
+      "tests/audio/manifest.json",
+      "scripts/audio/test_audio.py"
+    ],
+    "limitations": "試料の再生成、独立比較器と証跡形式のホスト検査に限る。"
+  },
+  {
+    "case_id": "E11-01-device-inventory-2026-11-20",
+    "requirement_ids": [
+      "FR-PLT-01",
+      "NFR-COMP-01",
+      "FR-DEV-02"
+    ],
+    "test_ids": [
+      "TEST-COMP-01",
+      "TEST-DEVICE-01"
+    ],
+    "commit": "55bdc2cbe37954ac456e1fa1e6e60accb7fe24e1",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "S25、M21、追加S20の対象ADBシリアルと操作承認が未確保。",
+    "evidence": [
+      "docs/evidence/issue-26/README.md"
+    ],
+    "limitations": "API 23/36のinstrumented試験、実OS・ABI・firmware、DAC接続と個体の能力は未確認。"
+  },
+  {
+    "case_id": "E11-01-usb-digital-2026-11-20",
+    "requirement_ids": [
+      "NFR-AUD-02",
+      "FR-AUD-04",
+      "FR-AUD-05",
+      "NFR-COMP-01"
+    ],
+    "test_ids": [
+      "TEST-AUD-02",
+      "TEST-COMP-01"
+    ],
+    "commit": "55bdc2cbe37954ac456e1fa1e6e60accb7fe24e1",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "UNESTABLISHED",
+    "permission": "UNKNOWN",
+    "reason": "USB捕捉系、対象実機・DACの成立組合せ、操作承認と既知DSD列が未確保。",
+    "evidence": [
+      "docs/evidence/issue-26/README.md",
+      "docs/evidence/issue-26/usb-digital.json"
+    ],
+    "limitations": "QLT-02/09の外部デジタル列、Native/DoP、384 kHzと安全切替は未確認。"
+  },
+  {
+    "case_id": "E11-01-dsd-analog-2026-11-20",
+    "requirement_ids": [
+      "NFR-AUD-02",
+      "FR-AUD-05"
+    ],
+    "test_ids": [
+      "TEST-AUD-02",
+      "TEST-FORMAT-02"
+    ],
+    "commit": "55bdc2cbe37954ac456e1fa1e6e60accb7fe24e1",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "UNESTABLISHED",
+    "permission": "UNKNOWN",
+    "reason": "広帯域測定系、負荷、操作承認とDSD試料が未確保。",
+    "evidence": [
+      "docs/evidence/issue-26/README.md",
+      "docs/evidence/issue-26/dsd-analog.json"
+    ],
+    "limitations": "QLT-08/09の帯域内・帯域外、DACロック・過渡および負荷別安全性は未測定。"
+  },
+  {
+    "case_id": "E11-01-multichannel-2026-11-20",
+    "requirement_ids": [
+      "FR-AUD-05",
+      "NFR-COMP-01"
+    ],
+    "test_ids": [
+      "TEST-FORMAT-02",
+      "TEST-COMP-01"
+    ],
+    "commit": "55bdc2cbe37954ac456e1fa1e6e60accb7fe24e1",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "UNESTABLISHED",
+    "permission": "UNKNOWN",
+    "reason": "6ch出力経路、同時収録系と操作承認が未確保。",
+    "evidence": [
+      "docs/evidence/issue-26/README.md",
+      "docs/evidence/issue-26/multichannel.json"
+    ],
+    "limitations": "物理6ch配置・漏れおよび非対応時のステレオ復帰は未確認。"
+  },
+  {
+    "case_id": "E11-01-research-dac-constraints-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-11"
+    ],
+    "test_ids": [
+      "TEST-RESEARCH-01"
+    ],
+    "commit": "55bdc2cbe37954ac456e1fa1e6e60accb7fe24e1",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "UNESTABLISHED",
+    "permission": "UNKNOWN",
+    "reason": "DAC制約を評価できる実機と捕捉経路が未確保。",
+    "evidence": [
+      "docs/evidence/issue-26/README.md"
+    ],
+    "limitations": "DAC制約の準備部分。実サービスの操作、用途別許諾、移植可能性、依存ライセンスの確認は未実施。"
+  },
+  {
+    "case_id": "E09-08-lastfm-offline-contract-2026-11-20",
+    "requirement_ids": [
+      "FR-USE-05"
+    ],
+    "test_ids": [
+      "TEST-LASTFM-01"
+    ],
+    "commit": "56ccde949df09f67574c32715a858245559eb8e5",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "合成fixture 42件でWeb承認試行・署名・フォーム、応答の無視・再認証・再送・UNCERTAIN、実再生時間と送信条件の参照モデルを検査した。署名はOpenSSLでも照合した。",
+    "evidence": [
+      "docs/evidence/issue-25/README.md",
+      "docs/evidence/issue-25/fixtures.json",
+      "docs/evidence/issue-25/test_contract.py"
+    ],
+    "limitations": "ローカル参照モデルの部分ケース。実サービス、Gateway・outboxの製品実装、外部冪等性、実機を含むTESTファミリー全体の合格は未判定。TEST-RESEARCH-01の用途条件調査は証跡本文に記録。"
+  },
+  {
+    "case_id": "E09-08-lastfm-live-contract-2026-11-20",
+    "requirement_ids": [
+      "FR-USE-05"
+    ],
+    "test_ids": [
+      "TEST-LASTFM-01"
+    ],
+    "commit": "56ccde949df09f67574c32715a858245559eb8e5",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "AudippのAPI資格は未取得。試験専用アカウントと利用・送信用途の承認も未用意のため、Last.fmへの申請、承認、書き込み要求を実施していない。",
+    "evidence": [
+      "docs/evidence/issue-25/README.md"
+    ],
+    "limitations": "対象環境のHTTPS接続、callback、本人セッション失効、書き込み受理と履歴反映は資格取得後に検証する。#50・#114で製品契約試験を追跡する。"
+  },
+  {
+    "case_id": "E09-08-lastfm-api-use-permission-2026-11-20",
+    "requirement_ids": [
+      "NFR-LEGAL-01"
+    ],
+    "test_ids": [
+      "TEST-STORE-01"
+    ],
+    "commit": "56ccde949df09f67574c32715a858245559eb8e5",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "公開規約から利用条件を調査した。対象契約に基づくLast.fm API利用資格と、音源提供元ごとのSCROBBLE許諾の確定は未実施。",
+    "evidence": [
+      "docs/evidence/issue-25/README.md"
+    ],
+    "limitations": "Last.fm連携の利用条件に限定。依存追加なし。公開配布・ストアの判定やTEST-STORE-01本体の実行は対象外。"
+  },
+  {
+    "case_id": "E09-08-lastfm-offline-contract-pr193-review-2026-11-21",
+    "requirement_ids": [
+      "FR-USE-05"
+    ],
+    "test_ids": [
+      "TEST-LASTFM-01"
+    ],
+    "commit": "8a5c842556474b19e8fb14b9b1b1315c17bbd175",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "レビュー対応後に合成fixture 50件をローカルで再実行した。別試行のcallback拒否、送信前失敗と送信後の応答喪失の区別、恒久失敗と不明なエラーの判定を確認した。",
+    "evidence": [
+      "docs/evidence/issue-25/README.md",
+      "docs/evidence/issue-25/fixtures.json",
+      "docs/evidence/issue-25/test_contract.py"
+    ],
+    "limitations": "現行CIではfixture未実行。Last.fmの実callbackとコード29の扱いは要確認。Gateway・outboxの製品実装と実サービスは未検証。"
+  },
+  {
+    "case_id": "E06-06-ytdlp-loopback-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-11",
+      "FR-SRC-12"
+    ],
+    "test_ids": [
+      "TEST-RESEARCH-01",
+      "TEST-YTDLP-01",
+      "TEST-SAVE-01"
+    ],
+    "commit": "159ecc2dec014cd70d62cdbec8b7323b54e4514f",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "試験対象159ecc2dec014cd70d62cdbec8b7323b54e4514fで、自作AAC/fMP4を使ったループバック契約試験8件が成功した。音声専用中継、全体取得前の先頭デコード、Rangeの対象バイト一致、失効・断線からの同一媒体の再取得、別主体・保存未許可時の拒否を確認した。",
+    "evidence": [
+      "docs/evidence/issue-24/README.md",
+      "docs/evidence/issue-24/local.txt"
+    ],
+    "limitations": "自作音源と架空の配信元を使う部分ケースに限定。指定時刻からのデコード・再開、Debian・HTTPS、AndroidのSAF・実機音声は未実施。"
+  },
+  {
+    "case_id": "E06-06-ytdlp-live-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-11",
+      "FR-SRC-12"
+    ],
+    "test_ids": [
+      "TEST-RESEARCH-01",
+      "TEST-YTDLP-01",
+      "TEST-SAVE-01"
+    ],
+    "commit": "c1bb9efbee44429b8cf40ae1edcb91c62bf052e7",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "YouTubeとYouTube Musicの認証不要・本人認証の各ケースで、利用資格、取得・中継と端末保存の用途別許諾、試料の権利を確認できず、実サービス試験を実施していない。",
+    "evidence": [
+      "docs/evidence/issue-24/README.md"
+    ],
+    "limitations": "実サービスでの取得・中継と端末保存の試験に限定。再開にはサービスと音源双方の資格・用途別許諾の確認が必要。製品の配布可否は別途確認する。"
+  },
+  {
+    "case_id": "E02-03-queue-edits-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-PLY-01",
+      "TEST-RESTORE-01"
+    ],
+    "commit": "a1cb678947424bbda6d479ea858d5de0a4bd3688",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で隣接交換・全逆順・追加と削除の混在が成功し、現在項目と位置を保持した。同じ Variant の重複項目と MISSING の参照も保持した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/QueueDaoTest.kt"
+    ],
+    "limitations": "キュー編集と保存済みチェックポイントの DAO 操作を確認した。再生中の操作は別途検証する。"
+  },
+  {
+    "case_id": "E02-03-queue-rollback-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-PLY-01"
+    ],
+    "commit": "a1cb678947424bbda6d479ea858d5de0a4bd3688",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で存在しない Variant を挿入して外部キー違反を起こし、順序・revision・チェックポイントが編集前の状態に戻ることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/QueueDaoTest.kt"
+    ],
+    "limitations": "外部キー違反を起点とした DAO のロールバックを確認した。"
+  },
+  {
+    "case_id": "E02-03-checkpoint-stop-required-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "a1cb678947424bbda6d479ea858d5de0a4bd3688",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で、保存済みの現在項目を削除するときは対応する停止要求 ID が必要であることを確認した。削除後は項目と位置がクリアされ、旧 revision のチェックポイント保存を拒否した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/QueueDaoTest.kt"
+    ],
+    "limitations": "停止要求 ID を受け取る DAO の契約を確認した。実 Service の停止は別途検証する。"
+  },
+  {
+    "case_id": "E02-03-checkpoint-stopped-entry-before-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "b8a82ba967bb6d60e37e2d8317b4976bf7d66158",
+    "stage": "CURRENT",
+    "outcome": "FAIL",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "修正前の DAO に追加した回帰試験を実行した。保存済みの A を残して停止要求済みの B を削除すると、revision は 2 に進んだがチェックポイントに A と 12,000 ms が残った。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/QueueDaoTest.kt"
+    ],
+    "limitations": "記録したコミットの DAO を、作業ツリーで追加した回帰試験で検証した。検証環境は API 35 の Robolectric。"
+  },
+  {
+    "case_id": "E02-03-checkpoint-stopped-entry-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "a1cb678947424bbda6d479ea858d5de0a4bd3688",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で、保存済みの A を残して停止要求済みの B を削除すると、キューとチェックポイントの revision が 2 に進み、entry_id と position_ms がともに NULL になることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/QueueDaoTest.kt"
+    ],
+    "limitations": "保存済み項目と停止要求済み項目が異なる場合の DAO の更新を確認した。"
+  },
+  {
+    "case_id": "E02-03-playback-service-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-PLY-01",
+      "TEST-RESTORE-01"
+    ],
+    "commit": "a1cb678947424bbda6d479ea858d5de0a4bd3688",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "実 Service とキュー DAO を接続した試験は未実施。",
+    "evidence": [
+      "docs/contracts/queue-db-v2.md"
+    ],
+    "limitations": "再生中の項目の確認、遷移の取り消し、停止要求とキュー編集の順序は #83 で確認する。"
+  },
+  {
+    "case_id": "E02-03-process-death-restore-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "a1cb678947424bbda6d479ea858d5de0a4bd3688",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "定期保存やシーク後にプロセスを終了して復元する試験は未実施。",
+    "evidence": [
+      "docs/contracts/queue-db-v2.md"
+    ],
+    "limitations": "保存間隔や遅延、プロセス再起動後の復元は #62 で確認する。"
+  },
+  {
+    "case_id": "E02-03-device-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-PLY-01",
+      "TEST-RESTORE-01"
+    ],
+    "commit": "a1cb678947424bbda6d479ea858d5de0a4bd3688",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "実機上の試験は未実施。",
+    "evidence": [
+      "docs/contracts/queue-db-v2.md"
+    ],
+    "limitations": "API 23・36 の端末でのキュー編集、チェックポイントの更新、Room 移行は未確認。"
+  },
+  {
+    "case_id": "E06-03-local-pcm-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-09",
+      "FR-OBS-07"
+    ],
+    "test_ids": [
+      "TEST-RESEARCH-01",
+      "TEST-TAP-01"
+    ],
+    "commit": "27219bdf7b1608f45e15693b208a571b1a51dab1",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "自作FLACをSymphoniaDecoderで直接デコードし、44100 Hz・2 ch・44100フレームの全サンプルを照合した。PlayerからSinkへの受け渡しと満杯時のStop取消、Rawと不正サンプルの拒否、所有権、seek世代を含む試験5件に合格した。",
+    "evidence": [
+      "docs/evidence/issue-21/local.txt",
+      "docs/specifications/13_spotify_spike.md",
+      "scripts/research/librespot/issue_21_pcm.rs"
+    ],
+    "limitations": "取得位置はデコード後（librespot Sink入口、音量・正規化は無効）。Player経路は先頭packetの先頭フレームのみ照合した。seek世代は試験用制御で確認した。Spotifyフル音源・lossless、DSP後Tap、実機出力は未実施。"
+  },
+  {
+    "case_id": "E06-03-permission-fixture-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-08"
+    ],
+    "test_ids": [
+      "TEST-PROV-01"
+    ],
+    "commit": "ba8f18b2656d4508cfa381cbd7ded1f94a0a462a",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "架空の再生専用許諾で、共通ProviderAccessGateが他用途の処理を一度も呼ばないことを既存テストで確認した。",
+    "evidence": [
+      "docs/evidence/issue-21/local.txt",
+      "app/src/test/java/com/audipp/integrations/streaming/ProviderAccessGateTest.kt"
+    ],
+    "limitations": "Spotify Adapterの接続、用途別契約および実再生は対象外。"
+  },
+  {
+    "case_id": "E06-03-android-link-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-09"
+    ],
+    "test_ids": [
+      "TEST-RESEARCH-01"
+    ],
+    "commit": "27219bdf7b1608f45e15693b208a571b1a51dab1",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "NDK r28cとRust 1.91.1でarm64-v8aとx86_64の試験バイナリをリンクし、ELFのAndroidノートでAPI 23を確認した。",
+    "evidence": [
+      "docs/evidence/issue-21/local.txt",
+      "docs/specifications/13_spotify_spike.md"
+    ],
+    "limitations": "試験実行、JNI、APKへの組み込み、Android API 23/36の端末動作、DAC出力は未確認。"
+  },
+  {
+    "case_id": "E06-03-live-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-08",
+      "FR-SRC-09"
+    ],
+    "test_ids": [
+      "TEST-PROV-01",
+      "TEST-RESEARCH-01"
+    ],
+    "commit": "36dce1db8bec9bf4aa81bd1325c965d1dc54edab",
+    "stage": "CURRENT",
+    "outcome": "BLOCKED",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "利用者決定により、本人のSpotify Premiumアカウントを使った実試験は実施しない。本人Premium、Audippのアプリ資格、librespot経由のアクセス・鍵取得の許諾、用途別許諾、音源の利用権は未確認で、ブラウザー認可、鍵取得、実曲取得、失効・通信断、検索は未実施。",
+    "evidence": [
+      "docs/specifications/13_spotify_spike.md",
+      "https://github.com/librespot-org/librespot/issues/1649",
+      "https://www.spotify.com/jp/legal/end-user-agreement/",
+      "https://www.spotify.com/jp/legal/user-guidelines/"
+    ],
+    "limitations": "上流報告には別環境の鍵取得失敗がある。公開条件ではこの経路の明示的な許可を確認できなかった。鍵取得やPremiumログインの技術的成功は許諾の証拠にならない。App Remote、試聴、ローカルfixtureは実サービスの直接フル再生に算入しない。"
+  },
+  {
+    "case_id": "E06-03-default-policy-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-08"
+    ],
+    "test_ids": [
+      "TEST-PROV-01"
+    ],
+    "commit": "27219bdf7b1608f45e15693b208a571b1a51dab1",
+    "stage": "CURRENT",
+    "outcome": "FAIL",
+    "execution": "EXECUTED",
+    "permission": "DENIED",
+    "reason": "公開Developer Policy III.5/7/13では他サービスとの統合・ミックス・派生統計を許容せず、公開条件だけではAudippの混在・解析を成立させられない。",
+    "evidence": [
+      "docs/specifications/13_spotify_spike.md",
+      "https://developer.spotify.com/policy"
+    ],
+    "limitations": "公開条件の文書照合。利用者決定によりSpotifyへの許諾の問い合わせは行わない。Audippへの個別許諾は未確認で、Spotify実データの処理は未実施。"
+  },
+  {
+    "case_id": "E06-03-distribution-2026-11-20",
+    "requirement_ids": [
+      "NFR-LEGAL-01",
+      "NFR-LEGAL-02"
+    ],
+    "test_ids": [
+      "TEST-STORE-01"
+    ],
+    "commit": "36dce1db8bec9bf4aa81bd1325c965d1dc54edab",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "候補依存のライセンス一覧を取得した。個人間配布用APKに対する同梱一覧・通知・サービス用途許諾の審査は未実施。",
+    "evidence": [
+      "docs/evidence/issue-21/local.txt",
+      "docs/specifications/13_spotify_spike.md"
+    ],
+    "limitations": "NFR-LEGAL-02は未判定。利用者決定によりlibrespotの製品採用は保留とした。配布の可否は未判定。試験IDはDD-TRACEの現行対応による。ライセンス台帳はTEST-GOV-01の範囲。ストア向けの一般公開試験は今回の範囲外。"
+  },
+  {
+    "case_id": "E06-03-android-runtime-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-09",
+      "FR-OBS-07"
+    ],
+    "test_ids": [
+      "TEST-RESEARCH-01",
+      "TEST-TAP-01"
+    ],
+    "commit": "27219bdf7b1608f45e15693b208a571b1a51dab1",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "JNIとSpotifyのAndroid経路は未実装。指定ADBシリアルがなく、API 23/36のinstrumented試験と実機・DACの測定を実施していない。",
+    "evidence": [
+      "docs/evidence/issue-21/local.txt",
+      "docs/specifications/13_spotify_spike.md"
+    ],
+    "limitations": "API 23を指定したリンク成功はAPI 23/36端末での起動や出力証拠を含まない。"
+  },
+  {
+    "case_id": "E02-08-playlist-crud-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-05"
+    ],
+    "test_ids": [
+      "TEST-PLAYLIST-01"
+    ],
+    "commit": "1f0936b9224d6cdcfea235e62d4a1834ce0b4367",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で、作成・一覧・改名・削除を確認した。同名での作成と改名、および古い revision での改名と削除は拒否された。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/PlaylistDaoTest.kt"
+    ],
+    "limitations": "DAO の操作を検証した。画面からの操作は #86 で扱う。"
+  },
+  {
+    "case_id": "E02-08-playlist-order-rollback-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-05"
+    ],
+    "test_ids": [
+      "TEST-PLAYLIST-01"
+    ],
+    "commit": "1f0936b9224d6cdcfea235e62d4a1834ce0b4367",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で、項目の追加・削除・並べ替え後に指定した順序で読めることと、存在しない Variant の挿入に失敗したときに項目と revision が編集前の状態に戻ることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/PlaylistDaoTest.kt"
+    ],
+    "limitations": "固定データでの並べ替えと外部キー違反によるロールバックを検証した。"
+  },
+  {
+    "case_id": "E02-08-playlist-queue-copy-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-05"
+    ],
+    "test_ids": [
+      "TEST-PLAYLIST-01"
+    ],
+    "commit": "1f0936b9224d6cdcfea235e62d4a1834ce0b4367",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で、重複を含む A, A, B を新しい項目 ID でキュー末尾に順序どおり複製し、消失した音源への参照を保持した。複製後の双方向の編集とプレイリスト削除を行い、キュー項目とチェックポイントが保持されることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/PlaylistDaoTest.kt"
+    ],
+    "limitations": "DAO 上のキューとチェックポイントを検証した。再生 Service と接続した再生継続は未検証。"
+  },
+  {
+    "case_id": "E02-08-playlist-stale-copy-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-05"
+    ],
+    "test_ids": [
+      "TEST-PLAYLIST-01"
+    ],
+    "commit": "1f0936b9224d6cdcfea235e62d4a1834ce0b4367",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で、プレイリストかキューの revision が古い場合に複製を拒否し、対象キューの項目と revision が変わらないことを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/PlaylistDaoTest.kt"
+    ],
+    "limitations": "古い revision を指定した DAO 呼び出しを検証した。"
+  },
+  {
+    "case_id": "E02-08-playlist-migration-v2-v3-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-05"
+    ],
+    "test_ids": [
+      "TEST-PLAYLIST-01"
+    ],
+    "commit": "1f0936b9224d6cdcfea235e62d4a1834ce0b4367",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で、Room v2 から v3 への移行後に、キュー項目 ID と順序、キューとチェックポイントの revision 7、チェックポイントの項目 ID と再生位置 9,000 ms が保持され、プレイリストを作成できた。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/PlaylistDaoTest.kt"
+    ],
+    "limitations": "エクスポート済み v2 スキーマからの移行を検証した。API 23・36 の実機での移行は未検証。"
+  },
+  {
+    "case_id": "E02-04-host-queue-orchestrator",
+    "requirement_ids": [
+      "FR-PLY-01",
+      "FR-PLY-04",
+      "FR-PLY-07"
+    ],
+    "test_ids": [
+      "TEST-PLY-01",
+      "TEST-QUEUE-01"
+    ],
+    "commit": "6e90108a268822aa9b03668429e1d20034612ab8",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "RoomとSourceResolverを接続した9件で、全曲不可でも期限内に一巡で終了すること、設定保存、並べ替えと取消による候補破棄を確認した。音源解決後のrevision照会中に遷移IDを変えると、旧候補の確認要求を返さずCancelledで終了した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/QueueOrchestratorTest.kt",
+      "docs/contracts/queue-orchestrator.md"
+    ],
+    "limitations": "#60の候補探索とローカルの互換性を確認した。再生主体の停止確認・実際の切替は#61、Serviceの連続再生との結合と実機の確認は後続で扱う。"
+  },
+  {
+    "case_id": "E02-02-host-state-and-seek-2026-11-20",
+    "requirement_ids": [
+      "FR-PLY-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-01"
+    ],
+    "commit": "3de907841349d113842c26801bb66ead38590cb0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Reducer試験で曲長が未知の場合のシーク無効化、停止後の古い準備完了の破棄、自然終了時のADVANCINGを確認した。MediaController経由では、メディア未設定時のシークコマンド無効化、0と曲末へのシーク、範囲外の拒否、連続シークの最新位置を確認した。範囲外の拒否後の位置はPlayerとSession extrasで確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/LocalPlaybackTest.kt",
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "#37の状態遷移とシークに限定。キュー編集と次曲の選択は後続Issueで検証する。"
+  },
+  {
+    "case_id": "E02-02-host-interruptions-2026-11-20",
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
+    "commit": "3de907841349d113842c26801bb66ead38590cb0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric API23/35で一時フォーカス喪失、becoming noisy、USB出力取り外し通知による一時停止を確認した。API35の通話モードと、フォーカス復帰・通話終了・再接続の通知後も明示的な再生操作を待つことを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "ホスト上でOSの通知を再現したケースに限定。端末のルーティングや、切断から一時停止までの実際の音声出力は実機確認が必要。"
+  },
+  {
+    "case_id": "E02-02-device-interruptions-2026-11-20",
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
+    "commit": "3de907841349d113842c26801bb66ead38590cb0",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "指定ADBシリアルがないため、API23/36の端末試験と実通話・実フォーカス・実BT/USB切断は未実施。",
+    "evidence": [],
+    "limitations": "スピーカーへの切替過渡、実機のフォーカス・通話通知、画面ロック中の挙動は未確認。"
+  },
+  {
+    "case_id": "E02-02-host-state-and-seek-2026-11-20-rerun-4300eed",
+    "requirement_ids": [
+      "FR-PLY-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-01"
+    ],
+    "commit": "4300eedd3b9851727c2e4117e389b59e18e622a5",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Reducer試験で曲長が未知のときのシーク無効化と自然終了時のADVANCINGを確認した。MediaController経由で、メディア未設定時のシークコマンド無効化、0と曲末へのシーク、範囲外の拒否、連続シークの最新位置、停止による解決取消を確認した。停止後の古い準備完了の破棄はReducer試験で確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/LocalPlaybackTest.kt",
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "シーク可能だが曲長が未知の状態はSession経由では未検証。キュー編集と次曲の選択は後続Issueで検証する。"
+  },
+  {
+    "case_id": "E02-02-host-interruptions-2026-11-20-rerun-4300eed",
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
+    "commit": "4300eedd3b9851727c2e4117e389b59e18e622a5",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric API23/35で、通常の一時フォーカス喪失と復帰、becoming noisyによる一時停止、USB出力の取り外しと再接続、解決中の取り外し後の選曲保持と一時停止、MODE_IN_COMMUNICATIONでの自動開始抑止と明示的な再生を確認した。API23では通話中の一時フォーカス喪失後に自動再開しないこと、API35では着信・通話中の再生拒否後にMediaControllerのplayWhenReadyもfalseであり、通話終了後は明示的な再生を待つことを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "ホスト上でOSの通知を再現したケースに限定。端末のルーティングや、切断から一時停止までの実際の音声出力は実機確認が必要。"
+  },
+  {
+    "case_id": "E02-02-host-state-and-seek-2026-11-21-rerun",
+    "requirement_ids": [
+      "FR-PLY-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-01"
+    ],
+    "commit": "892eb5f2efffb8f0917dc85c6a1142f2f2ce927c",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric API23/35でMediaControllerから範囲外のシークを要求し、拒否後もMediaController、Player、Session extrasの位置が直前の有効なシーク位置と一致することを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "シーク可能だが曲長が未知の状態はSession経由では未検証。"
+  },
+  {
+    "case_id": "E02-02-host-focus-notification-order-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
+    "commit": "892eb5f2efffb8f0917dc85c6a1142f2f2ce927c",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric API23で、MODE_NORMAL中の一時フォーカス喪失、MODE_IN_CALLへの変更、通話終了、フォーカス復帰の順に再現し、再生要求が解除されたままPAUSEDを維持することを確認した。API35では通常の一時フォーカス喪失から自動再開することを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "ホストで通知順序を再現した。実通話での通知順序と音声出力は未確認。"
   },
   {
     "case_id": "E10-04-sync-push-batch-2026-11-21",
