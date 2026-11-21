@@ -1,6 +1,5 @@
 package com.audipp.data.db
 
-import android.content.Context
 import android.database.sqlite.SQLiteConstraintException
 import androidx.room.Room
 import com.audipp.domain.model.Availability
@@ -8,9 +7,7 @@ import com.audipp.domain.model.QueueEntry
 import com.audipp.domain.model.QueueEntryId
 import com.audipp.domain.model.SourceKind
 import com.audipp.domain.model.VariantId
-import java.io.File
 import kotlinx.coroutines.runBlocking
-import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -109,24 +106,8 @@ class QueueDaoTest {
     @Test
     fun migratesTheExportedV1SchemaWithoutDroppingLibraryRows() = runBlocking {
         val name = "queue-migration.db"
-        val schema = JSONObject(File("schemas/com.audipp.data.db.LibraryDatabase/1.json").readText())
-            .getJSONObject("database")
-        context.openOrCreateDatabase(name, Context.MODE_PRIVATE, null).use { old ->
-            val entities = schema.getJSONArray("entities")
-            for (index in 0 until entities.length()) {
-                val table = entities.getJSONObject(index)
-                val tableName = table.getString("tableName")
-                old.execSQL(table.getString("createSql").replace("\${TABLE_NAME}", tableName))
-                val indices = table.optJSONArray("indices") ?: continue
-                for (i in 0 until indices.length()) {
-                    old.execSQL(indices.getJSONObject(i).getString("createSql")
-                        .replace("\${TABLE_NAME}", tableName))
-                }
-            }
-            val setup = schema.getJSONArray("setupQueries")
-            for (index in 0 until setup.length()) old.execSQL(setup.getString(index))
+        context.createLibraryDatabaseFromSchema(name, version = 1) { old ->
             old.execSQL("INSERT INTO tracks (track_id, title) VALUES ('song', 'Before migration')")
-            old.version = 1
         }
         val upgraded = LibraryDatabase.open(context, name)
         try {
