@@ -94,7 +94,7 @@
     "test_ids": [
       "TEST-SEC-01"
     ],
-    "commit": "81b115edc346437cdc6a9cdcd094740120af40df",
+    "commit": "b2f06ff8a121d549561f2d30348cc030f8588735",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -113,7 +113,7 @@
     "test_ids": [
       "TEST-GOV-01"
     ],
-    "commit": "81b115edc346437cdc6a9cdcd094740120af40df",
+    "commit": "b2f06ff8a121d549561f2d30348cc030f8588735",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -134,7 +134,7 @@
       "TEST-GOV-01",
       "TEST-ACC-01"
     ],
-    "commit": "81b115edc346437cdc6a9cdcd094740120af40df",
+    "commit": "b2f06ff8a121d549561f2d30348cc030f8588735",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -153,12 +153,12 @@
     "test_ids": [
       "TEST-SEC-01"
     ],
-    "commit": "8c6cb4478f1a45bd0085fe16199c6884e898232e",
+    "commit": "63bf9b8de44dbf7362ed73d0a6d6f08790dc9267",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
     "permission": "NOT_REQUIRED",
-    "reason": "CIのServerジョブ（PR head 8c6cb44）で、Keycloakがhealthyになった後、APIコンテナーからauth.audipp.test:9000への接続がcurlの終了コード7で失敗することを確認した。",
+    "reason": "CIのServerジョブ（チェックアウト: 63bf9b8de44dbf7362ed73d0a6d6f08790dc9267、PR head 8c6cb44 とmainのマージ）で、Keycloakがhealthyになった後、APIコンテナーからauth.audipp.test:9000への接続がcurlの終了コード7で失敗することを確認した。",
     "evidence": [
       "https://github.com/4rtofl/Audipp/actions/runs/44914582651/job/136877383768",
       "server/compose/smoke-test.sh"
