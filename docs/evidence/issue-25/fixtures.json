@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "shared_secret": "fixture-secret",
   "requests": [
     {
@@ -21,11 +21,13 @@
     }
   ],
   "authorization_attempts": [
-    ["matching pending attempt", true, true, true, false, true],
-    ["foreign attempt", false, true, true, false, false],
-    ["attempt expired", true, false, true, false, false],
-    ["missing token", true, true, false, false, false],
-    ["callback replay", true, true, true, true, false]
+    ["matching pending attempt", true, true, "nonce-a", "nonce-a", "token-a", false, true],
+    ["attempt A callback for attempt B", true, true, "nonce-b", "nonce-a", "token-a", false, false],
+    ["callback without attempt nonce", true, true, "nonce-a", null, "token-a", false, false],
+    ["foreign attempt", false, true, "nonce-a", "nonce-a", "token-a", false, false],
+    ["attempt expired", true, false, "nonce-a", "nonce-a", "token-a", false, false],
+    ["missing token", true, true, "nonce-a", "nonce-a", null, false, false],
+    ["callback replay", true, true, "nonce-a", "nonce-a", "token-a", true, false]
   ],
   "session_responses": [
     ["approved", "<lfm status='ok'><session><name>fixture-user</name><key>fixture-session</key></session></lfm>", "SESSION"],
@@ -35,22 +37,28 @@
     ["missing key", "<lfm status='ok'><session><name>fixture-user</name></session></lfm>", "UNCONFIRMED"]
   ],
   "write_responses": [
-    ["accepted", "scrobble", 200, 1, "<lfm status='ok'><scrobbles accepted='1' ignored='0'><scrobble><ignoredMessage code='0'/></scrobble></scrobbles></lfm>", ["ACKNOWLEDGED"]],
-    ["mixed batch", "scrobble", 200, 2, "<lfm status='ok'><scrobbles accepted='1' ignored='1'><scrobble><ignoredMessage code='0'/></scrobble><scrobble><ignoredMessage code='2'/></scrobble></scrobbles></lfm>", ["ACKNOWLEDGED", "IGNORED"]],
-    ["unknown ignored code", "scrobble", 200, 1, "<lfm status='ok'><scrobbles accepted='0' ignored='1'><scrobble><ignoredMessage code='99'/></scrobble></scrobbles></lfm>", ["IGNORED"]],
-    ["inconsistent counters", "scrobble", 200, 1, "<lfm status='ok'><scrobbles accepted='1' ignored='0'><scrobble><ignoredMessage code='3'/></scrobble></scrobbles></lfm>", ["UNCERTAIN"]],
-    ["invalid session despite HTTP 200", "scrobble", 200, 1, "<lfm status='failed'><error code='9'/></lfm>", ["AUTH_REQUIRED"]],
-    ["offline", "scrobble", 503, 1, "<lfm status='failed'><error code='11'/></lfm>", ["RETRYABLE"]],
-    ["temporary application error", "scrobble", 500, 1, "<lfm status='failed'><error code='16'/></lfm>", ["RETRYABLE"]],
-    ["bad parameters", "scrobble", 400, 1, "<lfm status='failed'><error code='6'/></lfm>", ["PERMANENT_FAILURE"]],
-    ["credential denied", "scrobble", 403, 1, "<lfm status='failed'><error code='26'/></lfm>", ["PERMANENT_FAILURE"]],
-    ["unclassified rate limit", "scrobble", 429, 1, "<lfm status='failed'><error code='29'/></lfm>", ["PERMANENT_FAILURE"]],
-    ["response lost after dispatch", "scrobble", null, 1, "", ["UNCERTAIN"]],
-    ["missing batch item", "scrobble", 200, 2, "<lfm status='ok'><scrobbles accepted='1' ignored='0'><scrobble><ignoredMessage code='0'/></scrobble></scrobbles></lfm>", ["UNCERTAIN", "UNCERTAIN"]],
-    ["truncated response", "scrobble", 200, 1, "<lfm status='ok'>", ["UNCERTAIN"]],
-    ["now playing accepted", "nowplaying", 200, 1, "<lfm status='ok'><nowplaying><ignoredMessage code='0'/></nowplaying></lfm>", ["ACKNOWLEDGED"]],
-    ["now playing ignored", "nowplaying", 200, 1, "<lfm status='ok'><nowplaying><ignoredMessage code='1'/></nowplaying></lfm>", ["IGNORED"]],
-    ["now playing temporary failure", "nowplaying", 503, 1, "<lfm status='failed'><error code='16'/></lfm>", ["STOP"]]
+    ["accepted", "scrobble", false, 200, "<lfm status='ok'><scrobbles accepted='1' ignored='0'><scrobble><ignoredMessage code='0'/></scrobble></scrobbles></lfm>", 1, ["ACKNOWLEDGED"]],
+    ["mixed batch", "scrobble", false, 200, "<lfm status='ok'><scrobbles accepted='1' ignored='1'><scrobble><ignoredMessage code='0'/></scrobble><scrobble><ignoredMessage code='2'/></scrobble></scrobbles></lfm>", 2, ["ACKNOWLEDGED", "IGNORED"]],
+    ["unknown ignored code", "scrobble", false, 200, "<lfm status='ok'><scrobbles accepted='0' ignored='1'><scrobble><ignoredMessage code='99'/></scrobble></scrobbles></lfm>", 1, ["IGNORED"]],
+    ["inconsistent counters", "scrobble", false, 200, "<lfm status='ok'><scrobbles accepted='1' ignored='0'><scrobble><ignoredMessage code='3'/></scrobble></scrobbles></lfm>", 1, ["UNCERTAIN"]],
+    ["invalid session despite HTTP 200", "scrobble", false, 200, "<lfm status='failed'><error code='9'/></lfm>", 1, ["AUTH_REQUIRED"]],
+    ["offline", "scrobble", false, 503, "<lfm status='failed'><error code='11'/></lfm>", 1, ["RETRYABLE"]],
+    ["temporary application error", "scrobble", false, 500, "<lfm status='failed'><error code='16'/></lfm>", 1, ["RETRYABLE"]],
+    ["bad parameters", "scrobble", false, 400, "<lfm status='failed'><error code='6'/></lfm>", 1, ["PERMANENT_FAILURE"]],
+    ["invalid API key", "scrobble", false, 403, "<lfm status='failed'><error code='10'/></lfm>", 1, ["PERMANENT_FAILURE"]],
+    ["invalid signature", "scrobble", false, 403, "<lfm status='failed'><error code='13'/></lfm>", 1, ["PERMANENT_FAILURE"]],
+    ["credential denied", "scrobble", false, 403, "<lfm status='failed'><error code='26'/></lfm>", 1, ["PERMANENT_FAILURE"]],
+    ["unclassified rate limit", "scrobble", false, 429, "<lfm status='failed'><error code='29'/></lfm>", 1, ["UNCERTAIN"]],
+    ["malformed error code", "scrobble", false, 500, "<lfm status='failed'><error code='bad'/></lfm>", 1, ["UNCERTAIN"]],
+    ["unknown error code", "scrobble", false, 500, "<lfm status='failed'><error code='999'/></lfm>", 1, ["UNCERTAIN"]],
+    ["DNS failure before dispatch", "scrobble", true, null, "", 1, ["RETRYABLE"]],
+    ["response lost after dispatch", "scrobble", false, null, "", 1, ["UNCERTAIN"]],
+    ["missing batch item", "scrobble", false, 200, "<lfm status='ok'><scrobbles accepted='1' ignored='0'><scrobble><ignoredMessage code='0'/></scrobble></scrobbles></lfm>", 2, ["UNCERTAIN", "UNCERTAIN"]],
+    ["truncated response", "scrobble", false, 200, "<lfm status='ok'>", 1, ["UNCERTAIN"]],
+    ["now playing accepted", "nowplaying", false, 200, "<lfm status='ok'><nowplaying><ignoredMessage code='0'/></nowplaying></lfm>", 1, ["ACKNOWLEDGED"]],
+    ["now playing ignored", "nowplaying", false, 200, "<lfm status='ok'><nowplaying><ignoredMessage code='1'/></nowplaying></lfm>", 1, ["IGNORED"]],
+    ["now playing DNS failure before dispatch", "nowplaying", true, null, "", 1, ["STOP"]],
+    ["now playing temporary failure", "nowplaying", false, 503, "<lfm status='failed'><error code='16'/></lfm>", 1, ["STOP"]]
   ],
   "scrobble_gate": [
     ["exactly 30 s", 30000, 30000, "ALLOWED", true, true, true, true, false],

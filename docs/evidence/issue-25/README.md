@@ -30,10 +30,12 @@ Scrobbleは聴取履歴として本人のLast.fmプロフィールに追加さ�
 ## ブラウザー承認とGateway
 
 - GatewayをWebアプリとして登録する方式を調査候補とした。ブラウザーを公式承認画面へ送り、利用者承認後に登録先callbackへ届く `token` をGatewayで `auth.getSession` に交換する。Web方式では `auth.getToken` は不要。公式仕様では承認トークンは60分で失効し、セッション発行時に消費される。セッション鍵には通常有効期限がなく、利用者によるアクセス取り消しで失効する。登録先とブラウザー復帰、拒否時の挙動は実環境で確認する。[Web承認](https://www.last.fm/api/webauth)・[認証仕様 §6–8](https://www.last.fm/api/authspec)・[auth.getSession](https://www.last.fm/api/show/auth.getSession)
-- callbackの照合はAudipp側で行う。本人のAudippアカウントに結び付いた期限付きの承認試行を照合し、一回限りで処理する。Last.fmが独自のstateパラメーターを返す前提は置かない。交換完了後はアプリに連携結果だけを返す。APKでLast.fmパスワードを収集せず、共有secretとセッション鍵はGatewayに置く。
+- Gatewayは承認を始めるたびに推測困難な nonce を発行し、Audipp本人のアカウント・承認試行・有効期限と結び付けて保存する。ブラウザーをLast.fmへ送る際に、`cb` に渡すGatewayのHTTPS callback URLのクエリに nonce を含める案とする。callbackの nonce から元の試行を特定し、本人・有効期限・未処理を照合する。照合できた試行を一回限りで確保してから `token` を交換し、連携結果はその試行にだけ返す。同じ本人でも、試行Aの nonce と `token` が試行Bへ渡った場合はBでの交換を拒否する。nonce がない場合も交換しない。APKでLast.fmパスワードを収集せず、共有secretとセッション鍵はGatewayに置く。
+- Last.fmが試行ごとの `cb` を許可し、既存のクエリを保持して `token` を付けて返すかは要確認。Last.fm独自の `state` は前提に含めない。#50 では、実環境でcallbackの照合が成立することを確認してからこの案を採用する。[Web承認](https://www.last.fm/api/webauth)
 - 署名は `format`、`callback`、署名自身を除く名前をASCII順に並べ、エンコード前の名前と値を区切りなしで連結して共有secretを末尾に加える。UTF-8でMD5を計算し、16進表記を `api_sig` とする。書き込みでは `method` を含む全パラメーターをUTF-8のフォームPOST本文に置く。公式Scrobbling資料のURL例はHTTP表記のため、実試験でHTTPSの正規エンドポイントを確認し、平文接続への切替は行わない。[認証仕様 §8](https://www.last.fm/api/authspec#8)・[REST](https://www.last.fm/api/rest)・[track.scrobble](https://www.last.fm/api/show/track.scrobble)
 - Gatewayは許可リストで項目を取り出す。Scrobbleはアーティスト、曲名、再生開始時刻（UTCのUnix秒）、認証フィールドが必須。Now Playingは再生開始時刻なしの別要求。アルバム、曲長などの任意項目は送信用途が確認されたものだけを使う。構造化タグ等を利用し、ファイル名から曲名を推定しない。Now Playingの補正値をそのままScrobbleに転用しない。音声、ローカルpath、URI、他提供元のトークン、Audipp内部IDはLast.fmへ渡さない。[Scrobbling 2.0](https://www.last.fm/api/scrobbling)・[track.updateNowPlaying](https://www.last.fm/api/show/track.updateNowPlaying)
-- ScrobbleのHTTP結果、本文のstatus、各項目の `ignoredMessage.code` を確認する。0は受付、非0は無視として記録し成功件数に含めない。本文の11/16は再試行候補、9は再連携待ち。資格・パラメーター拒否や29を一律の自動再送に入れない。送信後に応答が消失・破損し受付を確定できない場合は `UNCERTAIN` で保留。Now Playingは失敗しても再送しない。Gatewayと端末で `destination + play_event_id` を重複排除に使い、再送時は同じ開始時刻を使う。Last.fm側の冪等性は未確認。[Scrobbling 2.0](https://www.last.fm/api/scrobbling)・[DD-HIST-04](../../specifications/03_detailed_design.md#dd-hist-04-lastfm)
+- ScrobbleのHTTP結果、本文のstatus、各項目の `ignoredMessage.code` を確認する。0は受付、非0は無視として記録し成功件数に含めない。DNS解決の失敗などで未送信と確認できた場合は `RETRYABLE` とし、バックオフ後に再試行する。送信後に応答を失った場合や、送信の有無を確認できず受付を判断できない場合は `UNCERTAIN` で保留する。Now Playingは失敗しても再送しない。Gatewayと端末で `destination + play_event_id` を重複排除に使い、再送時は同じ開始時刻を使う。Last.fm側の冪等性は未確認。[Scrobbling 2.0](https://www.last.fm/api/scrobbling)・[DD-HIST-04](../../specifications/03_detailed_design.md#dd-hist-04-lastfm)
+- Scrobbleの失敗応答では、コード11・16を `RETRYABLE`、9を `AUTH_REQUIRED` とする。恒久失敗（`PERMANENT_FAILURE`）とするのは、6（パラメーター不備）、10（無効なAPIキー）、13（無効な署名）、26（APIキー停止）。破損したコードや分類が未定のコードは `UNCERTAIN` で保留する。29は現時点では自動再送を保留する。どの制限を指すか、何を条件に再試行できるかは公式資料で要確認。[Last.fmのエラーコード](https://www.last.fm/api/errorcodes)
 
 ## 実試験の準備と後続担当
 
@@ -43,16 +45,16 @@ Scrobbleは聴取履歴として本人のLast.fmプロフィールに追加さ�
 | [Last.fmへの用途確認](https://www.last.fm/api/tos) | 必要時に上記用途、資格試験で行う処理、Gateway・データの所在国、プロフィール表示とエラーの扱い、取得データの保存範囲、撤回・削除を提示。追加許可が必要かを確認する |
 | 試験アカウント・資格保管 | 承認後に本人管理の試験専用アカウントと監査可能なアクセス権を準備。実試験には権利確認済みの合成音源を用意。共有secretと本人別セッション鍵は権限制限したGatewayの秘密保管へ置き、リポジトリ・APK・同期・CIログ・診断から除外。callback query、フォーム本文、応答本文の生ログを残さず、運用証跡には秘匿済みの結果コード等を記録 |
 
-[#50](https://github.com/4rtoflow/Audipp/issues/50) へ署名・フォームと応答fixtureを渡す。Gateway実装では本人と承認試行の照合・一回限りの取得を実際の同時リクエストで検証し、別人・期限切れ・リプレイを拒否し、秘密と送信データのログ漏洩を検査する。資格取得後にHTTPSで承認・失効・結果内訳と実応答を照合する。
+[#50](https://github.com/4rtoflow/Audipp/issues/50) へ署名・フォームと応答fixtureを渡す。Gateway実装では本人と承認試行の照合・一回限りの取得を実際の同時リクエストで検証し、別人・別試行・期限切れ・リプレイを拒否し、秘密と送信データのログ漏洩を検査する。資格取得後にHTTPSで承認・失効・結果内訳と実応答を照合する。
 
 [#114](https://github.com/4rtoflow/Audipp/issues/114) へ送信可否・再送分類を渡す。送信直前と各再試行時に許諾・主体・同意・削除・セッションを再評価し、撤回と同時送信、履歴削除、オフライン復帰、クラッシュ後の状態、二重イベント、最大50件のバッチ制約とASCII索引順を実装試験で検証する。試験時のACKとLast.fmでのプロフィール反映を別に観測する。
 
 ## 実施証拠と判定
 
-公開資料の確認日 2026-11-20 JST。公式サイト直開きが取得エラーとなった資料は検索サービスに収録された公式ページ本文を参照した。外部応答を模したXMLは仕様に沿って作成した合成データ。SHA-256 は `15d6cf1e166430989f89194ad15bd4fd512a85fdb3e07ce3edaae0d8b455174f`（[fixtures.json](fixtures.json)、v1）。Linux x86_64、Python 3.15.2、OpenSSL 3.6.5。
+初回の公開資料確認は 2026-11-20 JST。公式サイト直開きが取得エラーとなった資料は検索サービスに収録された公式ページ本文を参照した。外部応答を模したXMLは仕様に沿って作成した合成データ。SHA-256 は `2c16240fa5d2a889006fb1df8debe399418c40e816def0d656c35c8d7f56675c`（[fixtures.json](fixtures.json)、v2）。初回は Linux x86_64、Python 3.15.2、OpenSSL 3.6.5。PR #193 のレビュー対応後は Python 3.14.8 でfixtureを再実行した。
 
 ```sh
-python3 docs/evidence/issue-25/test_contract.py -v
+python3 -I -B docs/evidence/issue-25/test_contract.py -v
 sha256sum docs/evidence/issue-25/fixtures.json
 printf '%s' 'api_keyfixture-keymethodauth.getSessiontokenfixture-tokenfixture-secret' | openssl dgst -md5
 printf '%s' 'api_keyfixture-keyartist試験 & Co.methodtrack.scrobbleskfixture-sessiontimestamp1795136400track曲 + 1fixture-secret' | openssl dgst -md5
@@ -62,8 +64,8 @@ printf '%s' 'api_keyfixture-keyartist試験 & Co.methodtrack.updateNowPlayingskf
 | ケース | 判定 | 観測 |
 | --- | --- | --- |
 | TEST-RESEARCH-01のLast.fm用途条件の調査部分 | PASS | 公式資料と未取得資格、提供元別の送信条件、依存・配布、後続の実試験条件を記録 |
-| TEST-LASTFM-01のローカル参照モデル | PASS | 4テスト・42 fixtureケース。署名3件はOpenSSLの独立計算と一致。UTF-8フォーム、承認試行とセッション結果、本文の混在・無視・失効・再送・到達不明、30秒超・半分・240秒の境界と送信ゲートを検査 |
+| TEST-LASTFM-01のローカル参照モデル | PASS | 4テスト・50 fixtureケース。署名3件は初回のOpenSSLによる独立計算と一致。UTF-8フォーム、別試行のcallback拒否、セッション結果、本文の混在・無視・失効、送信前失敗・送信後の応答喪失・不明なエラー、30秒超・半分・240秒の境界と送信ゲートを検査 |
 | TEST-LASTFM-01の実環境 | BLOCKED | 実試験の資格・アカウント・用途条件が未確定。実サービスの申請・ログイン・送信なし |
 | 製品コード・Android API23/API36の実行、実機・音声 | NOT_RUN | 変更は研究証跡のみ。Androidのビルド・Unit・Lintは実行済み。Unit 188件、Lint 0エラー・既存警告13件 |
 
-受入条件4項目は調査範囲で PASS。未取得資格と申請内容、独立した判定軸、後続担当、要求・試験・コミットの追跡を記録した。ローカルで実行したのは参照モデルまでで、テスト対象はGateway実装、永続outbox、実ブラウザー、外部応答への接続を含まない。FR-USE-05の完成判定には #50 / #114 の実装と、資格取得後の実契約試験が残る。変更が `docs/` 内のため、既存CIのAndroid・サーバー・音声試験はパス判定に従う。ローカルでは所定のAndroid検証とfixtureを実行した。
+受入条件4項目は調査範囲で PASS。未取得資格と申請内容、独立した判定軸、後続担当、要求・試験・コミットの追跡を記録した。ローカルで実行したのは参照モデルまでで、テスト対象はGateway実装、永続outbox、実ブラウザー、外部応答への接続を含まない。FR-USE-05の完成判定には #50 / #114 の実装と、資格取得後の実契約試験が残る。fixture 50件はローカルで実行し、現行CIでは未実行。所定のAndroid検証は初回調査時にローカルで実行した。

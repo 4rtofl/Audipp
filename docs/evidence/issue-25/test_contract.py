@@ -21,8 +21,11 @@ def response_root(body):
     return root if root.tag == "lfm" else None
 
 
-def can_exchange(same_owner, pending, has_token, already_claimed):
-    return same_owner and pending and has_token and not already_claimed
+def can_exchange(same_owner, pending, attempt_nonce, callback_nonce, token, already_claimed):
+    return (
+        same_owner and pending and attempt_nonce == callback_nonce
+        and bool(token) and not already_claimed
+    )
 
 
 def session_result(body):
@@ -44,7 +47,10 @@ def error_code(root):
     return error.get("code") if error is not None else None
 
 
-def write_result(method, http_status, body, count):
+def write_result(method, failed_before_send, http_status, body, count):
+    if failed_before_send:
+        return ["STOP"] if method == "nowplaying" else ["RETRYABLE"] * count
+
     root = response_root(body)
     unconfirmed = ["STOP"] if method == "nowplaying" else ["UNCERTAIN"] * count
     if root is None:
@@ -57,7 +63,9 @@ def write_result(method, http_status, body, count):
             return ["STOP"]
         if code in {"11", "16"}:
             return ["RETRYABLE"] * count
-        return ["PERMANENT_FAILURE"] * count if code else unconfirmed
+        if code in {"6", "10", "13", "26"}:
+            return ["PERMANENT_FAILURE"] * count
+        return unconfirmed
     if http_status != 200 or root.get("status") != "ok":
         return unconfirmed
 
@@ -108,9 +116,9 @@ class ContractFixtures(unittest.TestCase):
                 self.assertEqual(session_result(body), expected)
 
     def test_write_responses(self):
-        for name, method, status, count, body, expected in self.fixtures["write_responses"]:
+        for name, *values, expected in self.fixtures["write_responses"]:
             with self.subTest(case=name):
-                self.assertEqual(write_result(method, status, body, count), expected)
+                self.assertEqual(write_result(*values), expected)
 
     def test_scrobble_gate_on_send_or_retry(self):
         for name, *values, expected in self.fixtures["scrobble_gate"]:
