@@ -85,7 +85,7 @@ class PlaylistDaoTest {
 
     @Test
     fun appendCopiesDuplicatesAndUnavailableVariantsWithoutLinkingPlaylistAndQueue() = runBlocking {
-        val saved = listOf(PlaylistEntry("a", variant), PlaylistEntry("b", otherVariant), PlaylistEntry("c", variant))
+        val saved = listOf(PlaylistEntry("a", variant), PlaylistEntry("b", variant), PlaylistEntry("c", otherVariant))
         val current = QueueEntry(QueueEntryId("current"), otherVariant)
         seedLibrary()
         playlists.create("list", "List", 1)
@@ -133,18 +133,33 @@ class PlaylistDaoTest {
         val name = "playlist-migration.db"
         context.createLibraryDatabaseFromSchema(name, version = 2) { old ->
             old.execSQL(
+                "INSERT INTO sources (source_id, kind, availability, updated_at) " +
+                    "VALUES ('source', 'LOCAL', 'PLAYABLE', 1)",
+            )
+            old.execSQL("INSERT INTO tracks (track_id) VALUES ('track')")
+            old.execSQL(
+                "INSERT INTO track_variants (variant_id, track_id, source_id) " +
+                    "VALUES ('variant', 'track', 'source')",
+            )
+            old.execSQL(
                 "INSERT INTO queues (queue_id, created_at, updated_at, revision, shuffle_enabled, repeat_mode) " +
                     "VALUES ('queue', 1, 2, 7, 0, 'OFF')",
             )
             old.execSQL(
-                "INSERT INTO playback_checkpoint (slot_id, queue_id, queue_revision, saved_at) " +
-                    "VALUES (1, 'queue', 7, 2)",
+                "INSERT INTO queue_items (entry_id, queue_id, ordinal, variant_id, added_at) " +
+                    "VALUES ('a', 'queue', 1, 'variant', 2), ('b', 'queue', 0, 'variant', 2)",
+            )
+            old.execSQL(
+                "INSERT INTO playback_checkpoint (slot_id, queue_id, queue_revision, entry_id, position_ms, saved_at) " +
+                    "VALUES (1, 'queue', 7, 'a', 9000, 2)",
             )
         }
         val upgraded = LibraryDatabase.open(context, name)
         try {
-            assertEquals(PlaybackCheckpointEntity("queue", 7, null, null, 2), upgraded.queueDao().checkpoint())
-            assertEquals(7L, upgraded.queueDao().read("queue")?.queue?.revision)
+            val queue = requireNotNull(upgraded.queueDao().read("queue"))
+            assertEquals(listOf(QueueEntry(QueueEntryId("b"), variant), QueueEntry(QueueEntryId("a"), variant)), queue.entries)
+            assertEquals(7L, queue.queue.revision)
+            assertEquals(PlaybackCheckpointEntity("queue", 7, "a", 9_000, 2), upgraded.queueDao().checkpoint())
             assertEquals(UPDATED, upgraded.playlistDao().create("list", "List", 3))
         } finally {
             upgraded.close()
