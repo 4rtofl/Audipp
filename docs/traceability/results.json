@@ -144,5 +144,26 @@
       "docs/evidence/issue-25/README.md"
     ],
     "limitations": "Last.fm連携の利用条件に限定。依存追加なし。公開配布・ストアの判定やTEST-STORE-01本体の実行は対象外。"
+  },
+  {
+    "case_id": "E09-08-lastfm-offline-contract-pr193-review-2026-11-21",
+    "requirement_ids": [
+      "FR-USE-05"
+    ],
+    "test_ids": [
+      "TEST-LASTFM-01"
+    ],
+    "commit": "8a5c842556474b19e8fb14b9b1b1315c17bbd175",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "レビュー対応後に合成fixture 50件をローカルで再実行した。別試行のcallback拒否、送信前失敗と送信後の応答喪失の区別、恒久失敗と不明なエラーの判定を確認した。",
+    "evidence": [
+      "docs/evidence/issue-25/README.md",
+      "docs/evidence/issue-25/fixtures.json",
+      "docs/evidence/issue-25/test_contract.py"
+    ],
+    "limitations": "現行CIではfixture未実行。Last.fmの実callbackとコード29の扱いは要確認。Gateway・outboxの製品実装と実サービスは未検証。"
   }
 ]
