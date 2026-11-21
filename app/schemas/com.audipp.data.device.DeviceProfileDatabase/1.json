@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "0a3e2cda453aa57f75c0d66b91fb88b8",
+    "identityHash": "33a99124cac8917f7ea871f77947cb07",
     "entities": [
       {
         "tableName": "device_components",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`component_id` TEXT NOT NULL, `kind` TEXT NOT NULL, `manufacturer` TEXT, `product` TEXT, `vid` INTEGER, `pid` INTEGER, `usb_serial_hash` TEXT, `notes` TEXT, PRIMARY KEY(`component_id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`component_id` TEXT NOT NULL, `kind` TEXT NOT NULL, `manufacturer_json` TEXT, `product_json` TEXT, `vid_json` TEXT, `pid_json` TEXT, `usb_serial_hash` TEXT, `notes` TEXT, PRIMARY KEY(`component_id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -22,23 +22,23 @@
           },
           {
             "fieldPath": "manufacturer",
-            "columnName": "manufacturer",
+            "columnName": "manufacturer_json",
             "affinity": "TEXT"
           },
           {
             "fieldPath": "product",
-            "columnName": "product",
+            "columnName": "product_json",
             "affinity": "TEXT"
           },
           {
             "fieldPath": "vid",
-            "columnName": "vid",
-            "affinity": "INTEGER"
+            "columnName": "vid_json",
+            "affinity": "TEXT"
           },
           {
             "fieldPath": "pid",
-            "columnName": "pid",
-            "affinity": "INTEGER"
+            "columnName": "pid_json",
+            "affinity": "TEXT"
           },
           {
             "fieldPath": "usbSerialHash",
@@ -295,7 +295,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0a3e2cda453aa57f75c0d66b91fb88b8')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '33a99124cac8917f7ea871f77947cb07')"
     ]
   }
 }

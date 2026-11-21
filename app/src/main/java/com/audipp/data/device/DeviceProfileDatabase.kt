@@ -37,10 +37,10 @@ internal abstract class DeviceProfileDatabase : RoomDatabase() {
 internal data class ComponentRow(
     @PrimaryKey @ColumnInfo(name = "component_id") val id: String,
     val kind: String,
-    val manufacturer: String?,
-    val product: String?,
-    val vid: Int?,
-    val pid: Int?,
+    @ColumnInfo(name = "manufacturer_json") val manufacturer: String?,
+    @ColumnInfo(name = "product_json") val product: String?,
+    @ColumnInfo(name = "vid_json") val vid: String?,
+    @ColumnInfo(name = "pid_json") val pid: String?,
     @ColumnInfo(name = "usb_serial_hash") val usbSerialHash: String?,
     val notes: String?,
 )
@@ -53,7 +53,7 @@ internal data class ComponentRow(
 )
 internal data class EvidenceRow(
     @ColumnInfo(name = "component_id") val componentId: String,
-    val ordinal: Int,
+    val ordinal: Long,
     @ColumnInfo(name = "evidence_json") val document: String,
 )
 
@@ -77,7 +77,7 @@ internal data class ProfileComponentRow(
     @ColumnInfo(name = "profile_id") val profileId: String,
     @ColumnInfo(name = "component_id") val componentId: String,
     val role: String,
-    val ordinal: Int,
+    val ordinal: Long,
 )
 
 @Entity(
@@ -89,7 +89,7 @@ internal data class ProfileComponentRow(
 internal data class PresetRow(
     @ColumnInfo(name = "profile_id") val profileId: String,
     @ColumnInfo(name = "preset_id") val presetId: String,
-    val ordinal: Int,
+    val ordinal: Long,
     @ColumnInfo(name = "display_name") val displayName: String,
     val revision: Long,
     @ColumnInfo(name = "settings_json") val settings: String,

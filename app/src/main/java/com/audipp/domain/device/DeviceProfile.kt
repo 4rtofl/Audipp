@@ -11,18 +11,18 @@ enum class ComponentKind { DAC, DAP, AMP, EARPHONE, HEADPHONE }
 data class DeviceComponent(
     val kind: ComponentKind,
     val id: String = UUID.randomUUID().toString(),
-    val manufacturer: String? = null,
-    val product: String? = null,
-    val vendorId: Int? = null,
-    val productId: Int? = null,
+    val manufacturer: Measured<String>? = null,
+    val product: Measured<String>? = null,
+    val vendorId: Measured<Int>? = null,
+    val productId: Measured<Int>? = null,
     val usbSerialHash: String? = null,
     val notes: String? = null,
     val evidence: List<RegistryEvidence> = emptyList(),
 ) {
     init {
         require(id.isNotBlank())
-        require(vendorId == null || vendorId in 0..0xffff)
-        require(productId == null || productId in 0..0xffff)
+        vendorId?.value?.let { require(it in 0..0xffff) }
+        productId?.value?.let { require(it in 0..0xffff) }
     }
 }
 

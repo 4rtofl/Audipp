@@ -22,12 +22,16 @@ class DeviceProfileStore internal constructor(
 
     suspend fun saveComponent(component: DeviceComponent) = database.withTransaction {
         dao.saveComponent(ComponentRow(
-            component.id, component.kind.name, component.manufacturer, component.product,
-            component.vendorId, component.productId, component.usbSerialHash, component.notes,
+            component.id, component.kind.name,
+            component.manufacturer?.let { ModelJson.encode(it) },
+            component.product?.let { ModelJson.encode(it) },
+            component.vendorId?.let { ModelJson.encode(it) },
+            component.productId?.let { ModelJson.encode(it) },
+            component.usbSerialHash, component.notes,
         ))
         dao.clearEvidence(component.id)
         dao.insertEvidence(component.evidence.mapIndexed { index, evidence ->
-            EvidenceRow(component.id, index, ModelJson.encode(evidence))
+            EvidenceRow(component.id, index.toLong(), ModelJson.encode(evidence))
         })
     }
 
@@ -35,12 +39,12 @@ class DeviceProfileStore internal constructor(
         dao.saveProfile(ProfileRow(profile.id, profile.displayName, profile.createdAtEpochMs))
         dao.clearProfileComponents(profile.id)
         dao.insertProfileComponents(profile.components.mapIndexed { index, component ->
-            ProfileComponentRow(profile.id, component.componentId, component.role.name, index)
+            ProfileComponentRow(profile.id, component.componentId, component.role.name, index.toLong())
         })
         dao.clearPresets(profile.id)
         dao.insertPresets(profile.presets.mapIndexed { index, preset ->
             PresetRow(
-                profile.id, preset.id, index, preset.displayName, preset.revision,
+                profile.id, preset.id, index.toLong(), preset.displayName, preset.revision,
                 ModelJson.encode(preset.settings),
                 preset.defaultVolume?.let { ModelJson.encode(it) },
                 preset.initialVolume?.let { ModelJson.encode(it) },
@@ -76,11 +80,14 @@ class DeviceProfileStore internal constructor(
                 SharedDeviceComponent(
                     role = link.role,
                     kind = component.kind,
-                    vendorId = component.vendorId,
-                    productId = component.productId,
+                    vendorId = component.vendorId?.value,
+                    productId = component.productId?.value,
+                    vendorIdEvidenceLevel = component.vendorId?.level,
+                    productIdEvidenceLevel = component.productId?.level,
                     reports = component.evidence.map { evidence ->
                         SharedRegistryReport(
                             origin = evidence.origin,
+                            evidenceLevel = evidence.claim.level,
                             claim = evidence.claim.value,
                             conditions = evidence.conditions?.let {
                                 SharedMeasurementConditions(it.appVersionCode, it.androidApi, it.settings)
@@ -104,23 +111,25 @@ class DeviceProfileStore internal constructor(
 private fun ComponentRecord.toModel() = DeviceComponent(
     kind = ComponentKind.valueOf(component.kind),
     id = component.id,
-    manufacturer = component.manufacturer,
-    product = component.product,
-    vendorId = component.vid,
-    productId = component.pid,
+    manufacturer = component.manufacturer?.let { ModelJson.decode(it) },
+    product = component.product?.let { ModelJson.decode(it) },
+    vendorId = component.vid?.let { ModelJson.decode(it) },
+    productId = component.pid?.let { ModelJson.decode(it) },
     usbSerialHash = component.usbSerialHash,
     notes = component.notes,
-    evidence = evidence.sortedBy { it.ordinal }.map { ModelJson.decode(it.document) },
+    evidence = evidence.inOrdinalOrder("device_evidence", EvidenceRow::ordinal).map {
+        ModelJson.decode(it.document)
+    },
 )
 
 private fun ProfileRecord.toModel() = DeviceProfile(
     displayName = profile.displayName,
     createdAtEpochMs = profile.createdAtEpochMs,
     id = profile.id,
-    components = components.sortedBy { it.ordinal }.map {
+    components = components.inOrdinalOrder("profile_components", ProfileComponentRow::ordinal).map {
         ProfileComponent(it.componentId, ComponentRole.valueOf(it.role))
     },
-    presets = presets.sortedBy { it.ordinal }.map {
+    presets = presets.inOrdinalOrder("audio_presets", PresetRow::ordinal).map {
         AudioPreset(
             id = it.presetId,
             displayName = it.displayName,
@@ -134,3 +143,9 @@ private fun ProfileRecord.toModel() = DeviceProfile(
         )
     },
 )
+
+private fun <T> List<T>.inOrdinalOrder(table: String, ordinal: (T) -> Long): List<T> =
+    sortedBy(ordinal).onEachIndexed { index, row ->
+        val actual = ordinal(row)
+        require(actual == index.toLong()) { "Invalid ordinal in $table: expected $index, got $actual" }
+    }

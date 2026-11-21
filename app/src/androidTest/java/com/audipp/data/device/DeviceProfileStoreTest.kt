@@ -189,9 +189,12 @@ class DeviceProfileStoreTest {
         val report = preview.components.single()
         val serialized = ModelJson.encode(preview)
 
-        assertEquals(dac.vendorId, report.vendorId)
-        assertEquals(dac.productId, report.productId)
+        assertEquals(dac.vendorId?.value, report.vendorId)
+        assertEquals(dac.productId?.value, report.productId)
+        assertEquals(dac.vendorId?.level, report.vendorIdEvidenceLevel)
+        assertEquals(dac.productId?.level, report.productIdEvidenceLevel)
         assertEquals(dac.evidence.map { it.origin }, report.reports.map { it.origin })
+        assertEquals(dac.evidence.map { it.claim.level }, report.reports.map { it.evidenceLevel })
         assertEquals(dac.evidence.map { it.claim.value }, report.reports.map { it.claim })
         assertEquals(settings, report.reports.last().conditions?.settings)
         assertEquals(36, report.reports.last().conditions?.androidApi)
@@ -202,19 +205,22 @@ class DeviceProfileStoreTest {
 
         val wireComponent = ModelJson.format.parseToJsonElement(serialized).jsonObject
             .getValue("value").jsonObject.getValue("components").jsonArray.single().jsonObject
-        assertEquals(setOf("role", "kind", "vendorId", "productId", "reports"), wireComponent.keys)
+        assertEquals(
+            setOf("role", "kind", "vendorId", "productId", "vendorIdEvidenceLevel", "productIdEvidenceLevel", "reports"),
+            wireComponent.keys,
+        )
         listOf(
-            profile.id, dac.id, preset.id, "private-", "Bearer", "content://", "EXTERNAL_VERIFIED",
+            profile.id, dac.id, preset.id, "private-", "Bearer", "content://",
             "defaultVolume", "initialVolume", "safeVolume", "hardwareVolumeUnit",
         ).forEach { assertFalse(it, serialized.contains(it)) }
     }
 
     private fun dac() = DeviceComponent(
         kind = ComponentKind.DAC,
-        manufacturer = "private-manufacturer",
-        product = "private-model",
-        vendorId = 0x0123,
-        productId = 0x4567,
+        manufacturer = Measured("private-manufacturer", EvidenceLevel.SOURCE, "private-user", 1),
+        product = Measured("private-model", EvidenceLevel.SOURCE, "private-user", 2),
+        vendorId = Measured(0x0123, EvidenceLevel.OS_REPORTED, "private-vid-source", 3),
+        productId = Measured(0x4567, EvidenceLevel.OS_REPORTED, "private-pid-source", 4),
         usbSerialHash = "private-serial-hash",
         notes = "Bearer private-token",
         evidence = listOf(
