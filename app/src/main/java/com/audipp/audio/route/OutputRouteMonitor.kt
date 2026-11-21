@@ -48,6 +48,7 @@ internal class OutputRouteMonitor(
     private var track: AudioTrack? = null
     private var removeRoutingListener: (() -> Unit)? = null
     private var lastRouteId: String? = null
+    private var hasObservedRoute = false
     private val mutableSnapshot = MutableStateFlow(state(inventoryEvidence(readInventory()), routeEvidence(null), 0))
     val snapshot: StateFlow<OutputRouteState> = mutableSnapshot.asStateFlow()
 
@@ -113,8 +114,9 @@ internal class OutputRouteMonitor(
         var routeChanged = false
         // A normal pause or stop removes the live observation but does not establish a reroute.
         if (playing || (activeOutput != null && currentTrack == null)) {
-            routeChanged = routeId != lastRouteId
+            routeChanged = hasObservedRoute && routeId != lastRouteId
             lastRouteId = routeId
+            if (routeId != null) hasObservedRoute = true
         }
         val inventoryChanged = inventory != previous.connectedOutputs.value
         if (!routeChanged && !inventoryChanged && outputs == previous.observedOutputs.value) return

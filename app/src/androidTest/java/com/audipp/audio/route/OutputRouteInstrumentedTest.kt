@@ -29,7 +29,7 @@ class OutputRouteInstrumentedTest {
     private lateinit var player: ExoPlayer
 
     @Test
-    fun standardPlayerObservesItsOwnTrackAndClearsRouteOnPause() {
+    fun standardPlayerObservesItsOwnTrackAcrossPauseAndResume() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val wav = File.createTempFile("output-route", ".wav", context.cacheDir)
@@ -60,6 +60,14 @@ class OutputRouteInstrumentedTest {
             awaitCondition("Paused output retained a live route observation") {
                 monitor.snapshot.value.observedOutputs.level == EvidenceLevel.UNKNOWN
             }
+            assertEquals(playing.route.routeRevision, monitor.snapshot.value.route.routeRevision)
+
+            instrumentation.runOnMainSync { player.play() }
+            awaitCondition("Resumed output did not restore the live route observation") {
+                instrumentation.runOnMainSync { monitor.refreshRoute() }
+                monitor.snapshot.value.observedOutputs.level == EvidenceLevel.APP_OBSERVED
+            }
+            assertEquals(playing.route.routeId, monitor.snapshot.value.route.routeId)
             assertEquals(playing.route.routeRevision, monitor.snapshot.value.route.routeRevision)
         } finally {
             instrumentation.runOnMainSync {

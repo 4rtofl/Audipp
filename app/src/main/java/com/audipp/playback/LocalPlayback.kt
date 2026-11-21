@@ -54,32 +54,37 @@ internal class LocalPlayback(
 
     suspend fun start(entryId: QueueEntryId, variant: TrackVariant): PlaybackError? {
         stop()
-        val attempt = context
+        val transitionId = context.transitionId
         publish(PlaybackSnapshot(0, PlaybackPhase.RESOLVING, currentEntryId = entryId))
         try {
-            val result = resolver.resolve(ResolutionRequest(variant, attempt))
-            currentCoroutineContext().ensureActive()
-            if (context != attempt) throw CancellationException("Superseded playback")
-            if (result is SourceResolution.Unavailable) return fail(result.reason.toPlaybackError())
-            result as SourceResolution.Resolved.Playback
-            val rejection = resolver.rejectionFor(result)
-            currentCoroutineContext().ensureActive()
-            if (context != attempt) throw CancellationException("Superseded playback")
-            rejection?.let { return fail(it.toPlaybackError()) }
-            val descriptor = result.descriptor as? SourceDescriptor.LocalDocument
-                ?: return fail(ResolutionFailure.INVALID_DESCRIPTOR.toPlaybackError())
-            // The grant may have been revoked after resolution; the engine also opens under OS checks.
-            if (context != attempt) throw CancellationException("Superseded playback")
-            publish(snapshot.value.copy(phase = PlaybackPhase.BUFFERING,
-                effectiveSource = result.plan.source, executionPlan = result.plan))
-            engine.prepare(entryId, descriptor)
-            return null
+            repeat(2) {
+                val attempt = context
+                val result = resolver.resolve(ResolutionRequest(variant, attempt))
+                val rejection = when (result) {
+                    is SourceResolution.Unavailable -> result.reason
+                    is SourceResolution.Resolved -> resolver.rejectionFor(result)
+                }
+                currentCoroutineContext().ensureActive()
+                if (context.transitionId != transitionId) throw CancellationException("Superseded playback")
+                if (context.routeRevision != attempt.routeRevision) return@repeat
+                rejection?.let { return fail(it.toPlaybackError()) }
+                result as SourceResolution.Resolved.Playback
+                val descriptor = result.descriptor as? SourceDescriptor.LocalDocument
+                    ?: return fail(ResolutionFailure.INVALID_DESCRIPTOR.toPlaybackError())
+                // The grant may have been revoked after resolution; the engine also opens under OS checks.
+                publish(snapshot.value.copy(phase = PlaybackPhase.BUFFERING,
+                    effectiveSource = result.plan.source, executionPlan = result.plan))
+                engine.prepare(entryId, descriptor)
+                return null
+            }
+            return fail(playbackError(ErrorDomain.AUDIO_ROUTE, "ROUTE_CHANGED_DURING_RESOLUTION",
+                true, UserAction.RETRY))
         } catch (cancelled: CancellationException) {
-            if (context == attempt) stop()
+            if (context.transitionId == transitionId) stop()
             throw cancelled
         } catch (failure: Exception) {
             currentCoroutineContext().ensureActive()
-            if (context != attempt) throw CancellationException("Superseded playback")
+            if (context.transitionId != transitionId) throw CancellationException("Superseded playback")
             return fail(when (failure) {
                 is SecurityException -> ResolutionFailure.PERMISSION_REQUIRED.toPlaybackError()
                 is IOException -> ResolutionFailure.SOURCE_IO.toPlaybackError()
@@ -103,16 +108,11 @@ internal class LocalPlayback(
         return error
     }
 
-    fun onRouteRevisionChanged(revision: Long): Boolean {
-        if (revision <= context.routeRevision) return false
+    fun onRouteRevisionChanged(revision: Long) {
+        if (revision <= context.routeRevision) return
         context = context.copy(routeRevision = revision)
         val previous = snapshot.value
-        if (previous.phase == PlaybackPhase.RESOLVING) {
-            stop()
-            return true
-        }
         if (previous.executionPlan != null) publish(previous.copy(executionPlan = null))
-        return false
     }
 
     fun onEngineState(phase: PlaybackPhase, positionMs: Long?, durationMs: Long?, canSeek: Boolean) {

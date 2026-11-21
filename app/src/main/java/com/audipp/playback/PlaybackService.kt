@@ -71,7 +71,7 @@ class PlaybackService : MediaLibraryService() {
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
         }
         routeMonitor = OutputRouteMonitor(this) {
-            if (playback.onRouteRevisionChanged(it)) preparation?.cancel()
+            playback.onRouteRevisionChanged(it)
         }
         player = ExoPlayer.Builder(this)
             .setTrackSelector(selector)

@@ -49,6 +49,7 @@ class OutputRouteMonitorTest {
             assertSame(idle.connectedOutputs, playing.connectedOutputs)
             assertEquals(EvidenceLevel.APP_OBSERVED, playing.observedOutputs.level)
             assertEquals(listOf(speaker.id), playing.observedOutputs.value!!.map { it.portId })
+            assertEquals(idle.route.routeRevision, playing.route.routeRevision)
             assertEquals(EvidenceLevel.UNKNOWN, playing.route.sampleRateHz.level)
             assertEquals(BitPerfectState.NOT_VERIFIED, playing.route.bitPerfectState)
         }
@@ -65,7 +66,7 @@ class OutputRouteMonitorTest {
             monitor.onPlaying(track, track)
             shadowOf(handler.looper).idle()
             val original = monitor.snapshot.value.route
-            assertEquals(listOf(1L), revisions)
+            assertTrue(revisions.isEmpty())
             val verification = BitPerfectVerification(
                 Measured(true, EvidenceLevel.EXTERNAL_VERIFIED, "fixture", 0, "fixture"),
                 original.deviceName.value!!, original.routeId!!, original.routeRevision,
@@ -75,7 +76,7 @@ class OutputRouteMonitorTest {
             val afterUsbConnect = monitor.snapshot.value.route
             assertEquals(original.routeId, afterUsbConnect.routeId)
             assertEquals(original.deviceName, afterUsbConnect.deviceName)
-            assertEquals(listOf(1L, 2L), revisions)
+            assertEquals(listOf(1L), revisions)
             assertThrows(IllegalArgumentException::class.java) {
                 afterUsbConnect.copy(
                     sampleRateHz = Measured(48_000, EvidenceLevel.EXTERNAL_VERIFIED, "fixture", 0, "fixture"),
@@ -90,10 +91,33 @@ class OutputRouteMonitorTest {
             val multi = monitor.snapshot.value
             assertEquals(listOf(speaker.id, usb.id), multi.observedOutputs.value!!.map { it.portId })
             assertEquals(EvidenceLevel.UNKNOWN, multi.route.deviceName.level)
-            assertEquals(listOf(1L, 2L, 3L), revisions)
+            assertEquals(listOf(1L, 2L), revisions)
             track.devices = listOf(speaker, usb)
             track.notifyRouteChanged()
             assertSame(multi, monitor.snapshot.value)
+        }
+    }
+
+    @Test
+    fun pausingAndResumingOnTheSameRouteDoesNotAdvanceRevision() {
+        val revisions = mutableListOf<Long>()
+        OutputRouteMonitor(null, handler) { revisions += it }.use { monitor ->
+            val track = RoutedTrack().apply { devices = listOf(speaker) }
+            monitor.onPlaying(track, track)
+            shadowOf(handler.looper).idle()
+            val playing = monitor.snapshot.value.route
+            assertNotNull(playing.routeId)
+            val beforePause = revisions.toList()
+
+            monitor.onInactive(track)
+            shadowOf(handler.looper).idle()
+            assertEquals(EvidenceLevel.UNKNOWN, monitor.snapshot.value.observedOutputs.level)
+
+            monitor.onPlaying(track, track)
+            shadowOf(handler.looper).idle()
+            assertEquals(playing.routeId, monitor.snapshot.value.route.routeId)
+            assertEquals(playing.routeRevision, monitor.snapshot.value.route.routeRevision)
+            assertEquals(beforePause, revisions)
         }
     }
 
@@ -125,14 +149,14 @@ class OutputRouteMonitorTest {
         replacement.denied = false
         replacement.notifyRouteChanged()
         assertEquals(EvidenceLevel.APP_OBSERVED, monitor.snapshot.value.observedOutputs.level)
-        assertEquals(listOf(1L, 2L, 3L, 4L), revisions)
+        assertEquals(listOf(1L, 2L, 3L), revisions)
 
         monitor.close()
         assertNull(replacement.listener)
         monitor.onPlaying(first, first)
         shadowOf(handler.looper).idle()
         assertEquals(EvidenceLevel.UNKNOWN, monitor.snapshot.value.observedOutputs.level)
-        assertEquals(4L, monitor.snapshot.value.route.routeRevision)
+        assertEquals(3L, monitor.snapshot.value.route.routeRevision)
     }
 
     private fun device(id: Int, type: Int, name: String): AudioDeviceInfo {

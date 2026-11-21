@@ -99,7 +99,7 @@ class LocalPlaybackTest {
         assertNull(playback.start(entry, variant))
         val oldPlan = playback.snapshot.value.executionPlan!!
 
-        assertFalse(playback.onRouteRevisionChanged(1))
+        playback.onRouteRevisionChanged(1)
         assertEquals(PlanRejection.STALE_ROUTE, oldPlan.rejectionFor(1, oldPlan.transitionId))
         assertNull(playback.snapshot.value.executionPlan)
         assertTrue(engine.active)
@@ -111,32 +111,59 @@ class LocalPlaybackTest {
     }
 
     @Test
-    fun routeRevisionRejectsLateSourceResponseAndAllowsRetry() = runBlocking {
+    fun routeRevisionResolvesAgainAndReturnsSuccessForTheSameRequest() = runBlocking {
         val opened = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         val engine = Engine()
         val playback = LocalPlayback(engine, {
             if (opened.complete(Unit)) {
-                withContext(NonCancellable) { finish.await() }
+                finish.await()
+                Availability.MISSING
+            } else {
+                Availability.PLAYABLE
             }
-            Availability.PLAYABLE
         })
 
         val pending = async { playback.start(entry, variant) }
         withTimeout(2_000) { opened.await() }
-        assertTrue(playback.onRouteRevisionChanged(1))
-        assertEquals(PlaybackPhase.IDLE, playback.snapshot.value.phase)
-        assertFalse(engine.active)
-        assertTrue(engine.prepared.isEmpty())
-
-        val retry = QueueEntryId("retry")
-        assertNull(playback.start(retry, variant))
+        playback.onRouteRevisionChanged(1)
         finish.complete(Unit)
-        assertTrue(runCatching { pending.await() }.exceptionOrNull() is CancellationException)
+        assertNull(withTimeout(2_000) { pending.await() })
+        assertEquals(PlaybackPhase.BUFFERING, playback.snapshot.value.phase)
         assertTrue(engine.active)
         assertEquals(1L, playback.snapshot.value.executionPlan!!.routeRevision)
-        assertEquals(retry, playback.snapshot.value.currentEntryId)
-        assertEquals(listOf(retry), engine.prepared)
+        assertEquals(entry, playback.snapshot.value.currentEntryId)
+        assertEquals(listOf(entry), engine.prepared)
+    }
+
+    @Test
+    fun routeRevisionChangingAgainReturnsRetryableRouteError() = runBlocking {
+        val opened = List(2) { CompletableDeferred<Unit>() }
+        val finish = List(2) { CompletableDeferred<Unit>() }
+        val engine = Engine()
+        var attempts = 0
+        val playback = LocalPlayback(engine, {
+            val attempt = attempts++
+            opened[attempt].complete(Unit)
+            finish[attempt].await()
+            Availability.PLAYABLE
+        })
+
+        val pending = async { playback.start(entry, variant) }
+        for (attempt in opened.indices) {
+            withTimeout(2_000) { opened[attempt].await() }
+            playback.onRouteRevisionChanged(attempt + 1L)
+            finish[attempt].complete(Unit)
+        }
+
+        val error = requireNotNull(withTimeout(2_000) { pending.await() })
+        assertEquals(ErrorDomain.AUDIO_ROUTE, error.domain)
+        assertEquals("ROUTE_CHANGED_DURING_RESOLUTION", error.code)
+        assertTrue(error.retryable)
+        assertEquals(UserAction.RETRY, error.userAction)
+        assertEquals(PlaybackPhase.ERROR, playback.snapshot.value.phase)
+        assertEquals(error, playback.snapshot.value.error)
+        assertTrue(engine.prepared.isEmpty())
     }
 
     @Test
