@@ -45,6 +45,30 @@
     "limitations": "固定データとホスト試験の部分ケース。実機での出力切替、DAC実測、試験ファミリー全体は対象外。"
   },
   {
+    "case_id": "E05-01-host-output-route-review-2026-11-21",
+    "requirement_ids": [
+      "FR-DEV-01",
+      "FR-AUD-01",
+      "NFR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01",
+      "TEST-AUD-01"
+    ],
+    "commit": "ddfb07de62d56e2dbaca4d4dd762a38ad12ea610",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "JDK 17で対象の単体試験16件が成功した。初回の経路観測と同一経路での一時停止・再開でrevisionを維持すること、解決中の経路変化から最新revisionで再解決できること、再解決中の変化は再試行可能なエラーとして呼出元に返ることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/audio/route/OutputRouteMonitorTest.kt",
+      "app/src/test/java/com/audipp/playback/LocalPlaybackTest.kt",
+      "docs/contracts/output-route-v1.md"
+    ],
+    "limitations": "ホストの固定データによる部分ケース。再開時の経路観測は計装試験を実行しておらず、エミュレーターや実機では未確認。"
+  },
+  {
     "case_id": "E05-01-emulator-output-route-2026-11-20",
     "requirement_ids": [
       "FR-DEV-01",
