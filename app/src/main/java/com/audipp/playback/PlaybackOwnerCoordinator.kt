@@ -1,10 +1,14 @@
 package com.audipp.playback
 
 import com.audipp.domain.model.ExecutionMode
+import com.audipp.domain.model.PermissionState
 import com.audipp.domain.model.QueueEntryId
 import com.audipp.domain.model.TransitionId
+import com.audipp.playback.source.ResolutionRequest
+import com.audipp.playback.source.ResolutionUse
 import com.audipp.playback.source.SourceResolution
 import com.audipp.playback.source.SourceResolver
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -46,6 +50,13 @@ data class PlaybackOwnership(
     val owner: PlaybackOwnerSelection? = null,
     val pending: PlaybackOwnerSelection? = null,
     val lastUnverifiedStop: TransitionId? = null,
+    val retirement: PlaybackRetirement? = null,
+)
+
+data class PlaybackRetirement(
+    val stopObserved: Boolean,
+    val startSettled: Boolean,
+    val stopCommandsSettled: Boolean,
 )
 
 data class PlaybackStopToken(val transitionId: TransitionId, val attempt: Int)
@@ -60,12 +71,16 @@ sealed interface PlaybackOwnerEffect {
 /**
  * Call on the playback owner's serial looper and use a scope on that same looper for deadlines.
  * Effects dispatch commands or checks; their callbacks must be posted back to the looper.
+ * Current revision and permission are non-blocking reads of state updated on that looper.
+ * Queue reads return expected failures as Result.failure and propagate cancellation.
  */
 class PlaybackOwnerCoordinator(
     private val scope: CoroutineScope,
     private val timeoutMs: Long,
     private val resolver: SourceResolver,
-    private val readQueueRevision: suspend (String) -> Long?,
+    private val readQueueRevision: suspend (String) -> Result<Long?>,
+    private val currentQueueRevision: (String) -> Long?,
+    private val currentPermission: (ResolutionRequest, ResolutionUse) -> PermissionState,
     private val emit: (PlaybackOwnerEffect) -> Unit,
 ) {
     init { require(timeoutMs > 0) }
@@ -76,6 +91,7 @@ class PlaybackOwnerCoordinator(
         var playingObserved = false
         var stopToken: PlaybackStopToken? = null
         var stopObserved = false
+        var stopCommandsSettled = handoff
         var stopUnconfirmed = false
         var retiring = false
     }
@@ -147,7 +163,7 @@ class PlaybackOwnerCoordinator(
         if (current.retiring) requestStop(current) else publish()
     }
 
-    /** A terminal response guaranteeing the request cannot start playback. */
+    /** A terminal response or independent invalidation proving the request leaves no playback and cannot start it. */
     fun onStartAborted(transitionId: TransitionId) {
         val current = owner?.takeIf { it.selection.transitionId == transitionId } ?: return
         if (current.startSettled) return
@@ -156,23 +172,31 @@ class PlaybackOwnerCoordinator(
         if (!current.retiring || current.stopObserved) releaseOwner() else publish()
     }
 
-    /** Report a correlated non-playing observation, never a stop command receipt. */
+    /** Report a correlated non-playing observation once all old stop/cancel commands are safe for later playback. */
     fun onStopped(token: PlaybackStopToken) {
         val current = owner?.takeIf { it.stopToken == token } ?: return
         current.stopObserved = true
+        current.stopCommandsSettled = true
         if (current.startSettled) releaseOwner() else publish()
+    }
+
+    /** All old stop/cancel commands can no longer affect later playback, even if stop is unobserved. */
+    fun onStopCommandsSettled(token: PlaybackStopToken) {
+        val current = owner?.takeIf { it.stopToken == token } ?: return
+        current.stopCommandsSettled = true
+        publish()
     }
 
     fun onStopUnconfirmed(token: PlaybackStopToken) {
         val current = owner?.takeIf { it.stopToken == token } ?: return
-        stopDeadline?.cancel()
         current.stopUnconfirmed = true
         publish()
     }
 
     fun confirmManualStop(transitionId: TransitionId) {
         val current = owner?.takeIf {
-            it.selection.transitionId == transitionId && it.stopUnconfirmed && it.startSettled
+            it.selection.transitionId == transitionId && it.stopUnconfirmed &&
+                it.startSettled && it.stopCommandsSettled
         } ?: return
         lastUnverifiedStop = transitionId
         releaseOwner()
@@ -190,13 +214,25 @@ class PlaybackOwnerCoordinator(
 
     private fun checkStart(request: PlaybackOwnerRequest) {
         val check = scope.launch(start = CoroutineStart.LAZY) {
-            val selection = request.selection
-            val valid = withTimeoutOrNull(timeoutMs) {
-                resolver.rejectionFor(request.source) == null &&
-                    readQueueRevision(selection.queueId) == selection.queueRevision
-            } == true
-            ensureActive()
-            onStartChecked(request, valid)
+            try {
+                val selection = request.selection
+                val readRevision = withTimeoutOrNull(timeoutMs) {
+                    readQueueRevision(selection.queueId).getOrElse {
+                        if (it is CancellationException) throw it
+                        null
+                    }
+                }
+                ensureActive()
+                val valid = readRevision == selection.queueRevision &&
+                    currentQueueRevision(selection.queueId) == selection.queueRevision &&
+                    resolver.rejectionAtDispatch(request.source, currentPermission) == null
+                onStartChecked(request, valid)
+            } finally {
+                if (checking === coroutineContext[Job]) {
+                    clearPending()
+                    publish()
+                }
+            }
         }
         checking = check
         publish()
@@ -226,8 +262,12 @@ class PlaybackOwnerCoordinator(
         val token = PlaybackStopToken(current.selection.transitionId, (current.stopToken?.attempt ?: 0) + 1)
         current.stopToken = token
         current.stopObserved = false
+        current.stopCommandsSettled = false
         current.stopUnconfirmed = false
-        stopDeadline = deadline { onStopUnconfirmed(token) }
+        stopDeadline = deadline {
+            clearPending()
+            onStopUnconfirmed(token)
+        }
         publish()
         if (cancelStart) emit(PlaybackOwnerEffect.CancelStart(current.selection))
         emit(PlaybackOwnerEffect.Stop(current.selection, token))
@@ -256,6 +296,9 @@ class PlaybackOwnerCoordinator(
             pending != null -> PlaybackOwnerPhase.HANDOFF_REQUIRED
             else -> PlaybackOwnerPhase.IDLE
         }
-        mutableState.value = PlaybackOwnership(phase, current?.selection, pending?.selection, lastUnverifiedStop)
+        val retirement = current?.takeIf { it.retiring }?.let {
+            PlaybackRetirement(it.stopObserved, it.startSettled, it.stopCommandsSettled)
+        }
+        mutableState.value = PlaybackOwnership(phase, current?.selection, pending?.selection, lastUnverifiedStop, retirement)
     }
 }

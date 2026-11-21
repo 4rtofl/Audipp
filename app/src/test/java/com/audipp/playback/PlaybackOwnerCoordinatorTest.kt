@@ -21,6 +21,9 @@ import com.audipp.playback.source.SourceDescriptor
 import com.audipp.playback.source.SourceResolution
 import com.audipp.playback.source.SourceResolver
 import com.audipp.playback.source.TargetKind
+import java.io.IOException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -108,7 +111,26 @@ class PlaybackOwnerCoordinatorTest {
     }
 
     @Test
-    fun timeoutsDoNotPermitNewStartWhileOldStartIsUnresolved() = fixture(timeoutMs = 100) {
+    fun sameSdkWaitsForStopAndCancelCommandsToFinish() = fixture {
+        val first = submit("first", TargetKind.PROVIDER_REMOTE)
+        await(PlaybackOwnerPhase.START_PENDING)
+        submit("second", TargetKind.PROVIDER_REMOTE)
+        val sdk = FakeSdk(coordinator, lastStop)
+        sdk.acceptCommands()
+        assertEquals(PlaybackRetirement(false, false, false), state.retirement)
+        sdk.observeStopped()
+        coordinator.onStartAborted(first.selection.transitionId)
+        sdk.completeCancel()
+        assertEquals(PlaybackRetirement(false, true, false), state.retirement)
+        assertEquals(listOf("first"), starts)
+
+        sdk.completeStop()
+        await(PlaybackOwnerPhase.START_PENDING)
+        assertEquals(listOf("first", "second"), starts)
+    }
+
+    @Test
+    fun missingStartResponseRequiresIndependentInvalidationAfterTimeout() = fixture(timeoutMs = 100) {
         val first = submit("first", TargetKind.PROVIDER_REMOTE)
         await(PlaybackOwnerPhase.START_PENDING)
         await(PlaybackOwnerPhase.STOP_PENDING)
@@ -116,11 +138,30 @@ class PlaybackOwnerCoordinatorTest {
         submit("second", TargetKind.PROVIDER_REMOTE)
         coordinator.onStopped(stop)
         await(PlaybackOwnerPhase.STOP_UNCONFIRMED)
+        assertNull(state.pending)
+        assertEquals(PlaybackRetirement(true, false, true), state.retirement)
         coordinator.confirmManualStop(first.selection.transitionId)
+        assertEquals(first.selection, state.owner)
         assertEquals(listOf("first"), starts)
+        // The original response is lost. Independent invalidation supplies the terminal guarantee.
         coordinator.onStartAborted(first.selection.transitionId)
-        await(PlaybackOwnerPhase.START_PENDING)
-        assertEquals(listOf("first", "second"), starts)
+        await(PlaybackOwnerPhase.IDLE)
+        assertEquals(listOf("first"), starts)
+        start("retry", TargetKind.PROVIDER_REMOTE)
+        assertEquals(listOf("first", "retry"), starts)
+    }
+
+    @Test
+    fun lateStopDoesNotReviveExpiredHandoff() = fixture(timeoutMs = 100) {
+        start("first", TargetKind.DEVICE)
+        val handoff = submit("external", TargetKind.EXTERNAL_APP)
+        await(PlaybackOwnerPhase.STOP_UNCONFIRMED)
+        assertEquals(PlaybackRetirement(false, true, false), state.retirement)
+        assertNull(state.pending)
+        coordinator.onStopped(lastStop)
+        assertEquals(PlaybackOwnerPhase.IDLE, state.phase)
+        coordinator.confirmHandoff(handoff.selection.transitionId)
+        assertTrue(effects.none { it is PlaybackOwnerEffect.OpenHandoff })
     }
 
     @Test
@@ -129,7 +170,11 @@ class PlaybackOwnerCoordinatorTest {
         submit("second", TargetKind.RENDERER)
         coordinator.onStopUnconfirmed(lastStop)
         assertEquals(PlaybackOwnerPhase.STOP_UNCONFIRMED, state.phase)
+        coordinator.confirmManualStop(first.selection.transitionId)
+        assertEquals(PlaybackRetirement(false, true, false), state.retirement)
+        assertEquals(first.selection, state.owner)
         assertEquals(listOf("first"), starts)
+        coordinator.onStopCommandsSettled(lastStop)
         coordinator.confirmManualStop(first.selection.transitionId)
         await(PlaybackOwnerPhase.START_PENDING)
         assertEquals(first.selection.transitionId, state.lastUnverifiedStop)
@@ -179,6 +224,116 @@ class PlaybackOwnerCoordinatorTest {
         assertEquals(listOf("first"), starts)
     }
 
+    @Test
+    fun routeChangeWhileReadingQueuePreventsStart() = fixture {
+        start("first", TargetKind.DEVICE)
+        submit("renderer", TargetKind.RENDERER)
+        val read = suspendQueueRead()
+        coordinator.onStopped(lastStop)
+        read.entered.await()
+        currentContext = currentContext.copy(routeRevision = 2)
+        read.resume.complete(Unit)
+        awaitCheckFinished()
+        assertEquals(PlaybackOwnerPhase.IDLE, state.phase)
+        assertEquals(listOf("first"), starts)
+    }
+
+    @Test
+    fun permissionRevocationWhileReadingQueuePreventsStart() = fixture {
+        start("first", TargetKind.DEVICE)
+        submit("provider", TargetKind.PROVIDER_REMOTE)
+        val read = suspendQueueRead()
+        coordinator.onStopped(lastStop)
+        read.entered.await()
+        permission = PermissionState.DENIED
+        read.resume.complete(Unit)
+        awaitCheckFinished()
+        assertEquals(PlaybackOwnerPhase.IDLE, state.phase)
+        assertEquals(listOf("first"), starts)
+    }
+
+    @Test
+    fun queueChangeWhileReadingQueuePreventsStartEvenWithMatchingReadResult() = fixture {
+        start("first", TargetKind.DEVICE)
+        submit("stale", TargetKind.DEVICE)
+        val read = suspendQueueRead()
+        coordinator.onStopped(lastStop)
+        read.entered.await()
+        queueRevision++
+        read.resume.complete(Unit)
+        awaitCheckFinished()
+        assertEquals(PlaybackOwnerPhase.IDLE, state.phase)
+        assertEquals(listOf("first"), starts)
+    }
+
+    @Test
+    fun queueReadFailureEndsCheckAndAllowsRetry() = fixture {
+        start("first", TargetKind.DEVICE)
+        submit("failed", TargetKind.DEVICE)
+        readRevision = { Result.failure(IOException()) }
+        coordinator.onStopped(lastStop)
+        awaitCheckFinished()
+        assertEquals(PlaybackOwnerPhase.IDLE, state.phase)
+        assertNull(state.pending)
+        assertEquals(listOf("first"), starts)
+
+        readRevision = { Result.success(queueRevision) }
+        start("retry", TargetKind.DEVICE)
+        assertEquals(listOf("first", "retry"), starts)
+    }
+
+    @Test
+    fun queueReadCancellationPropagatesAndClearsCheck() = fixture {
+        val readJob = CompletableDeferred<Job>()
+        readRevision = {
+            readJob.complete(kotlin.coroutines.coroutineContext[Job]!!)
+            Result.failure(CancellationException())
+        }
+        submit("cancelled", TargetKind.DEVICE)
+        awaitCheckFinished()
+        assertTrue(readJob.await().isCancelled)
+        assertEquals(PlaybackOwnerPhase.IDLE, state.phase)
+        assertTrue(starts.isEmpty())
+    }
+
+    private class FakeSdk(
+        private val coordinator: PlaybackOwnerCoordinator,
+        private val token: PlaybackStopToken,
+    ) {
+        private var commandsAccepted = false
+        private var stopped = false
+        private var cancelCompleted = false
+        private var stopCompleted = false
+
+        fun acceptCommands() {
+            commandsAccepted = true
+        }
+
+        fun observeStopped() {
+            stopped = true
+            notifyCoordinator()
+        }
+
+        fun completeCancel() {
+            check(commandsAccepted)
+            cancelCompleted = true
+            notifyCoordinator()
+        }
+
+        fun completeStop() {
+            check(commandsAccepted)
+            stopCompleted = true
+            notifyCoordinator()
+        }
+
+        private fun notifyCoordinator() {
+            if (cancelCompleted && stopCompleted) {
+                if (stopped) coordinator.onStopped(token)
+                else coordinator.onStopCommandsSettled(token)
+            }
+        }
+    }
+
     private fun fixture(timeoutMs: Long = 5_000, test: suspend Fixture.() -> Unit) = runBlocking {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
@@ -192,17 +347,38 @@ class PlaybackOwnerCoordinatorTest {
         lateinit var currentContext: ResolutionContext
         var permission = PermissionState.ALLOWED
         var queueRevision = 1L
+        var readRevision: suspend () -> Result<Long?> = { Result.success(queueRevision) }
         val effects = mutableListOf<PlaybackOwnerEffect>()
         private val resolver = SourceResolver(
             emptyMap(), { currentContext }, PlaybackPermissionChecker { _, _ -> permission },
         )
-        val coordinator = PlaybackOwnerCoordinator(scope, timeoutMs, resolver, { queueRevision }) { effects += it }
+        val coordinator = PlaybackOwnerCoordinator(
+            scope, timeoutMs, resolver, { readRevision() }, { queueRevision }, { _, _ -> permission },
+        ) { effects += it }
         val state get() = coordinator.state.value
         val starts get() = effects.filterIsInstance<PlaybackOwnerEffect.Start>().map { it.request.selection.transitionId.value }
         val lastStop get() = effects.filterIsInstance<PlaybackOwnerEffect.Stop>().last().token
 
+        class QueueRead {
+            val entered = CompletableDeferred<Unit>()
+            val resume = CompletableDeferred<Unit>()
+        }
+
+        fun suspendQueueRead() = QueueRead().also { read ->
+            readRevision = {
+                val revision = queueRevision
+                read.entered.complete(Unit)
+                read.resume.await()
+                Result.success(revision)
+            }
+        }
+
         suspend fun await(phase: PlaybackOwnerPhase) {
             withTimeout(5_000) { coordinator.state.first { it.phase == phase } }
+        }
+
+        suspend fun awaitCheckFinished() {
+            withTimeout(5_000) { coordinator.state.first { it.phase != PlaybackOwnerPhase.CHECKING } }
         }
 
         suspend fun start(id: String, target: TargetKind): PlaybackOwnerRequest {
