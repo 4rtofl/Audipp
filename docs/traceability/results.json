@@ -88,6 +88,30 @@
     "limitations": "固定データとホストのループバック通信。実LANの到達性、機器の相互運用性、実音声出力は対象外。"
   },
   {
+    "case_id": "E07-04-upnp-review-jvm-2026-11-22",
+    "requirement_ids": [
+      "FR-NET-02",
+      "NFR-SEC-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01",
+      "TEST-SEC-01"
+    ],
+    "commit": "24efbb512eeef5279948bd71044360785926f949",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "UPnPのホスト単体試験25件が合格。固定データでUDA 1.1拡張ヘッダー、上位版と埋め込みレンダラー、機器名、接続期限の更新、制御URLのクエリを確認し、RobolectricでEPERM/EACCESの変換と探索取消後のマルチキャストロック解放を確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpProtocolTest.kt",
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpControlPointTest.kt",
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpHttpTest.kt",
+      "app/src/test/java/com/audipp/integrations/network/upnp/AndroidUpnpNetworkTest.kt"
+    ],
+    "limitations": "固定データ、ホストのループバック通信、Robolectricの模擬環境で確認。実LANでの送信元フィルタ、Android 16の権限画面、実機レンダラーの相互運用、音声出力は未確認。"
+  },
+  {
     "case_id": "E07-04-upnp-android-boundary-2026-11-20",
     "requirement_ids": [
       "FR-NET-02",
