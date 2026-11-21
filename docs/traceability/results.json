@@ -64,6 +64,29 @@
     "limitations": "物理端末/DAP/DACでの出力・音量・Bit-perfect測定、相手指定共有・認可・撤回等は所管Issueで検証する。"
   },
   {
+    "case_id": "E05-09-review-provenance-and-order",
+    "requirement_ids": [
+      "FR-DEV-01",
+      "FR-DEV-04",
+      "FR-DEV-06"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01",
+      "TEST-SHARE-01"
+    ],
+    "commit": "9db5d05ecd4570a0beef1f11879a49e7ab4d38d9",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric の API 35 で、同値の OS 取得・手入力と不明値の再読込、同じ値と条件でのアプリ観測・外部実測の再読込と共有 JSON、共有からの取得元名・証跡 ID の除外、不正な順序の読込拒否を確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/device/DeviceProfilePersistenceTest.kt",
+      "docs/contracts/device-profiles-v1.md"
+    ],
+    "limitations": "端末内保存とローカル共有コピーの回帰試験。Android 計装試験の実行、実機での USB 属性取得、音声出力、共有 UI とサーバー側操作は未実施。"
+  },
+  {
     "case_id": "E00-05-host-traceability-2026-10-31",
     "requirement_ids": [
       "NFR-MAINT-01",
