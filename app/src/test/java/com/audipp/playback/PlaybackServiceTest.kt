@@ -211,6 +211,7 @@ class PlaybackServiceTest {
         controller.seekTo(4_001)
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(1_000L, rawPlayer.currentPosition)
+        assertEquals(1_000L, controller.currentPosition)
         assertEquals(1_000L, PlaybackConnection.snapshot(controller.sessionExtras)?.positionMs)
     }
 
@@ -261,6 +262,7 @@ class PlaybackServiceTest {
     }
 
     @Test
+    @Config(sdk = [35])
     fun transientFocusLossResumesWhenFocusReturns() {
         val controller = connect(service.onGetSession(ownApp)!!.token)
         val audio = shadowOf(service.getSystemService(AudioManager::class.java))
@@ -296,6 +298,30 @@ class PlaybackServiceTest {
         shadowOf(rawPlayer.playbackLooper).idle()
         shadowOf(Looper.getMainLooper()).idle()
         assertFalse(rawPlayer.playWhenReady)
+        assertEquals(PlaybackPhase.PAUSED, PlaybackConnection.snapshot(controller.sessionExtras)?.phase)
+    }
+
+    @Test
+    @Config(sdk = [23])
+    fun focusLossBeforeCallModeChangeDoesNotResumeAfterCallOnLegacyAndroid() {
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        val audio = service.getSystemService(AudioManager::class.java)
+        val shadowAudio = shadowOf(audio)
+        startWav(controller)
+        advancePlaybackUntil { shadowAudio.lastAudioFocusRequest?.listener != null && rawPlayer.playWhenReady }
+        val listener = shadowAudio.lastAudioFocusRequest.listener
+        assertEquals(AudioManager.MODE_NORMAL, audio.mode)
+        listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)
+        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
+
+        audio.mode = AudioManager.MODE_IN_CALL
+        shadowOf(Looper.getMainLooper()).idle()
+        audio.mode = AudioManager.MODE_NORMAL
+        listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_GAIN)
+        shadowOf(rawPlayer.playbackLooper).idle()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(rawPlayer.playWhenReady)
+        assertFalse(controller.playWhenReady)
         assertEquals(PlaybackPhase.PAUSED, PlaybackConnection.snapshot(controller.sessionExtras)?.phase)
     }
 

@@ -118,7 +118,7 @@ class PlaybackService : MediaLibraryService() {
                 if (player.playWhenReady && when (player.playbackSuppressionReason) {
                     Player.PLAYBACK_SUPPRESSION_REASON_UNSUITABLE_AUDIO_OUTPUT -> true
                     Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS ->
-                        audioManager.mode.isPhoneCallMode()
+                        Build.VERSION.SDK_INT < 31 || audioManager.mode.isPhoneCallMode()
                     else -> false
                 }) pauseForInterruption()
                 updateEngineSnapshot()

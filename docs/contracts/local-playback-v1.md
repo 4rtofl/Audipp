@@ -8,7 +8,7 @@
 
 `PlaybackConnection.playLocal(controller, entryId, variant)`へ、選択版と重複曲を区別するエントリーIDを渡す。`SourceResolver`にLOCAL/DEVICEの具体アダプターだけを登録する。指定された版を別版へ置き換えず、現在のOS権限で`content://`文書を開閉して検査する。許可の取得・永続grantの保存は選択UI/ライブラリ側の責務で、URIの文字列だけでは許可とみなさない。file/HTTP、userinfo/fragment付きURI、不明なソース種別、利用不可の版は再生しない。実再生もContentDataSourceに限定し、ネットワークfallbackを設けない。
 
-音声フォーカスの要求とダッキングをExoPlayerに委ね、`becoming noisy`を有効にする。通常の一時フォーカス喪失からの復帰にはExoPlayerの自動再開を使い、着信・通話や外部出力の取り外しで解除した再生要求は復元しない（Issue #37の節を参照）。video/textトラックを無効にし、Android標準の音声経路を使う。音量変更、DSP、Direct/USB出力、Bit-perfect検証は行わない。未知のduration/positionはnull、seek可否はPlayerの観測値で更新する。PCM取得能力は申告しない。
+音声フォーカスの要求とダッキングをExoPlayerに委ね、`becoming noisy`を有効にする。通常の一時フォーカス喪失からの自動再開はAPI31以降で使う。着信・通話や外部出力の取り外しで解除した再生要求は復元しない（Issue #37の節を参照）。video/textトラックを無効にし、Android標準の音声経路を使う。音量変更、DSP、Direct/USB出力、Bit-perfect検証は行わない。未知のduration/positionはnull、seek可否はPlayerの観測値で更新する。PCM取得能力は申告しない。
 
 ## 結果・取消・失敗
 
@@ -55,6 +55,8 @@ Media3のexoplayer/sessionと推移artifactをすべて1.11.1へ統一し、Debu
 
 曲長を取得でき、Playerがシークに対応する場合に、Sessionで`0..duration`を受け付ける。単一Playerにシークを順に渡し、Media3が保留中の操作を反映した最新状態から位置を取得する。
 
-一時フォーカス喪失で抑制された再生は、フォーカスが戻るとMedia3が自動で再開する。`becoming noisy`ではMedia3が再生要求を解除する。API31以降は音声モード変更で`MODE_RINGTONE`と`MODE_IN_CALL`を検知し、再生要求を解除する。API23〜30では一時フォーカス喪失の通知を処理するときに、この2つのモードを確認する。着信・通話中は自動開始と明示的な再生操作を止める。`MODE_IN_COMMUNICATION`中は準備後の自動開始を止め、明示的な再生操作はMedia3に渡す。
+API23〜30では音声モードの変更を監視できず、着信に伴う一時フォーカス喪失を他の一時喪失と区別できない。このため、一時フォーカス喪失による再生抑制を検知した時点で再生要求を解除し、フォーカス復帰後は明示的な再生操作を待つ。API31以降は`MODE_RINGTONE`と`MODE_IN_CALL`への変更を検知して再生要求を解除し、通常の一時フォーカス喪失からの復帰はMedia3の自動再開に委ねる。
+
+`becoming noisy`ではMedia3が再生要求を解除する。着信・通話中は自動開始と明示的な再生操作を止める。`MODE_IN_COMMUNICATION`中は準備後の自動開始を止め、明示的な再生操作はMedia3に渡す。
 
 外部出力の取り外し通知で標準再生を一時停止する。Androidの接続機器一覧を使うため、未使用の外部出力を外した場合にも一時停止することがある。音源の解決中に出力の取り外しや着信・通話を検知した場合、選曲を保持して自動再生をせずに準備を続ける。着信・通話の終了後や出力の再接続後は、明示的な再生操作を待つ。確認したケースと検証コミットは[試験結果](../traceability/results.json)に記録する。
