@@ -197,6 +197,23 @@ class SafLibraryTest {
     }
 
     @Test
+    fun aSharedDirectoryIsIndexedThroughItsShallowPath() = runBlocking {
+        val root = register(library)
+        access.entries["root"] = listOf(directory("shallow"), directory("deep"))
+        access.entries["shallow"] = listOf(directory("shared"))
+        access.entries["deep"] = listOf(directory("nested"))
+        access.entries["nested"] = listOf(directory("shared"))
+        access.entries["shared"] = listOf(file("a"))
+
+        val result = SafLibrary(db, access, ScanLimits(depth = 2)).startScan(root, this).await()
+        assertEquals(1, result.progress.indexed)
+        assertEquals(Availability.PLAYABLE, availability(variant("root", "a")))
+        assertEquals(5, result.progress.directories)
+        assertEquals(LibraryScanStatus.COMPLETE, result.status)
+        assertTrue(result.issues.isEmpty())
+    }
+
+    @Test
     fun subfolderFailureAndTimeoutRetainUnvisitedSourcesAndPermitRetry() = runBlocking {
         val scanner = library
         val (root, song) = indexSong(scanner, this)

@@ -201,7 +201,9 @@ class SafLibrary internal constructor(
                 pending.addLast(Directory(rootDocument, 0))
                 while (pending.isNotEmpty()) {
                     currentCoroutineContext().ensureActive()
-                    val dir = pending.removeLast()
+                    // Providers can list one ID under multiple parents. Visit shallower paths first
+                    // so deduplication preserves the most depth available for its descendants.
+                    val dir = pending.removeFirst()
                     var directoryComplete = true
                     access.children(tree, dir.id).catch { failure ->
                         when (failure) {

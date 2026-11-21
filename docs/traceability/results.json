@@ -957,6 +957,342 @@
     "limitations": "#60の候補探索とローカルの互換性を確認した。再生主体の停止確認・実際の切替は#61、Serviceの連続再生との結合と実機の確認は後続で扱う。"
   },
   {
+    "case_id": "E02-02-host-state-and-seek-2026-11-20",
+    "requirement_ids": [
+      "FR-PLY-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-01"
+    ],
+    "commit": "3de907841349d113842c26801bb66ead38590cb0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Reducer試験で曲長が未知の場合のシーク無効化、停止後の古い準備完了の破棄、自然終了時のADVANCINGを確認した。MediaController経由では、メディア未設定時のシークコマンド無効化、0と曲末へのシーク、範囲外の拒否、連続シークの最新位置を確認した。範囲外の拒否後の位置はPlayerとSession extrasで確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/LocalPlaybackTest.kt",
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "#37の状態遷移とシークに限定。キュー編集と次曲の選択は後続Issueで検証する。"
+  },
+  {
+    "case_id": "E02-02-host-interruptions-2026-11-20",
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
+    "commit": "3de907841349d113842c26801bb66ead38590cb0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric API23/35で一時フォーカス喪失、becoming noisy、USB出力取り外し通知による一時停止を確認した。API35の通話モードと、フォーカス復帰・通話終了・再接続の通知後も明示的な再生操作を待つことを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "ホスト上でOSの通知を再現したケースに限定。端末のルーティングや、切断から一時停止までの実際の音声出力は実機確認が必要。"
+  },
+  {
+    "case_id": "E02-02-device-interruptions-2026-11-20",
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
+    "commit": "3de907841349d113842c26801bb66ead38590cb0",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "指定ADBシリアルがないため、API23/36の端末試験と実通話・実フォーカス・実BT/USB切断は未実施。",
+    "evidence": [],
+    "limitations": "スピーカーへの切替過渡、実機のフォーカス・通話通知、画面ロック中の挙動は未確認。"
+  },
+  {
+    "case_id": "E02-02-host-state-and-seek-2026-11-20-rerun-4300eed",
+    "requirement_ids": [
+      "FR-PLY-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-01"
+    ],
+    "commit": "4300eedd3b9851727c2e4117e389b59e18e622a5",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Reducer試験で曲長が未知のときのシーク無効化と自然終了時のADVANCINGを確認した。MediaController経由で、メディア未設定時のシークコマンド無効化、0と曲末へのシーク、範囲外の拒否、連続シークの最新位置、停止による解決取消を確認した。停止後の古い準備完了の破棄はReducer試験で確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/LocalPlaybackTest.kt",
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "シーク可能だが曲長が未知の状態はSession経由では未検証。キュー編集と次曲の選択は後続Issueで検証する。"
+  },
+  {
+    "case_id": "E02-02-host-interruptions-2026-11-20-rerun-4300eed",
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
+    "commit": "4300eedd3b9851727c2e4117e389b59e18e622a5",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric API23/35で、通常の一時フォーカス喪失と復帰、becoming noisyによる一時停止、USB出力の取り外しと再接続、解決中の取り外し後の選曲保持と一時停止、MODE_IN_COMMUNICATIONでの自動開始抑止と明示的な再生を確認した。API23では通話中の一時フォーカス喪失後に自動再開しないこと、API35では着信・通話中の再生拒否後にMediaControllerのplayWhenReadyもfalseであり、通話終了後は明示的な再生を待つことを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "ホスト上でOSの通知を再現したケースに限定。端末のルーティングや、切断から一時停止までの実際の音声出力は実機確認が必要。"
+  },
+  {
+    "case_id": "E02-02-host-state-and-seek-2026-11-21-rerun",
+    "requirement_ids": [
+      "FR-PLY-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-01"
+    ],
+    "commit": "892eb5f2efffb8f0917dc85c6a1142f2f2ce927c",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric API23/35でMediaControllerから範囲外のシークを要求し、拒否後もMediaController、Player、Session extrasの位置が直前の有効なシーク位置と一致することを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "シーク可能だが曲長が未知の状態はSession経由では未検証。"
+  },
+  {
+    "case_id": "E02-02-host-focus-notification-order-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
+    "commit": "892eb5f2efffb8f0917dc85c6a1142f2f2ce927c",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric API23で、MODE_NORMAL中の一時フォーカス喪失、MODE_IN_CALLへの変更、通話終了、フォーカス復帰の順に再現し、再生要求が解除されたままPAUSEDを維持することを確認した。API35では通常の一時フォーカス喪失から自動再開することを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "ホストで通知順序を再現した。実通話での通知順序と音声出力は未確認。"
+  },
+  {
+    "case_id": "E10-04-sync-push-batch-2026-11-21",
+    "requirement_ids": [
+      "FR-USE-03",
+      "NFR-PRIV-02"
+    ],
+    "test_ids": [
+      "TEST-SYNC-01"
+    ],
+    "commit": "2b12b8bac30d2518e4dd552b74ef5bae339f352e",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "一時PostgreSQLでpushの200/400/401/403/409/413/429/503を確認した。100/101件と1 MiB/1バイト超過、同一イベント再送時の同一revision、異内容ID再利用・同時更新の競合、途中不正・DB障害・取消時に部分適用が残らないことを検査した。",
+    "evidence": [
+      "server/src/test/kotlin/com/audipp/server/SyncPushTest.kt"
+    ],
+    "limitations": "TEST-SYNC-01のサーバーpush部分に限定。NOT_RUNはpullのcursor失効時の410と完全同期（#80）、Androidからの送信（#115）、実環境への配備。"
+  },
+  {
+    "case_id": "E10-04-sync-push-privacy-2026-11-21",
+    "requirement_ids": [
+      "FR-USE-03",
+      "NFR-PRIV-02"
+    ],
+    "test_ids": [
+      "TEST-SYNC-01"
+    ],
+    "commit": "2b12b8bac30d2518e4dd552b74ef5bae339f352e",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "一時PostgreSQLで本人と登録端末の分離、同意の適用と撤回、Provider由来の申告に対する403を確認した。Basic EQとNFS: Heat OSTは200、URIを含む名前、認証値の形に一致する名前、未定義のtoken項目は400。削除時の履歴payload消去と、旧世代・削除済み履歴IDの再適用拒否を検査した。",
+    "evidence": [
+      "server/src/test/kotlin/com/audipp/server/SyncPushTest.kt"
+    ],
+    "limitations": "ローカルのサーバーpush部分に限定。NOT_RUNはProviderの実許諾、公開削除APIと派生値・バックアップの失効検証。"
+  },
+  {
+    "case_id": "E10-04-sync-push-batch-2026-11-21-rerun-0c015f9",
+    "requirement_ids": [
+      "FR-USE-03",
+      "NFR-PRIV-02"
+    ],
+    "test_ids": [
+      "TEST-SYNC-01"
+    ],
+    "commit": "0c015f99d17a1a95eff06c8d4d2aa3a39a54167f",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "一時PostgreSQLでpushの200/400/401/403/409/413/429/503を確認した。100/101件と1 MiB/1バイト超過、同一イベント再送時の同一revision、異内容ID再利用・同時更新の競合、途中不正・DB障害・取消時に部分適用が残らないことを検査した。",
+    "evidence": [
+      "server/src/test/kotlin/com/audipp/server/SyncPushTest.kt"
+    ],
+    "limitations": "TEST-SYNC-01のサーバーpush部分に限定。NOT_RUNはpullのcursor失効時の410と完全同期（#80）、Androidからの送信（#115）、実環境への配備。"
+  },
+  {
+    "case_id": "E10-04-sync-push-batch-2026-11-21-rerun-8d9741d",
+    "requirement_ids": [
+      "FR-USE-03",
+      "NFR-PRIV-02"
+    ],
+    "test_ids": [
+      "TEST-SYNC-01"
+    ],
+    "commit": "8d9741deaa725a3bbacee26b94c180f20daa54fe",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "一時PostgreSQLでpushの200/400/401/403/409/413/429/503を確認した。100/101件と1 MiB/1バイト超過、同一イベント再送時の同一revision、異内容ID再利用・同時更新の競合、途中不正・DB障害・取消時に部分適用が残らないことを検査した。",
+    "evidence": [
+      "server/src/test/kotlin/com/audipp/server/SyncPushTest.kt"
+    ],
+    "limitations": "TEST-SYNC-01のサーバーpush部分に限定。NOT_RUNはpullのcursor失効時の410と完全同期（#80）、Androidからの送信（#115）、実環境への配備。"
+  },
+  {
+    "case_id": "E10-04-sync-push-privacy-2026-11-21-rerun-0c015f9",
+    "requirement_ids": [
+      "FR-USE-03",
+      "NFR-PRIV-02"
+    ],
+    "test_ids": [
+      "TEST-SYNC-01"
+    ],
+    "commit": "0c015f99d17a1a95eff06c8d4d2aa3a39a54167f",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "一時PostgreSQLで本人と登録端末の分離、同意の適用と撤回、Provider由来の申告に対する403を確認した。Basic EQ、Basic 2026-11-21、NFS: Heat OST、Big Data: Remix、Data:Remix, Vol 2は200。メディア型を省略したdata URIを含む名前、その他の対象URIや認証値の形に一致する名前、未定義のtoken項目は400。削除時の履歴payload消去と、旧世代・削除済み履歴IDの再適用拒否を検査した。",
+    "evidence": [
+      "server/src/test/kotlin/com/audipp/server/SyncPushTest.kt"
+    ],
+    "limitations": "ローカルのサーバーpush部分に限定。NOT_RUNはProviderの実許諾、公開削除APIと派生値・バックアップの失効検証。"
+  },
+  {
+    "case_id": "E10-04-sync-push-privacy-2026-11-21-rerun-8d9741d",
+    "requirement_ids": [
+      "FR-USE-03",
+      "NFR-PRIV-02"
+    ],
+    "test_ids": [
+      "TEST-SYNC-01"
+    ],
+    "commit": "8d9741deaa725a3bbacee26b94c180f20daa54fe",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "一時PostgreSQLで本人と登録端末の分離、同意の適用と撤回、Provider由来の申告に対する403を確認した。Basic 2026-11-21-remasterなどの通常名は200、メディア型を省略したdata URIを含む名前、その他の対象URIを含む名前、未定義のtoken項目は400。全削除と個別削除で履歴payloadとrequest_sha256を消去し、旧世代の再適用と削除済みイベントIDの再送を409で拒否することを確認した。",
+    "evidence": [
+      "server/src/test/kotlin/com/audipp/server/SyncPushTest.kt"
+    ],
+    "limitations": "ローカルのサーバーpush部分に限定。NOT_RUNはProviderの実許諾、公開削除APIと派生値・バックアップの失効検証。"
+  },
+  {
+    "case_id": "E10-14-compose-ports-2026-11-20",
+    "requirement_ids": [
+      "NFR-SEC-03"
+    ],
+    "test_ids": [
+      "TEST-SEC-01"
+    ],
+    "commit": "b2f06ff8a121d549561f2d30348cc030f8588735",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "CIのServerジョブ（チェックアウト: b2f06ff8a121d549561f2d30348cc030f8588735）で、APIとKeycloakのHTTPSだけがホストの127.0.0.1に公開され、DBポートとKeycloak管理HTTPポートがホストに公開されないことを確認した。試験CAを信頼しない接続の拒否、issuerの一致、業務ロールから認証DBへの接続拒否も確認した。",
+    "evidence": [
+      "https://github.com/4rtoflow/Audipp/actions/runs/44708353671/job/136193733972"
+    ],
+    "limitations": "一時ランナーでの検証。APIコンテナーからKeycloak管理HTTPへの接続拒否は同ジョブの実行時点では未検査。実配備は未実施。"
+  },
+  {
+    "case_id": "E10-14-compose-outage-recovery-2026-11-20",
+    "requirement_ids": [
+      "NFR-OPS-01"
+    ],
+    "test_ids": [
+      "TEST-GOV-01"
+    ],
+    "commit": "b2f06ff8a121d549561f2d30348cc030f8588735",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "CIのServerジョブ（チェックアウト: b2f06ff8a121d549561f2d30348cc030f8588735）で、DB停止時および署名鍵をキャッシュしていない状態でのKeycloak停止時にAPIがHTTP 503を返し、各サービス再起動後の再試行が成功した。TLS設定不備によるAPI起動失敗と、設定を戻した後の応答回復を確認した。",
+    "evidence": [
+      "https://github.com/4rtoflow/Audipp/actions/runs/44708353671/job/136193733972"
+    ],
+    "limitations": "一時ランナーでのAPI応答の検証。DB初期化中断からの復旧、実配備、Android実機での認証・障害表示は未実施。"
+  },
+  {
+    "case_id": "E10-14-compose-restore-both-databases-2026-11-20",
+    "requirement_ids": [
+      "NFR-OPS-01",
+      "FR-USE-03"
+    ],
+    "test_ids": [
+      "TEST-GOV-01",
+      "TEST-ACC-01"
+    ],
+    "commit": "b2f06ff8a121d549561f2d30348cc030f8588735",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "CIのServerジョブ（チェックアウト: b2f06ff8a121d549561f2d30348cc030f8588735）で、APIとKeycloakの停止後に両DBをダンプした。新規ボリュームで不正なダンプの拒否と両DBの復元を確認し、復元後のKeycloakトークンでAPIに再接続して本人IDが変わらないことを確かめた。",
+    "evidence": [
+      "https://github.com/4rtoflow/Audipp/actions/runs/44708353671/job/136193733972"
+    ],
+    "limitations": "一時ランナーでの同一バージョンへの復元。実配備、定期暗号化バックアップ、削除記録の再適用、Android実機での認証は未実施。"
+  },
+  {
+    "case_id": "E10-14-compose-management-http-2026-11-21",
+    "requirement_ids": [
+      "NFR-SEC-03"
+    ],
+    "test_ids": [
+      "TEST-SEC-01"
+    ],
+    "commit": "63bf9b8de44dbf7362ed73d0a6d6f08790dc9267",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "CIのServerジョブ（チェックアウト: 63bf9b8de44dbf7362ed73d0a6d6f08790dc9267、PR head 8c6cb44 とmainのマージ）で、Keycloakがhealthyになった後、APIコンテナーからauth.audipp.test:9000への接続がcurlの終了コード7で失敗することを確認した。",
+    "evidence": [
+      "https://github.com/4rtofl/Audipp/actions/runs/44914582651/job/136877383768",
+      "server/compose/smoke-test.sh"
+    ],
+    "limitations": "一時ランナーでの検証。実配備は未実施。"
+  },
+  {
     "case_id": "E01-02-saf-traversal-emulators-2026-11-20",
     "requirement_ids": [
       "FR-SRC-02",
@@ -1055,5 +1391,25 @@
       "docs/contracts/saf-library-scan.md"
     ],
     "limitations": "API 23／36 の専用エミュレーターで SafLibraryTest・LibraryDatabaseTest・AndroidSafAudioTest を実行するまで、端末の SQLite と Room の組み合わせでの結果は不明。"
+  },
+  {
+    "case_id": "E01-02-saf-shared-directory-depth-host-2026-11-22",
+    "requirement_ids": [
+      "FR-SRC-02",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-LIB-01"
+    ],
+    "commit": "8bbb389ad5ecdd080de813141f6590820d01a3c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "深さ上限2で、同じディレクトリ ID が深さ3と2に現れる合成ツリーを走査した。修正前は配下の音源の索引が0件だった。修正後は1件を PLAYABLE として索引し、5ディレクトリを走査して問題のない COMPLETE を返した。深いサブツリーのスキップと、深さ・件数・メモリ上限で既存音源の消失を確定しない挙動も確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/data/local/SafLibraryTest.kt"
+    ],
+    "limitations": "AndroidTest の対象3ケースを一時的に Robolectric API 35（ネイティブ SQLite）で実行した。実際の DocumentsProvider、専用エミュレーターおよび実機での実行結果は未確認。"
   }
 ]

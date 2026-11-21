@@ -5,6 +5,7 @@ import com.auth0.jwk.NetworkException
 import com.auth0.jwk.RateLimitReachedException
 import com.auth0.jwt.exceptions.JWTVerificationException
 import com.auth0.jwt.interfaces.JWTVerifier
+import com.fasterxml.jackson.core.JsonProcessingException
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -29,12 +30,15 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.utils.io.readRemaining
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.readByteArray
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import java.sql.SQLException
+import java.time.format.DateTimeParseException
 import java.util.UUID
 
 @Serializable data class UserResponse(val user_id: String, val revision: Long, val created_at: String)
@@ -43,13 +47,16 @@ import java.util.UUID
 @Serializable data class SessionRequest(val device_id: String)
 @Serializable data class ErrorResponse(val error: String)
 private data class Owner(val identity: Identity)
-private class PayloadTooLarge : RuntimeException()
+internal class PayloadTooLarge : RuntimeException()
 private class KeysUnavailable : RuntimeException()
 private val PrivateResponses = createApplicationPlugin("PrivateResponses") {
     onCall { it.response.headers.append(HttpHeaders.CacheControl, "no-store") }
 }
 
-fun Application.ownershipApi(database: Database, verifier: JWTVerifier) {
+fun Application.ownershipApi(database: Database, verifier: JWTVerifier) =
+    ownershipApi(database, verifier, Semaphore(8))
+
+internal fun Application.ownershipApi(database: Database, verifier: JWTVerifier, syncAdmission: Semaphore) {
     install(PrivateResponses)
     install(ContentNegotiation) { json() }
     install(StatusPages) {
@@ -58,12 +65,18 @@ fun Application.ownershipApi(database: Database, verifier: JWTVerifier) {
             val (status, code) = when (failure) {
                 is CancellationException -> throw failure
                 is Forbidden -> HttpStatusCode.Forbidden to "forbidden"
+                is SyncConflict -> HttpStatusCode.Conflict to failure.code
                 is PayloadTooLarge -> HttpStatusCode.PayloadTooLarge to "payload_too_large"
-                is IllegalArgumentException, is SerializationException, is BadRequestException, is java.nio.charset.CharacterCodingException -> HttpStatusCode.BadRequest to "invalid_request"
+                is SyncBusy -> HttpStatusCode.TooManyRequests to "try_later"
+                is IllegalArgumentException, is SerializationException, is BadRequestException,
+                is java.nio.charset.CharacterCodingException, is JsonProcessingException,
+                is DateTimeParseException -> HttpStatusCode.BadRequest to "invalid_request"
                 is SQLException, is KeysUnavailable -> HttpStatusCode.ServiceUnavailable to "temporarily_unavailable"
                 else -> HttpStatusCode.InternalServerError to "internal_error"
             }
-            if (status == HttpStatusCode.ServiceUnavailable) call.response.headers.append(HttpHeaders.RetryAfter, "1")
+            if (status == HttpStatusCode.ServiceUnavailable || status == HttpStatusCode.TooManyRequests) {
+                call.response.headers.append(HttpHeaders.RetryAfter, "1")
+            }
             call.respond(status, ErrorResponse(code))
         }
     }
@@ -118,6 +131,26 @@ fun Application.ownershipApi(database: Database, verifier: JWTVerifier) {
                 val identity = call.principal<Owner>()!!.identity
                 call.respond(database.transaction { database.device(it, database.resolve(it, identity), id) })
             }
+            post("/v1/sync/batches") {
+                call.checkQuery()
+                require(call.request.contentType().withoutParameters() == ContentType.Application.Json)
+                val encoding = call.request.headers[HttpHeaders.ContentEncoding]
+                require(encoding == null || encoding.equals("identity", ignoreCase = true))
+                val length = call.request.headers[HttpHeaders.ContentLength]?.toLongOrNull()
+                if (length != null && length > SYNC_MAX_BODY_BYTES) throw PayloadTooLarge()
+                if (!syncAdmission.tryAcquire()) throw SyncBusy()
+                try {
+                    val bytes = requireNotNull(withTimeoutOrNull(5_000) {
+                        call.receiveChannel().readRemaining(SYNC_MAX_BODY_BYTES.toLong() + 1).readByteArray()
+                    })
+                    if (bytes.size > SYNC_MAX_BODY_BYTES) throw PayloadTooLarge()
+                    val batch = parseSyncBatch(bytes.decodeToString(throwOnInvalidSequence = true))
+                    val identity = call.principal<Owner>()!!.identity
+                    call.respond(database.pushSync(identity, batch))
+                } finally {
+                    syncAdmission.release()
+                }
+            }
         }
     }
 }
@@ -126,6 +159,6 @@ private fun ApplicationCall.checkQuery() {
     require(request.queryParameters.isEmpty())
 }
 
-private fun canonicalUuid(value: String): UUID = UUID.fromString(value).also {
+internal fun canonicalUuid(value: String): UUID = UUID.fromString(value).also {
     require(it.toString() == value)
 }
