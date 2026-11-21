@@ -68,14 +68,16 @@ abstract class QueueDao {
             return QueueEditResult.Updated(expectedRevision)
         }
 
-        val removedCurrent = checkpoint()?.takeIf { it.queueId == queueId }?.entryId
+        val stoppedId = stoppedEntryId?.value
+        val removedCheckpointEntry = checkpoint()?.takeIf { it.queueId == queueId }?.entryId
             ?.takeUnless { it in desiredIds }
-        if (removedCurrent != null && stoppedEntryId?.value != removedCurrent) {
-            return QueueEditResult.StopRequired(QueueEntryId(removedCurrent))
+        if (removedCheckpointEntry != null && stoppedId != removedCheckpointEntry) {
+            return QueueEditResult.StopRequired(QueueEntryId(removedCheckpointEntry))
         }
 
+        val removedStoppedEntry = stoppedId != null && stoppedId in existing && stoppedId !in desiredIds
         val revision = expectedRevision + 1
-        reviseCheckpoint(queueId, revision, removedCurrent != null)
+        reviseCheckpoint(queueId, revision, removedCheckpointEntry != null || removedStoppedEntry)
         // SQLite checks ordinal uniqueness row by row, so move existing ordinals out of the way first.
         parkOrdinals(queueId)
         entries.forEachIndexed { ordinal, entry ->

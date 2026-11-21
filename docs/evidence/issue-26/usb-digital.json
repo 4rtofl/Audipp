@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "session_test_id": "e11-01-usb-digital-prep-2026-11-20",
+  "test_ids": [
+    "TEST-AUD-02",
+    "TEST-COMP-01"
+  ],
+  "requirement_ids": [
+    "NFR-AUD-02",
+    "FR-AUD-04",
+    "FR-AUD-05",
+    "NFR-COMP-01"
+  ],
+  "app_commit": null,
+  "recorded_at_utc": "2026-11-20T09:00:22Z",
+  "outcome": "BLOCKED",
+  "reason": "対象端末の操作承認、USB捕捉系、組合せごとの成立機器、既知DSD列が未確保。",
+  "known_limitations": "QLT-02/09。USB payload、Native/DoP、384 kHz、切替・停止の観測結果は未取得。",
+  "device": {
+    "ABI": null,
+    "API_level": null,
+    "Android_version": null,
+    "DAC_vendor/product": null,
+    "DSP_state": null,
+    "USB_VID/PID": null,
+    "audio_output_type": null,
+    "bitDepth": null,
+    "build_fingerprint_hash": null,
+    "codec": null,
+    "device_vendor": null,
+    "model": null,
+    "playback_mode": null,
+    "sampleRate": null
+  },
+  "fixture": null,
+  "capture_point": null,
+  "evidence_type": "UNKNOWN",
+  "instrument": null,
+  "settings": {
+    "planned_capture_point": "ホストとDAC間のUSB isochronous OUT",
+    "planned_fixture_files": [
+      "prng-16-stereo.wav",
+      "prng-24-stereo.wav",
+      "prng-32-stereo.wav"
+    ]
+  },
+  "result": null
+}
