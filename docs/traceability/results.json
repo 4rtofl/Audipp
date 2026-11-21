@@ -94,13 +94,14 @@
     "test_ids": [
       "TEST-GOV-01"
     ],
-    "commit": "55bdc2cbe37954ac456e1fa1e6e60accb7fe24e1",
+    "commit": "f73e7ea95d59b7e73890ec4cdf61cdacda6b7972",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
     "permission": "NOT_REQUIRED",
     "reason": "既存の音声ホスト試験22件、既定fixtureのmanifest一致、未実行の測定証跡3件のschema検査が成功した。",
     "evidence": [
+      "docs/evidence/issue-26/host-checks-pr-190.txt",
       "docs/evidence/issue-26/README.md",
       "tests/audio/manifest.json",
       "scripts/audio/test_audio.py"
