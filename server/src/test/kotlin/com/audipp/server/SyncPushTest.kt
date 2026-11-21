@@ -75,12 +75,15 @@ class SyncPushTest {
         application { ownershipApi(database, verifier) }
         val device = client.register()
         client.enableSync(device)
-        val preset = syncEvent("audio_preset", UUID.randomUUID().toString(), """{"name":"Basic EQ"}""")
-        val playlist = syncEvent("playlist", UUID.randomUUID().toString(), """{"name":"NFS: Heat OST","tracks":[]}""")
-
-        assertEquals(1, client.push(device, preset).revisions().size)
-        assertEquals(1, client.push(device, playlist).revisions().size)
-        assertEquals(2L, dataCount())
+        for (name in listOf("Basic EQ", "Basic 2026-11-21")) {
+            val preset = syncEvent("audio_preset", UUID.randomUUID().toString(), """{"name":"$name"}""")
+            assertEquals(1, client.push(device, preset).revisions().size)
+        }
+        for (name in listOf("NFS: Heat OST", "Big Data: Remix", "Data:Remix, Vol 2")) {
+            val playlist = syncEvent("playlist", UUID.randomUUID().toString(), """{"name":"$name","tracks":[]}""")
+            assertEquals(1, client.push(device, playlist).revisions().size)
+        }
+        assertEquals(5L, dataCount())
     }
 
     @Test fun `malformed input or disallowed source anywhere in a batch stores nothing`() = testApplication {
@@ -99,8 +102,11 @@ class SyncPushTest {
             profile(name = "content:/private/library"),
             profile(name = "file:/private/library"),
             profile(name = "data:text/plain,fixture"),
-            profile(name = "Bearer fixture-token"),
-            profile(name = "Basic dTpwYXNzIQ=="),
+            profile(name = "data:;base64,Zml4dHVyZQ=="),
+            profile(name = "data:;charset=UTF-8;base64,Zml4dHVyZQ=="),
+            profile(name = "data:,fixture"),
+            profile(name = "Bearer Zml4dHVyZS10b2tl"),
+            profile(name = "Basic dXNlcjpmaXh0dXJlLXBhc3M="),
             profile(name = "\\uD800"),
             syncEvent("profile", UUID.randomUUID().toString(), """{"name":"DAC","token":"fixture-secret"}"""),
             history(UUID.randomUUID()).replace("2026-11-20T07:00:00Z", "invalidZ"),

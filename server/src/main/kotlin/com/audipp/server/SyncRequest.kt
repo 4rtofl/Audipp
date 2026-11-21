@@ -148,9 +148,12 @@ private fun validateTrack(track: JsonNode): Boolean {
     return source == "local"
 }
 
+private const val dataUrlToken = """(?:[a-z0-9_.!~*'&+$-]|%[0-9a-f]{2})++"""
+
 private val externalReference = Regex(
-    """(?i)(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://|\b(?:(?:content|file):/|data:[a-z0-9!#$&^_.+-]+/)""" +
-        """|\A *(?:bearer|basic) +(?=[a-z0-9._~+/-]{8})(?=[a-z]*[0-9._~+/=-])[a-z0-9._~+/-]+=* *\z""",
+    """(?i)(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://|\b(?:content|file):/""" +
+        """|\bdata:(?:$dataUrlToken/$dataUrlToken)?(?:;$dataUrlToken=$dataUrlToken)*+(?:;base64)?,""" +
+        """|\A *(?:bearer|basic) +(?=[a-z0-9._~+/=-]{16})(?=[a-z]*[0-9._~+/=-])[a-z0-9._~+/-]+=* *\z""",
 )
 
 private fun validateName(node: JsonNode) {
