@@ -33,9 +33,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 internal interface LocalPlaybackEngine {
-    fun prepare(entryId: QueueEntryId, document: SourceDescriptor.LocalDocument)
+    fun prepare(entryId: QueueEntryId, transitionId: TransitionId, document: SourceDescriptor.LocalDocument)
     fun reset()
 }
+
+internal enum class LocalEnginePhase { BUFFERING, READY, ENDED }
 
 // The service's application looper serializes commands and engine events, including Stop during IO.
 internal class LocalPlayback(
@@ -79,7 +81,7 @@ internal class LocalPlayback(
             selectedVariant = variant
             publish(snapshot.value.copy(phase = PlaybackPhase.BUFFERING,
                 effectiveSource = result.plan.source, executionPlan = result.plan))
-            engine.prepare(entryId, descriptor)
+            engine.prepare(entryId, attempt.transitionId, descriptor)
             return null
         } catch (cancelled: CancellationException) {
             if (context == attempt) stop()
@@ -120,29 +122,40 @@ internal class LocalPlayback(
         publish(snapshot.value.copy(positionMs = null))
     }
 
+    fun isCurrentTransition(transitionId: TransitionId?): Boolean =
+        transitionId != null && snapshot.value.executionPlan?.transitionId == transitionId
+
     fun onEngineState(
-        phase: PlaybackPhase,
+        transitionId: TransitionId,
+        enginePhase: LocalEnginePhase,
+        playRequested: Boolean,
+        isPlaying: Boolean,
         positionMs: Long?,
         durationMs: Long?,
         canSeek: Boolean,
         speed: Double,
         observedAtEpochMs: Long,
-        seekPositionObserved: Boolean = false,
     ) {
         val previous = snapshot.value
         val plan = previous.executionPlan ?: return
-        if (previous.phase == PlaybackPhase.ERROR) return
+        if (plan.transitionId != transitionId) return
+        val phase = when (enginePhase) {
+            LocalEnginePhase.BUFFERING -> if (playRequested) PlaybackPhase.BUFFERING else PlaybackPhase.PAUSED
+            LocalEnginePhase.READY -> if (isPlaying) PlaybackPhase.PLAYING else PlaybackPhase.PAUSED
+            LocalEnginePhase.ENDED -> PlaybackPhase.ADVANCING
+        }
         val duration = durationMs?.takeIf { it >= 0 }
         val observedPosition = positionMs?.takeIf { it >= 0 }
-        if (seekPositionObserved && observedPosition != null) seekPending = false
+        // ExoPlayer reports the requested position before applying the seek, with a masked BUFFERING state.
+        if (enginePhase != LocalEnginePhase.BUFFERING && observedPosition != null) seekPending = false
         val position = observedPosition.takeUnless { seekPending }?.let {
             if (duration == null) it else it.coerceAtMost(duration)
         }
         val observed = previous.copy(phase = phase, positionMs = position, durationMs = duration,
-            executionPlan = plan.copy(capabilities = plan.capabilities.copy(canSeek = canSeek)))
+            executionPlan = plan.copy(capabilities = plan.capabilities.copy(canSeek = canSeek && duration != null)))
         val variant = selectedVariant
         val entryId = observed.currentEntryId
-        val schedule = if (variant != null && entryId != null && phase != PlaybackPhase.IDLE) {
+        val schedule = if (variant != null && entryId != null && phase != PlaybackPhase.ADVANCING) {
             calculatePlaybackSchedule(
                 observed,
                 listOf(QueueEntry(entryId, variant.variantId)),
@@ -158,8 +171,11 @@ internal class LocalPlayback(
     }
 
     private fun publish(value: PlaybackSnapshot, schedule: PlaybackSchedule = PlaybackSchedule.Unknown) {
-        mutableSchedule.value = schedule
-        mutableSnapshot.value = value.copy(revision = snapshot.value.revision + 1)
+        val previous = snapshot.value
+        if (value.copy(revision = previous.revision) != previous || schedule != mutableSchedule.value) {
+            mutableSchedule.value = schedule
+            mutableSnapshot.value = value.copy(revision = previous.revision + 1)
+        }
     }
 }
 

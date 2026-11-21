@@ -165,8 +165,12 @@ class PlaybackScheduleTest {
 
     @Test
     fun localPlaybackWithholdsScheduleUntilItObservesTheSeekPosition() = runBlocking {
+        var transition = TransitionId("unprepared")
         val engine = object : LocalPlaybackEngine {
-            override fun prepare(entryId: QueueEntryId, document: SourceDescriptor.LocalDocument) = Unit
+            override fun prepare(entryId: QueueEntryId, transitionId: TransitionId,
+                document: SourceDescriptor.LocalDocument) {
+                transition = transitionId
+            }
             override fun reset() = Unit
         }
         val playback = LocalPlayback(engine, { Availability.PLAYABLE })
@@ -174,7 +178,7 @@ class PlaybackScheduleTest {
             localDocumentUri = "content://fixture/song", availability = Availability.PLAYABLE)
         assertNull(playback.start(current.entryId, seven.copy(source = localSource)))
 
-        playback.onEngineState(PlaybackPhase.PLAYING, 60_000, 420_000, true, 1.0, now)
+        playback.onEngineState(transition, LocalEnginePhase.READY, true, true, 60_000, 420_000, true, 1.0, now)
         assertEquals(
             PlaybackSchedule.Estimated(RemainingPlaybackTime(360_000, emptyMap(), 360_000), emptyMap(), now + 360_000),
             playback.schedule.value,
@@ -183,29 +187,30 @@ class PlaybackScheduleTest {
         playback.onSeekRequested()
         assertNull(playback.snapshot.value.positionMs)
         assertEquals(PlaybackSchedule.Unknown, playback.schedule.value)
-        playback.onEngineState(PlaybackPhase.PLAYING, 60_000, 420_000, true, 1.0, now + 1_000)
+        playback.onEngineState(transition, LocalEnginePhase.BUFFERING, true, false, 60_000, 420_000, true, 1.0,
+            now + 1_000)
         assertNull(playback.snapshot.value.positionMs)
         assertEquals(PlaybackSchedule.Unknown, playback.schedule.value)
 
-        playback.onEngineState(PlaybackPhase.PLAYING, 360_000, 420_000, true, 1.0, now + 2_000,
-            seekPositionObserved = true)
+        playback.onEngineState(transition, LocalEnginePhase.READY, true, true, 360_000, 420_000, true, 1.0, now + 2_000)
         assertEquals(360_000L, playback.snapshot.value.positionMs)
         assertEquals(
             PlaybackSchedule.Estimated(RemainingPlaybackTime(60_000, emptyMap(), 60_000), emptyMap(), now + 62_000),
             playback.schedule.value,
         )
 
-        playback.onEngineState(PlaybackPhase.PLAYING, 360_000, 480_000, true, 1.0, now + 3_000)
+        playback.onEngineState(transition, LocalEnginePhase.READY, true, true, 360_000, 480_000, true, 1.0, now + 3_000)
         assertEquals(
             PlaybackSchedule.Estimated(RemainingPlaybackTime(120_000, emptyMap(), 120_000), emptyMap(), now + 123_000),
             playback.schedule.value,
         )
-        playback.onEngineState(PlaybackPhase.PLAYING, 360_000, 480_000, true, 2.0, now + 4_000)
+        playback.onEngineState(transition, LocalEnginePhase.READY, true, true, 360_000, 480_000, true, 2.0, now + 4_000)
         assertEquals(
             PlaybackSchedule.Estimated(RemainingPlaybackTime(60_000, emptyMap(), 60_000), emptyMap(), now + 64_000),
             playback.schedule.value,
         )
-        playback.onEngineState(PlaybackPhase.PAUSED, 360_000, 480_000, true, 2.0, now + 5_000)
+        playback.onEngineState(transition, LocalEnginePhase.READY, false, false, 360_000, 480_000, true, 2.0,
+            now + 5_000)
         assertEquals(
             PlaybackSchedule.RemainingDurationOnly(RemainingPlaybackTime(60_000, emptyMap(), 60_000)),
             playback.schedule.value,
