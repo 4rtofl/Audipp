@@ -230,7 +230,7 @@ class PlaybackOwnerCoordinatorTest {
         submit("renderer", TargetKind.RENDERER)
         val read = suspendQueueRead()
         coordinator.onStopped(lastStop)
-        read.entered.await()
+        withTimeout(5_000) { read.entered.await() }
         currentContext = currentContext.copy(routeRevision = 2)
         read.resume.complete(Unit)
         awaitCheckFinished()
@@ -244,7 +244,7 @@ class PlaybackOwnerCoordinatorTest {
         submit("provider", TargetKind.PROVIDER_REMOTE)
         val read = suspendQueueRead()
         coordinator.onStopped(lastStop)
-        read.entered.await()
+        withTimeout(5_000) { read.entered.await() }
         permission = PermissionState.DENIED
         read.resume.complete(Unit)
         awaitCheckFinished()
@@ -258,7 +258,7 @@ class PlaybackOwnerCoordinatorTest {
         submit("stale", TargetKind.DEVICE)
         val read = suspendQueueRead()
         coordinator.onStopped(lastStop)
-        read.entered.await()
+        withTimeout(5_000) { read.entered.await() }
         queueRevision++
         read.resume.complete(Unit)
         awaitCheckFinished()
