@@ -85,5 +85,160 @@
       "docs/evidence/issue-20/kotlin-local.txt"
     ],
     "limitations": "加入契約は確認済みで、アプリ資格とは別に保持する。実サービス試験の前提不足をQobuz必須要件の削除やKotlin実装全体の停止理由にはしない。資格取得後に実応答・報告受理・失効を検証し、Playerへ接続する。"
+  },
+  {
+    "case_id": "E02-03-queue-edits-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-PLY-01",
+      "TEST-RESTORE-01"
+    ],
+    "commit": "a1cb678947424bbda6d479ea858d5de0a4bd3688",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で隣接交換・全逆順・追加と削除の混在が成功し、現在項目と位置を保持した。同じ Variant の重複項目と MISSING の参照も保持した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/QueueDaoTest.kt"
+    ],
+    "limitations": "キュー編集と保存済みチェックポイントの DAO 操作を確認した。再生中の操作は別途検証する。"
+  },
+  {
+    "case_id": "E02-03-queue-rollback-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-PLY-01"
+    ],
+    "commit": "a1cb678947424bbda6d479ea858d5de0a4bd3688",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で存在しない Variant を挿入して外部キー違反を起こし、順序・revision・チェックポイントが編集前の状態に戻ることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/QueueDaoTest.kt"
+    ],
+    "limitations": "外部キー違反を起点とした DAO のロールバックを確認した。"
+  },
+  {
+    "case_id": "E02-03-checkpoint-stop-required-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "a1cb678947424bbda6d479ea858d5de0a4bd3688",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で、保存済みの現在項目を削除するときは対応する停止要求 ID が必要であることを確認した。削除後は項目と位置がクリアされ、旧 revision のチェックポイント保存を拒否した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/QueueDaoTest.kt"
+    ],
+    "limitations": "停止要求 ID を受け取る DAO の契約を確認した。実 Service の停止は別途検証する。"
+  },
+  {
+    "case_id": "E02-03-checkpoint-stopped-entry-before-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "b8a82ba967bb6d60e37e2d8317b4976bf7d66158",
+    "stage": "CURRENT",
+    "outcome": "FAIL",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "修正前の DAO に追加した回帰試験を実行した。保存済みの A を残して停止要求済みの B を削除すると、revision は 2 に進んだがチェックポイントに A と 12,000 ms が残った。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/QueueDaoTest.kt"
+    ],
+    "limitations": "記録したコミットの DAO を、作業ツリーで追加した回帰試験で検証した。検証環境は API 35 の Robolectric。"
+  },
+  {
+    "case_id": "E02-03-checkpoint-stopped-entry-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "a1cb678947424bbda6d479ea858d5de0a4bd3688",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35 の Robolectric で、保存済みの A を残して停止要求済みの B を削除すると、キューとチェックポイントの revision が 2 に進み、entry_id と position_ms がともに NULL になることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/QueueDaoTest.kt"
+    ],
+    "limitations": "保存済み項目と停止要求済み項目が異なる場合の DAO の更新を確認した。"
+  },
+  {
+    "case_id": "E02-03-playback-service-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-PLY-01",
+      "TEST-RESTORE-01"
+    ],
+    "commit": "a1cb678947424bbda6d479ea858d5de0a4bd3688",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "実 Service とキュー DAO を接続した試験は未実施。",
+    "evidence": [
+      "docs/contracts/queue-db-v2.md"
+    ],
+    "limitations": "再生中の項目の確認、遷移の取り消し、停止要求とキュー編集の順序は #83 で確認する。"
+  },
+  {
+    "case_id": "E02-03-process-death-restore-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "a1cb678947424bbda6d479ea858d5de0a4bd3688",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "定期保存やシーク後にプロセスを終了して復元する試験は未実施。",
+    "evidence": [
+      "docs/contracts/queue-db-v2.md"
+    ],
+    "limitations": "保存間隔や遅延、プロセス再起動後の復元は #62 で確認する。"
+  },
+  {
+    "case_id": "E02-03-device-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-04"
+    ],
+    "test_ids": [
+      "TEST-PLY-01",
+      "TEST-RESTORE-01"
+    ],
+    "commit": "a1cb678947424bbda6d479ea858d5de0a4bd3688",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "実機上の試験は未実施。",
+    "evidence": [
+      "docs/contracts/queue-db-v2.md"
+    ],
+    "limitations": "API 23・36 の端末でのキュー編集、チェックポイントの更新、Room 移行は未確認。"
   }
 ]
