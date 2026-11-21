@@ -1,5 +1,5 @@
 Audipp Issue #21 / 2026-11-20 JST
-Audipp fixture commit: 27219bdf7b1608f45e15693b208a571b1a51dab1
+Audipp host test and Android link commit: 27219bdf7b1608f45e15693b208a571b1a51dab1
 Audipp Android verification tree: ba8f18b (the fixture commit adds only scripts/research files)
 Upstream: librespot v0.8.0 d36f9f1907e8cc9d68a93f8ebc6b627b1bf7267d
 Upstream Cargo.lock SHA-256: 990c4df9e30c2e2637c6605cc00e5d421a16b17f0204d0de60fb19faf84cee00
@@ -8,14 +8,15 @@ Features: --no-default-features --features rustls-tls-webpki-roots,passthrough-d
 Input: locally generated one-second test signals. No service authentication, audio fetch, account or tokens.
 Host test process: unshare -Urn; /proc/net/dev showed only lo.
 
-Fixture SHA-256
+Fixture SHA-256 (regenerated 2026-11-21 JST with Python 3.14.8 and FFmpeg n9.0.2 / libavformat 63.1.102)
+The output-side FLAC bitexact change altered only the three FLAC hashes. FFmpeg decoded each old/new pair to identical PCM. Host and Android observations below are from the original run.
 9a50ee381be41699a8b4dc0d9766cda169f066af5c9a72e7a31bef104f7c599d  48k.wav
 c0d7c5b762894ef017e26a9e48a878f6a64a32e8d75c295565f6962b7ad163d0  mono.wav
 2cb483d7877c618853ea6e786a780a727750868a9a67aef4f28724f5de48776d  stereo.wav
-b886478cf9cfada20dcb7a5281932198929081034ab0a80f20af52973de6e5eb  48k.flac
-403b26e44b9b81f14b58068ed085d0f282ad3a0b291ce5340d7e37891ce4eee5  mono.flac
+93abcbbe2e8d0acce9404644de0bbedbcca5ce42eb914407e6fb85e067d06400  48k.flac
+cb7a0afe03ad560e110754d057ba813769c81dba31293f95b1616cecdf58646a  mono.flac
 76dbcfd5aece9e05083d2469305052eee2ef43a9626b418f5d60e85752ca65dd  stereo.ogg
-bb6175eaa32eb6e05454b5c054b44dbb6c6a4afeac56f8f8373525c70ccc9e00  player/stereo.flac
+b8781ec85c136c5ee8c543868bd6d31581ad1151ed8fe14482d3783ac03b9374  player/stereo.flac
 
 Host observations
 running 5 tests

@@ -96,18 +96,18 @@
       "TEST-RESEARCH-01",
       "TEST-TAP-01"
     ],
-    "commit": "27219bdf7b1608f45e15693b208a571b1a51dab1",
+    "commit": "36dce1db8bec9bf4aa81bd1325c965d1dc54edab",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
     "permission": "NOT_REQUIRED",
-    "reason": "固定した上流Player・デコーダーと自作試料で、44100 Hz・2 ch・44100フレーム、Rawと不正サンプルの拒否、所有権、満杯時のStop取消とseek世代の試験5件に合格した。",
+    "reason": "自作FLACをSymphoniaDecoderで直接デコードし、44100 Hz・2 ch・44100フレームの全サンプルを照合した。PlayerからSinkへの受け渡しと満杯時のStop取消、Rawと不正サンプルの拒否、所有権、seek世代を含む試験5件に合格した。",
     "evidence": [
       "docs/evidence/issue-21/local.txt",
       "docs/specifications/13_spotify_spike.md",
       "scripts/research/librespot/issue_21_pcm.rs"
     ],
-    "limitations": "音源側PCMに限定。seek世代は試験用制御で確認した。Spotifyフル音源・lossless、DSP後Tap、実機出力は未実施。"
+    "limitations": "取得位置はデコード後（librespot Sink入口、音量・正規化は無効）。Player経路は先頭packetの先頭フレームのみ照合した。seek世代は試験用制御で確認した。Spotifyフル音源・lossless、DSP後Tap、実機出力は未実施。"
   },
   {
     "case_id": "E06-03-permission-fixture-2026-11-20",
@@ -159,17 +159,19 @@
       "TEST-PROV-01",
       "TEST-RESEARCH-01"
     ],
-    "commit": "27219bdf7b1608f45e15693b208a571b1a51dab1",
+    "commit": "36dce1db8bec9bf4aa81bd1325c965d1dc54edab",
     "stage": "CURRENT",
     "outcome": "BLOCKED",
     "execution": "NOT_RUN",
     "permission": "UNKNOWN",
-    "reason": "本人Premium、Audippのアプリ資格・用途別許諾・音源の利用権を確認できないため、ブラウザー認可、鍵取得、実曲取得、失効・通信断、検索の実試験を行わなかった。",
+    "reason": "本人Premium、Audippのアプリ資格、librespot経由のアクセス・鍵取得自体の許諾、用途別許諾、音源の利用権を確認できないため、ブラウザー認可、鍵取得、実曲取得、失効・通信断、検索の実試験を行わなかった。",
     "evidence": [
       "docs/specifications/13_spotify_spike.md",
-      "https://github.com/librespot-org/librespot/issues/1649"
+      "https://github.com/librespot-org/librespot/issues/1649",
+      "https://www.spotify.com/jp/legal/end-user-agreement/",
+      "https://www.spotify.com/jp/legal/user-guidelines/"
     ],
-    "limitations": "上流報告には別環境の鍵取得失敗がある。App Remote、試聴、ローカルfixtureは実サービスの直接フル再生に算入しない。"
+    "limitations": "上流報告には別環境の鍵取得失敗がある。公開条件ではこの経路の明示的な許可を確認できなかった。鍵取得やPremiumログインの技術的成功は許諾の証拠にならない。App Remote、試聴、ローカルfixtureは実サービスの直接フル再生に算入しない。"
   },
   {
     "case_id": "E06-03-default-policy-2026-11-20",
@@ -200,7 +202,7 @@
     "test_ids": [
       "TEST-STORE-01"
     ],
-    "commit": "27219bdf7b1608f45e15693b208a571b1a51dab1",
+    "commit": "36dce1db8bec9bf4aa81bd1325c965d1dc54edab",
     "stage": "CURRENT",
     "outcome": "NOT_RUN",
     "execution": "NOT_RUN",
@@ -210,7 +212,7 @@
       "docs/evidence/issue-21/local.txt",
       "docs/specifications/13_spotify_spike.md"
     ],
-    "limitations": "製品採用と配布の可否は保留。ストア向けの一般公開試験は今回の範囲外。"
+    "limitations": "NFR-LEGAL-02は未判定。製品採用と配布の可否は保留。試験IDはDD-TRACEの現行対応による。ライセンス台帳はTEST-GOV-01の範囲。ストア向けの一般公開試験は今回の範囲外。"
   },
   {
     "case_id": "E06-03-android-runtime-2026-11-20",
