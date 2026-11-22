@@ -3561,5 +3561,89 @@
       "docs/contracts/peq-v1.md"
     ],
     "limitations": "JVMの値をARTや実機の合格として扱わない。内部処理の結果から外部出力の音質やBit-perfectを判定しない。"
+  },
+  {
+    "case_id": "E01-10-artwork-limits-unit-2026-11-23",
+    "requirement_ids": [
+      "FR-SRC-05",
+      "FR-SRC-06"
+    ],
+    "test_ids": [
+      "TEST-LIB-02",
+      "TEST-META-01"
+    ],
+    "commit": "2784dab4584a3a4436a3e67008a05af0367e090e",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "JDK 17 と Robolectric API 35（ネイティブ描画）の単体試験で、20 MiB・40 MP・長辺 2048 px の上限、4100 px の縮小（長辺1025 px、表示辺300 pxでは512 px）、破損・偽装・種別違い・埋込範囲不整合の拒否理由、表示許可のない外部画像を開かないこと、64 MiB 相当のキャッシュ予算での追い出しとヒット時に再読込しないことを確認した。同時読込数が2を超えないこと（30件の並行要求）とキャッシュヒットが読込の許可を要しないことを確認した。引き渡し検証の全474件（Artwork 関連を含む）が成功し、Debug build と Lint（新規の警告なし）も成功した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/local/ArtworkLoaderTest.kt",
+      "docs/contracts/artwork-v1.md"
+    ],
+    "limitations": "合成画像だけを使った。実際の文書プロバイダーと実ファイルの画像、PSS などのメモリ実測、切れた JPEG が部分的に返る場合の検出は未実施。同時読込数 2 は実装提案で、ヒープ上限での実測はしていない。"
+  },
+  {
+    "case_id": "E01-10-artwork-replace-revert-expire-unit-2026-11-23",
+    "requirement_ids": [
+      "FR-SRC-05",
+      "FR-SRC-06"
+    ],
+    "test_ids": [
+      "TEST-LIB-02",
+      "TEST-META-01"
+    ],
+    "commit": "2784dab4584a3a4436a3e67008a05af0367e090e",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric の Room で、埋込画像の表示、差替え→元に戻す、再差替え時の古いキャッシュ破棄、読めない間だけの EXPIRED placeholder（ファイルが戻れば次の load で表示、失効は保存しない）、拒否された差替えが既存の差替えを保持すること、Variant 削除での差替え行の連鎖削除、外部画像の表示許可と再配布許可の分離、再配布を明示許可した出典だけが共有 payload の対象になること、Room v6 → v7 移行での既存行の保持を確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/local/ArtworkProviderTest.kt",
+      "app/src/test/java/com/audipp/data/db/ArtworkMigrationTest.kt",
+      "docs/contracts/artwork-v1.md"
+    ],
+    "limitations": "共有 payload の組立て側は未実装で、判定プロパティの値だけを検査した。許可の根拠や期限は #33 の台帳と接続していない。"
+  },
+  {
+    "case_id": "E01-10-artwork-decode-api23-api36-2026-11-23",
+    "requirement_ids": [
+      "FR-SRC-05"
+    ],
+    "test_ids": [
+      "TEST-LIB-02"
+    ],
+    "commit": "2784dab4584a3a4436a3e67008a05af0367e090e",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23 と API 36 の x86_64 エミュレーター（emulator-5580・5582）で、実 Bitmap デコーダーによる ArtworkDecodeTest が各3件成功した。PNG・JPEG の縮小、40 MP 超のヘッダー拒否、種別違い・非画像・切れた画像の拒否、キャッシュ予算の維持を確認した。LibraryDatabaseTest 各11件（rebase 後の main に対して）も成功し、v6 → v7 の移行と未対応版での非破壊失敗を確認した。API 23 では InputStream.readNBytes が使えない不具合をこの試験で検出し、修正した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/data/local/ArtworkDecodeTest.kt",
+      "app/src/androidTest/java/com/audipp/data/db/LibraryDatabaseTest.kt"
+    ],
+    "limitations": "エミュレーターの合成画像のみ。物理端末、WebP の縮小、実ファイルの大きな画像、メモリの実測は未実施。"
+  },
+  {
+    "case_id": "E01-10-artwork-ui-integration-and-fetch",
+    "requirement_ids": [
+      "FR-SRC-06"
+    ],
+    "test_ids": [
+      "TEST-META-01"
+    ],
+    "commit": "2784dab4584a3a4436a3e67008a05af0367e090e",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "外部画像の取得（MusicBrainz / Cover Art Archive）は #57、差替えと表示の画面は #158・#84・#85、同期 payload への接続は各担当で扱うため、本 Issue では実施していない。",
+    "evidence": [
+      "docs/contracts/artwork-v1.md"
+    ],
+    "limitations": "取得・UI・同期との接続、タグ書込みの同意は未確認。TEST-META-01 の全体の合格ではない。"
   }
 ]

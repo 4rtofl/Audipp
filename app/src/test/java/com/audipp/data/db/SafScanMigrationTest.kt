@@ -48,7 +48,7 @@ class SafScanMigrationTest {
             assertEquals(0, scans.recordStatus("root", "older-scan", LibraryScanStatus.COMPLETE))
             assertEquals(1, scans.recordStatus("root", "scan", LibraryScanStatus.ACCESS_LOST))
             assertEquals(LibraryScanStatus.ACCESS_LOST, scans.lastScanStatus("root"))
-            assertEquals(6, upgraded.openHelper.writableDatabase.version)
+            assertEquals(7, upgraded.openHelper.writableDatabase.version)
         } finally {
             upgraded.close()
             context.deleteDatabase(name)
@@ -104,7 +104,7 @@ class SafScanMigrationTest {
             assertEquals(0, scans.markUnvisitedMissing("root", "scan", 2))
             assertEquals(1, scans.beginScan("root", "next"))
             assertEquals(1, scans.markUnvisitedMissing("root", "next", 3))
-            assertEquals(6, upgraded.openHelper.writableDatabase.version)
+            assertEquals(7, upgraded.openHelper.writableDatabase.version)
         } finally {
             upgraded.close()
             context.deleteDatabase(name)
