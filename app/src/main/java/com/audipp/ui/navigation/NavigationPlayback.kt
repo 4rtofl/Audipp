@@ -2,18 +2,22 @@ package com.audipp.ui.navigation
 
 import android.content.Context
 import android.os.Bundle
+import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import com.audipp.R
 import com.audipp.audio.route.OutputConfirmation
+import com.audipp.domain.model.AudioFormat
 import com.audipp.domain.model.Availability
 import com.audipp.domain.model.ErrorDomain
 import com.audipp.domain.model.PlaybackPhase
 import com.audipp.domain.model.PlaybackSnapshot
 import com.audipp.domain.model.QueueEntryId
+import com.audipp.domain.model.SourceRef
 import com.audipp.domain.model.TransitionId
+import com.audipp.domain.model.VariantId
 import com.audipp.playback.OutputConfirmationRequest
 import com.audipp.playback.PlaybackConnection
 import kotlinx.coroutines.CancellationException
@@ -34,7 +38,55 @@ internal sealed interface NavigationPlaybackState {
         val artist: String?,
         val control: PlaybackControl?,
         val outputConfirmation: OutputConfirmationRequest? = null,
-    ) : NavigationPlaybackState
+        val variantId: VariantId? = null,
+        val source: SourceRef? = null,
+        /** The library's declared format of the source, not the decoder or output format. */
+        val sourceFormat: AudioFormat? = null,
+        val positionMs: Long? = null,
+        val durationMs: Long? = null,
+        val seekCommandAvailable: Boolean = false,
+        val observedOutput: ObservedOutput = ObservedOutput.Unobserved,
+    ) : NavigationPlaybackState {
+        val seek: SeekState
+            get() = when {
+                outputConfirmation != null -> SeekState.Blocked(SeekBlock.OUTPUT_CONFIRMATION, positionMs, durationMs)
+                phase != PlaybackPhase.PLAYING && phase != PlaybackPhase.PAUSED ->
+                    SeekState.Blocked(SeekBlock.PREPARING, positionMs, durationMs)
+                durationMs == null -> SeekState.Blocked(SeekBlock.UNKNOWN_DURATION, positionMs, null)
+                !seekCommandAvailable -> SeekState.Blocked(SeekBlock.NOT_SEEKABLE, positionMs, durationMs)
+                else -> SeekState.Available(positionMs, durationMs)
+            }
+
+        @get:StringRes
+        val statusLabel: Int
+            get() = when {
+                outputConfirmation != null -> R.string.now_playing_status_silent
+                phase == PlaybackPhase.RESOLVING || phase == PlaybackPhase.BUFFERING ||
+                    phase == PlaybackPhase.ADVANCING -> R.string.playback_loading
+                phase == PlaybackPhase.PLAYING -> R.string.playback_playing
+                else -> R.string.playback_paused
+            }
+    }
+}
+
+internal enum class SeekBlock { OUTPUT_CONFIRMATION, PREPARING, UNKNOWN_DURATION, NOT_SEEKABLE }
+
+internal sealed interface SeekState {
+    data class Blocked(val reason: SeekBlock, val positionMs: Long?, val durationMs: Long?) : SeekState
+    data class Available(val positionMs: Long?, val durationMs: Long) : SeekState
+}
+
+/** `AudioDeviceInfo` types the AudioTrack is routed to right now; a paused or unreadable route is Unobserved. */
+internal sealed interface ObservedOutput {
+    data object Unobserved : ObservedOutput
+    data class Single(val androidType: Int) : ObservedOutput
+    data object Multiple : ObservedOutput
+}
+
+internal fun List<Int>?.toObservedOutput() = when (this?.size) {
+    null, 0 -> ObservedOutput.Unobserved
+    1 -> ObservedOutput.Single(first())
+    else -> ObservedOutput.Multiple
 }
 
 internal data class PlaybackControl(
@@ -128,6 +180,12 @@ internal class NavigationPlayback(private val context: Context) {
         if (requested.pause) current.pause() else current.play()
     }
 
+    fun seek(positionMs: Long) {
+        val current = controller?.takeIf { it.isConnected } ?: return
+        if (PlaybackConnection.outputConfirmation(current.sessionExtras) != null) return
+        if (current.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)) current.seekTo(positionMs)
+    }
+
     fun confirmOutput(requested: OutputConfirmationRequest) {
         val current = controller?.takeIf { it.isConnected } ?: return
         if (PlaybackConnection.outputConfirmation(current.sessionExtras) != requested) return
@@ -160,6 +218,13 @@ internal class NavigationPlayback(private val context: Context) {
             artist = metadata?.artist?.toString()?.takeIf { it.isNotBlank() },
             control = if (outputConfirmation == null) control(snapshot) else null,
             outputConfirmation = outputConfirmation,
+            variantId = PlaybackConnection.preparedVariant(sessionExtras),
+            source = snapshot.effectiveSource,
+            sourceFormat = PlaybackConnection.sourceFormat(sessionExtras),
+            positionMs = snapshot.positionMs,
+            durationMs = snapshot.durationMs,
+            seekCommandAvailable = isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
+            observedOutput = PlaybackConnection.observedOutputTypes(sessionExtras).toObservedOutput(),
         )
     }
 

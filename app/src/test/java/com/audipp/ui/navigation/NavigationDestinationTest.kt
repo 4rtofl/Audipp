@@ -2,6 +2,7 @@ package com.audipp.ui.navigation
 
 import com.audipp.ui.NavigationDestination
 import com.audipp.ui.NavigationPage
+import com.audipp.ui.NowPlayingLayer
 import com.audipp.ui.NavigationTab
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -28,5 +29,26 @@ class NavigationDestinationTest {
         assertEquals(search, settings.back())
         assertEquals(search, queue.back())
         assertEquals(search, appearance.select(NavigationTab.SEARCH))
+    }
+
+    @Test
+    fun expandingTheMiniPlayerLayersNowPlayingOverTheCurrentScreenAndBackReturnsToIt() {
+        val queue = NavigationDestination(NavigationTab.SEARCH, NavigationPage.QUEUE)
+        val tabRoot = NavigationDestination(NavigationTab.LIBRARY, null)
+
+        for (viewing in listOf(queue, tabRoot, NavigationDestination(NavigationTab.HOME, NavigationPage.SETTINGS))) {
+            val now = viewing.openNowPlaying()
+            assertEquals(NowPlayingLayer.PLAYER, now.nowPlaying)
+            assertEquals(viewing, now.back())
+        }
+    }
+
+    @Test
+    fun queueOpenedFromNowPlayingReturnsToNowPlayingThenToTheViewedScreen() {
+        val search = NavigationDestination(NavigationTab.SEARCH, null)
+        val queueOverNow = search.openNowPlaying().copy(nowPlaying = NowPlayingLayer.QUEUE)
+
+        assertEquals(search.openNowPlaying(), queueOverNow.back())
+        assertEquals(search, queueOverNow.back()?.back())
     }
 }

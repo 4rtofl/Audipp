@@ -10,12 +10,14 @@ import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
 import com.audipp.audio.route.OutputConfirmation
 import com.audipp.domain.device.VolumeSettings
+import com.audipp.domain.model.AudioFormat
 import com.audipp.domain.model.ModelJson
 import com.audipp.domain.model.PlaybackError
 import com.audipp.domain.model.PlaybackSnapshot
 import com.audipp.domain.model.QueueEntryId
 import com.audipp.domain.model.TrackVariant
 import com.audipp.domain.model.TransitionId
+import com.audipp.domain.model.VariantId
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.serialization.Serializable
 
@@ -43,6 +45,10 @@ object PlaybackConnection {
     internal const val ERROR = "playbackError"
     internal const val OUTPUT_CONFIRMATION = "outputConfirmation"
     internal const val PREPARED_TRANSITION = "preparedTransition"
+    internal const val PREPARED_VARIANT = "preparedVariant"
+    internal const val SOURCE_FORMAT = "sourceFormat"
+    internal const val OBSERVED_OUTPUT_TYPES = "observedOutputTypes"
+    const val ACTION_OPEN_NOW_PLAYING = "com.audipp.playback.OPEN_NOW_PLAYING"
     internal val playLocalCommand = SessionCommand(PLAY_LOCAL, Bundle.EMPTY)
     internal val confirmOutputCommand = SessionCommand(CONFIRM_OUTPUT, Bundle.EMPTY)
     internal val retryOutputObservationCommand = SessionCommand(RETRY_OUTPUT_OBSERVATION, Bundle.EMPTY)
@@ -70,6 +76,17 @@ object PlaybackConnection {
 
     internal fun preparedTransition(extras: Bundle): TransitionId? =
         extras.getString(PREPARED_TRANSITION)?.let(::TransitionId)
+
+    internal fun preparedVariant(extras: Bundle): VariantId? =
+        extras.getString(PREPARED_VARIANT)?.let(::VariantId)
+
+    /** The library's declared format of the prepared variant; it is not the decoder or output format. */
+    internal fun sourceFormat(extras: Bundle): AudioFormat? =
+        extras.getString(SOURCE_FORMAT)?.let { ModelJson.decode<AudioFormat>(it) }
+
+    /** Android `AudioDeviceInfo` types of the AudioTrack's live route; null while no route is observed. */
+    internal fun observedOutputTypes(extras: Bundle): List<Int>? =
+        extras.getIntArray(OBSERVED_OUTPUT_TYPES)?.toList()
 
     internal fun confirmOutput(controller: MediaController, id: String, restoreDigitalVolume: Boolean = false) =
         controller.sendCustomCommand(confirmOutputCommand, Bundle().apply {

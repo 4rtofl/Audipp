@@ -129,6 +129,8 @@ internal class NavigationViewModel(
 
     fun togglePlayback(control: PlaybackControl) = playbackConnection.toggle(control)
 
+    fun seek(positionMs: Long) = playbackConnection.seek(positionMs)
+
     fun confirmOutput(request: OutputConfirmationRequest) = playbackConnection.confirmOutput(request)
 
     fun openPicker(): Boolean {

@@ -1,6 +1,7 @@
 package com.audipp
 
 import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.app.Activity
 import android.os.Build
 import android.os.Bundle
@@ -15,6 +16,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -25,6 +27,7 @@ import com.audipp.data.local.SafLibrary
 import com.audipp.data.preferences.PreferenceOperation
 import com.audipp.data.preferences.preferenceStore
 import com.audipp.domain.model.ThemeMode
+import com.audipp.playback.PlaybackConnection
 import com.audipp.ui.AudippApp
 import com.audipp.ui.formatAndroidVersion
 import com.audipp.ui.navigation.NavigationViewModel
@@ -37,8 +40,17 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val navigation by viewModels<NavigationViewModel>()
 
+    // The notification's content intent asks for Now Playing; recreation must not replay an already handled request.
+    private var openNowPlaying by mutableStateOf(false)
+
     private val folderPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         navigation.onFolderResult(it.resultCode == Activity.RESULT_OK, it.data)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openNowPlaying = intent.action == PlaybackConnection.ACTION_OPEN_NOW_PLAYING
     }
 
     override fun onResume() {
@@ -57,6 +69,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        openNowPlaying = savedInstanceState == null && intent.action == PlaybackConnection.ACTION_OPEN_NOW_PLAYING
         enableEdgeToEdge()
         setContent {
             val sources by navigation.sources.collectAsStateWithLifecycle()
@@ -94,6 +107,12 @@ class MainActivity : ComponentActivity() {
                     onRetryPlayback = navigation::retryPlayback,
                     onTogglePlayback = navigation::togglePlayback,
                     onConfirmOutput = navigation::confirmOutput,
+                    onSeek = navigation::seek,
+                    loadArtwork = { variantId, edgePx ->
+                        (application as AudippApplication).artworkProvider.load(variantId.value, edgePx)
+                    },
+                    openNowPlaying = openNowPlaying,
+                    onOpenNowPlayingHandled = { openNowPlaying = false },
                 )
             }
         }

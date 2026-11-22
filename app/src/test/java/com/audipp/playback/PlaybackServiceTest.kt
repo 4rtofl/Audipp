@@ -3,6 +3,7 @@ package com.audipp.playback
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Intent
+import com.audipp.MainActivity
 import android.content.pm.ProviderInfo
 import android.content.res.AssetFileDescriptor
 import android.database.Cursor
@@ -105,6 +106,46 @@ class PlaybackServiceTest {
         assertEquals(PlaybackSchedule.Unknown, PlaybackConnection.schedule(second.sessionExtras))
         assertEquals(EvidenceLevel.OS_REPORTED, service.outputRoute.value.connectedOutputs.level)
         assertEquals(EvidenceLevel.UNKNOWN, service.outputRoute.value.observedOutputs.level)
+    }
+
+    @Test
+    @Config(shadows = [ClockedAudioTrack::class])
+    fun sessionExtrasCarryTheVariantDeclaredFormatAndLiveRouteTypeWithoutUrisOrDeviceNames() {
+        val session = service.onGetSession(ownApp)!!
+        val controller = connect(session.token)
+        assertNull(PlaybackConnection.preparedVariant(controller.sessionExtras))
+        assertNull(PlaybackConnection.observedOutputTypes(controller.sessionExtras))
+        val device = outputDevice(AudioDeviceInfo.TYPE_WIRED_HEADPHONES, 2)
+        shadowOf(service.getSystemService(AudioManager::class.java)).addOutputDevice(device, true)
+        setRoutedOutput(device)
+        val declared = com.audipp.domain.model.AudioFormat("WAV", 8_000, 16, 1)
+        val variant = registerWav().copy(format = declared)
+        assertEquals(SessionResult.RESULT_SUCCESS,
+            await(PlaybackConnection.playLocal(controller, QueueEntryId("entry"), variant)).resultCode)
+
+        advancePlaybackUntil {
+            PlaybackConnection.observedOutputTypes(controller.sessionExtras) == listOf(AudioDeviceInfo.TYPE_WIRED_HEADPHONES)
+        }
+        assertEquals(variant.variantId, PlaybackConnection.preparedVariant(controller.sessionExtras))
+        assertEquals(declared, PlaybackConnection.sourceFormat(controller.sessionExtras))
+        val extras = controller.sessionExtras.keySet().joinToString { key ->
+            controller.sessionExtras.getString(key).orEmpty()
+        }
+        assertFalse(extras.contains("content://"))
+        assertFalse(extras.contains("Fixture"))
+
+        // A normal pause releases the live observation instead of keeping the last route as if it were current.
+        controller.pause()
+        advancePlaybackUntil { PlaybackConnection.observedOutputTypes(controller.sessionExtras) == null }
+        assertEquals(variant.variantId, PlaybackConnection.preparedVariant(controller.sessionExtras))
+    }
+
+    @Test
+    fun notificationContentIntentOpensNowPlayingInTheExistingActivity() {
+        val intent = shadowOf(service.onGetSession(ownApp)!!.sessionActivity).savedIntent
+        assertEquals(PlaybackConnection.ACTION_OPEN_NOW_PLAYING, intent.action)
+        assertEquals(MainActivity::class.java.name, intent.component?.className)
+        assertTrue(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP != 0)
     }
 
     @Test

@@ -204,7 +204,9 @@ class PlaybackService : MediaLibraryService() {
         }
         mediaSession = MediaLibrarySession.Builder(this, sessionPlayer, SessionCallback())
             .setSessionActivity(PendingIntent.getActivity(this, 0,
-                Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
+                Intent(this, MainActivity::class.java).setAction(PlaybackConnection.ACTION_OPEN_NOW_PLAYING)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
             .build()
         val handler = Handler(player.applicationLooper)
         // Both actions are protected broadcasts sent by Android.
@@ -213,7 +215,7 @@ class PlaybackService : MediaLibraryService() {
         }, ContextCompat.RECEIVER_EXPORTED)
         if (Build.VERSION.SDK_INT >= 31) unregisterModeListener = watchCallMode(handler)
         scope.launch {
-            combine(playback.snapshot, safety.state) { _, _ -> Unit }.collect {
+            combine(playback.snapshot, safety.state, routeMonitor.snapshot) { _, _, _ -> Unit }.collect {
                 mediaSession?.let { session ->
                     session.connectedControllers.filter { it.uid == Process.myUid() }.forEach {
                         session.setSessionExtras(it, snapshotExtras())
@@ -330,6 +332,14 @@ class PlaybackService : MediaLibraryService() {
         putString(PlaybackConnection.SCHEDULE, ModelJson.encode(playback.schedule.value))
         currentTransition()?.takeIf(playback::isCurrentTransition)?.let {
             putString(PlaybackConnection.PREPARED_TRANSITION, it.value)
+        }
+        // Document URIs and device names stay in the service; only ids, declared format and port types leave it.
+        playback.variant?.let {
+            putString(PlaybackConnection.PREPARED_VARIANT, it.variantId.value)
+            putString(PlaybackConnection.SOURCE_FORMAT, ModelJson.encode(it.format))
+        }
+        routeMonitor.snapshot.value.observedOutputs.value?.let { outputs ->
+            putIntArray(PlaybackConnection.OBSERVED_OUTPUT_TYPES, outputs.map { it.type }.toIntArray())
         }
         val pending = safety.state.value as? OutputSafetyState.ConfirmationRequired
         if (pending != null) {
