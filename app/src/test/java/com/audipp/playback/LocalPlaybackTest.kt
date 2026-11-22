@@ -51,10 +51,10 @@ class LocalPlaybackTest {
         assertNull(state.durationMs)
         assertFalse(state.executionPlan.capabilities.canSeek)
         assertFalse(state.executionPlan.capabilities.canAccessPcm)
-        playback.onEngineState(engine.transition, LocalEnginePhase.READY, true, true, 150, 100, true)
+        playback.onEngineState(engine.transition, LocalEnginePhase.READY, true, true, 150, 100, true, 1.0, 0)
         assertEquals(100L, playback.snapshot.value.positionMs)
         assertTrue(playback.snapshot.value.executionPlan!!.capabilities.canSeek)
-        playback.onEngineState(engine.transition, LocalEnginePhase.READY, false, false, 40, null, true)
+        playback.onEngineState(engine.transition, LocalEnginePhase.READY, false, false, 40, null, true, 1.0, 0)
         assertNull(playback.snapshot.value.durationMs)
         assertFalse(playback.snapshot.value.executionPlan!!.capabilities.canSeek)
         assertEquals(PlaybackPhase.PAUSED, playback.snapshot.value.phase)
@@ -65,10 +65,10 @@ class LocalPlaybackTest {
         val engine = Engine()
         val playback = LocalPlayback(engine, { Availability.PLAYABLE })
         playback.start(entry, variant)
-        playback.onEngineState(engine.transition, LocalEnginePhase.BUFFERING, false, false, 40, 100, true)
+        playback.onEngineState(engine.transition, LocalEnginePhase.BUFFERING, false, false, 40, 100, true, 1.0, 0)
         assertEquals(PlaybackPhase.PAUSED, playback.snapshot.value.phase)
         assertEquals(40L, playback.snapshot.value.positionMs)
-        playback.onEngineState(engine.transition, LocalEnginePhase.ENDED, true, false, 100, 100, true)
+        playback.onEngineState(engine.transition, LocalEnginePhase.ENDED, true, false, 100, 100, true, 1.0, 0)
         assertEquals(PlaybackPhase.ADVANCING, playback.snapshot.value.phase)
         assertEquals(listOf(entry), engine.prepared)
     }
@@ -80,12 +80,12 @@ class LocalPlaybackTest {
         playback.start(entry, variant)
         val stopped = engine.transition
         playback.stop()
-        playback.onEngineState(stopped, LocalEnginePhase.READY, true, true, 0, 100, true)
+        playback.onEngineState(stopped, LocalEnginePhase.READY, true, true, 0, 100, true, 1.0, 0)
         assertEquals(PlaybackPhase.IDLE, playback.snapshot.value.phase)
         assertFalse(engine.active)
         playback.start(entry, variant)
         val newAttempt = playback.snapshot.value
-        playback.onEngineState(stopped, LocalEnginePhase.READY, true, true, 0, 100, true)
+        playback.onEngineState(stopped, LocalEnginePhase.READY, true, true, 0, 100, true, 1.0, 0)
         assertEquals(newAttempt, playback.snapshot.value)
     }
 
@@ -132,14 +132,30 @@ class LocalPlaybackTest {
         val playback = LocalPlayback(engine, { Availability.PLAYABLE })
         assertNull(playback.start(entry, variant))
         val oldPlan = playback.snapshot.value.executionPlan!!
+        playback.onEngineState(engine.transition, LocalEnginePhase.READY, false, false, 0, 500, true, 1.0, 0)
 
         playback.onRouteRevisionChanged(1)
         assertEquals(PlanRejection.STALE_ROUTE, oldPlan.rejectionFor(1, oldPlan.transitionId))
         assertNull(playback.snapshot.value.executionPlan)
         assertTrue(engine.active)
         assertTrue(playback.isCurrentTransition(engine.transition))
-        playback.onEngineState(engine.transition, LocalEnginePhase.READY, true, true, 50, 500, true)
+        assertEquals(
+            PlaybackSchedule.RemainingDurationOnly(RemainingPlaybackTime(500, emptyMap(), 500)),
+            playback.schedule.value,
+        )
+
+        playback.onSeekRequested()
+        playback.onEngineState(engine.transition, LocalEnginePhase.BUFFERING, false, false, 50, 500, true, 1.0, 0)
+        assertNull(playback.snapshot.value.positionMs)
+        assertEquals(PlaybackSchedule.Unknown, playback.schedule.value)
+
+        playback.onEngineState(engine.transition, LocalEnginePhase.READY, false, false, 50, 500, true, 1.0, 0)
         assertEquals(50L, playback.snapshot.value.positionMs)
+        assertNull(playback.snapshot.value.executionPlan)
+        assertEquals(
+            PlaybackSchedule.RemainingDurationOnly(RemainingPlaybackTime(450, emptyMap(), 450)),
+            playback.schedule.value,
+        )
 
         assertNull(playback.start(entry, variant))
         assertEquals(1L, playback.snapshot.value.executionPlan!!.routeRevision)
@@ -278,7 +294,7 @@ class LocalPlaybackTest {
         playback.start(entry, variant)
         val error = playbackError(ErrorDomain.FORMAT_UNSUPPORTED, "LOCAL_FORMAT_UNSUPPORTED", false)
         playback.fail(error)
-        playback.onEngineState(engine.transition, LocalEnginePhase.READY, true, true, 0, null, true)
+        playback.onEngineState(engine.transition, LocalEnginePhase.READY, true, true, 0, null, true, 1.0, 0)
         assertFalse(engine.active)
         assertEquals(error, playback.snapshot.value.error)
         assertEquals(PlaybackPhase.ERROR, playback.snapshot.value.phase)

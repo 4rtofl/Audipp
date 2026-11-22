@@ -10,6 +10,7 @@ class NetworkLibrarySourceAdapter(private val library: NetworkLibraryClient) : S
         is NetworkResult.Failure -> AdapterResolution.Unavailable(when (result.reason) {
             NetworkFailure.AUTH_REQUIRED -> ResolutionFailure.AUTH_REQUIRED
             NetworkFailure.PERMISSION_REQUIRED -> ResolutionFailure.PERMISSION_REQUIRED
+            NetworkFailure.SIGNATURE_REJECTED -> ResolutionFailure.SIGNATURE_REJECTED
             NetworkFailure.TIMEOUT -> ResolutionFailure.TIMEOUT
             NetworkFailure.RATE_LIMITED -> ResolutionFailure.RATE_LIMITED
             NetworkFailure.MISSING -> ResolutionFailure.SOURCE_MISSING

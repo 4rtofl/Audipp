@@ -107,100 +107,6 @@
     "limitations": "#18の台帳検査ケースに限定。T18-02の廃止設計への残存参照は既知差異として報告し、Apple Musicは復活させない。TEST-GOV-01全体、製品完成、用途別許可、実機音声・配備・復旧、外部PR承認の合格ではない。"
   },
   {
-    "case_id": "E05-01-host-output-route-2026-11-20",
-    "requirement_ids": [
-      "FR-DEV-01",
-      "FR-AUD-01",
-      "NFR-AUD-01"
-    ],
-    "test_ids": [
-      "TEST-DEVICE-01",
-      "TEST-AUD-01"
-    ],
-    "commit": "01d462f64f7bd38576c0ccd296df2358605eebb6",
-    "stage": "CURRENT",
-    "outcome": "PASS",
-    "execution": "EXECUTED",
-    "permission": "NOT_REQUIRED",
-    "reason": "JDK 17でDebugビルド、単体試験193件、Lintが成功した。固定データで内蔵・有線・Bluetooth・USB、USB接続中の内蔵出力、OS申告48 kHzと動作レート不明の区別、複数経路、観測不可・取得拒否からの復旧、古い再生計画・外部確認・解決結果の失効を検査した。",
-    "evidence": [
-      "app/src/test/java/com/audipp/audio/route/OutputRouteMonitorTest.kt",
-      "app/src/test/java/com/audipp/playback/LocalPlaybackTest.kt",
-      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt",
-      "docs/contracts/output-route-v1.md"
-    ],
-    "limitations": "固定データとホスト試験の部分ケース。実機での出力切替、DAC実測、試験ファミリー全体は対象外。"
-  },
-  {
-    "case_id": "E05-01-host-output-route-review-2026-11-21",
-    "requirement_ids": [
-      "FR-DEV-01",
-      "FR-AUD-01",
-      "NFR-AUD-01"
-    ],
-    "test_ids": [
-      "TEST-DEVICE-01",
-      "TEST-AUD-01"
-    ],
-    "commit": "ddfb07de62d56e2dbaca4d4dd762a38ad12ea610",
-    "stage": "CURRENT",
-    "outcome": "PASS",
-    "execution": "EXECUTED",
-    "permission": "NOT_REQUIRED",
-    "reason": "JDK 17で対象の単体試験16件が成功した。初回の経路観測と同一経路での一時停止・再開でrevisionを維持すること、解決中の経路変化から最新revisionで再解決できること、再解決中の変化は再試行可能なエラーとして呼出元に返ることを確認した。",
-    "evidence": [
-      "app/src/test/java/com/audipp/audio/route/OutputRouteMonitorTest.kt",
-      "app/src/test/java/com/audipp/playback/LocalPlaybackTest.kt",
-      "docs/contracts/output-route-v1.md"
-    ],
-    "limitations": "ホストの固定データによる部分ケース。再開時の経路観測は計装試験を実行しておらず、エミュレーターや実機では未確認。"
-  },
-  {
-    "case_id": "E05-01-emulator-output-route-2026-11-20",
-    "requirement_ids": [
-      "FR-DEV-01",
-      "FR-AUD-01",
-      "NFR-AUD-01"
-    ],
-    "test_ids": [
-      "TEST-DEVICE-01",
-      "TEST-AUD-01"
-    ],
-    "commit": "01d462f64f7bd38576c0ccd296df2358605eebb6",
-    "stage": "CURRENT",
-    "outcome": "PASS",
-    "execution": "EXECUTED",
-    "permission": "NOT_REQUIRED",
-    "reason": "自作の無音WAVで標準Media3出力を再生し、AudioTrackの実経路取得と一時停止後の観測解除をAPI 23（1件）とAPI 36（2件）で確認した。API 36では仮想端末の2出力を返すTrack fixtureで複数取得APIの選択と全出力の保持も確認した。",
-    "evidence": [
-      "app/src/androidTest/java/com/audipp/audio/route/OutputRouteInstrumentedTest.kt",
-      "docs/contracts/output-route-v1.md"
-    ],
-    "limitations": "仮想端末のプラットフォーム動作と固定データを検査した。物理端末での複数出力の同時動作、USB・Bluetoothの実切替、DAC側の動作形式やビット列の測定は未実施。"
-  },
-  {
-    "case_id": "E05-01-hardware-output-route-2026-11-20",
-    "requirement_ids": [
-      "FR-DEV-01",
-      "FR-AUD-01",
-      "NFR-AUD-01"
-    ],
-    "test_ids": [
-      "TEST-DEVICE-01",
-      "TEST-AUD-01"
-    ],
-    "commit": "01d462f64f7bd38576c0ccd296df2358605eebb6",
-    "stage": "CURRENT",
-    "outcome": "NOT_RUN",
-    "execution": "NOT_RUN",
-    "permission": "UNKNOWN",
-    "reason": "ユーザーから指定された実機のADB serialがないため、対象スマートフォン・DAPおよびDACを使う試験は実施していない。",
-    "evidence": [
-      "docs/contracts/output-route-v1.md"
-    ],
-    "limitations": "Galaxy S25／S20、FiiO M21、ZEN DAC V2・ECHOシリーズ、物理経路切替・複数出力・DAC測定・QLT-01の実機条件は未確認。"
-  },
-  {
     "case_id": "E06-02-ci-baseline-notes-2026-11-10",
     "requirement_ids": [
       "NFR-MAINT-01",
@@ -243,6 +149,138 @@
       "docs/specifications/12_qobuz_spike.md"
     ],
     "limitations": "ループバック上の候補契約に限る部分ケース。実Qobuzの利用許可、認証交換、実音源のフル直接再生、Player/UI登録、SessionBased、実機/DAC試験、各TESTファミリー全体の合格ではない。"
+  },
+  {
+    "case_id": "E07-04-upnp-jvm-contract-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-02",
+      "NFR-SEC-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01",
+      "TEST-SEC-01"
+    ],
+    "commit": "1a07f58f7f86e65c5f21c3b1d424324febcec4f8",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "固定SSDP・XML・SOAPデータとループバックHTTPを用いたUPnP単体試験16件で、送信元・同一オリジン・選択LANの照合、境界値、権限失効・取消・timeout・明示再試行、操作後と接続中の状態再取得を確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpControlPointTest.kt",
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpProtocolTest.kt",
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpHttpTest.kt",
+      "docs/evidence/issue-75/README.md"
+    ],
+    "limitations": "固定データとホストのループバック通信。実LANの到達性、機器の相互運用性、実音声出力は対象外。"
+  },
+  {
+    "case_id": "E07-04-upnp-review-jvm-2026-11-22",
+    "requirement_ids": [
+      "FR-NET-02",
+      "NFR-SEC-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01",
+      "TEST-SEC-01"
+    ],
+    "commit": "24efbb512eeef5279948bd71044360785926f949",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "UPnPのホスト単体試験25件が合格。固定データでUDA 1.1拡張ヘッダー、上位版と埋め込みレンダラー、機器名、接続期限の更新、制御URLのクエリを確認し、RobolectricでEPERM/EACCESの変換と探索取消後のマルチキャストロック解放を確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpProtocolTest.kt",
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpControlPointTest.kt",
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpHttpTest.kt",
+      "app/src/test/java/com/audipp/integrations/network/upnp/AndroidUpnpNetworkTest.kt"
+    ],
+    "limitations": "固定データ、ホストのループバック通信、Robolectricの模擬環境で確認。実LANでの送信元フィルタ、Android 16の権限画面、実機レンダラーの相互運用、音声出力は未確認。"
+  },
+  {
+    "case_id": "E07-04-upnp-android-boundary-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-02",
+      "NFR-SEC-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01",
+      "TEST-SEC-01"
+    ],
+    "commit": "1a07f58f7f86e65c5f21c3b1d424324febcec4f8",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "GRANTED",
+    "reason": "試験用エミュレーターAPI 23・36でinstrumented各2件を実施した。API 36ではLAN制限を有効化し、未許可のSSDP拒否とTCP timeout、画面からの権限再要求、試験用HTTP機器への接続と状態表示、切断・背景移行後のpoll停止を確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/integrations/network/upnp/UpnpAndroidTest.kt",
+      "docs/evidence/issue-75/README.md",
+      "docs/evidence/issue-75/permission-denied-dark.png",
+      "docs/evidence/issue-75/connected-light.png"
+    ],
+    "limitations": "許可は試験環境の用途に限る。実機上の端末メーカー固有の権限挙動、実機レンダラーのSSDP応答、有線LAN、実音声は未検証。"
+  },
+  {
+    "case_id": "E07-04-upnp-discovery-labels-2026-11-22",
+    "requirement_ids": [
+      "FR-NET-02"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "adfc0b00455643f48a3fd714fc68ab6c30dd7cbc",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "同名で同一ホスト・ポートの候補を固定データで探索し、UDNの末尾12文字が一致する2件はUDN全体で区別でき、重複しない候補は短い表示になることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpControlPointTest.kt"
+    ],
+    "limitations": "ホスト単体試験で一覧のラベル文字列を確認した。Android画面での描画や実LANでの探索は今回未確認。"
+  },
+  {
+    "case_id": "E07-04-upnp-android-permission-decision-27-2026-11-22",
+    "requirement_ids": [
+      "NFR-SEC-01"
+    ],
+    "test_ids": [
+      "TEST-SEC-01"
+    ],
+    "commit": "adfc0b00455643f48a3fd714fc68ab6c30dd7cbc",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "今回の検証はホスト試験と文書確認。決定27反映後のAndroid 16の権限画面は実機・エミュレーターで未実施。",
+    "evidence": [
+      "docs/evidence/issue-75/README.md",
+      "docs/contracts/upnp-v1.md"
+    ],
+    "limitations": "E07-04-upnp-android-boundary-2026-11-20は決定27より前の版の実行記録。現行版でEPERM/EACCES時だけ権限を再要求できることは端末上で未確認。"
+  },
+  {
+    "case_id": "E07-04-upnp-real-devices-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-02",
+      "NFR-SEC-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01",
+      "TEST-SEC-01"
+    ],
+    "commit": "1a07f58f7f86e65c5f21c3b1d424324febcec4f8",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "指定の物理端末、実機レンダラー、有線LANが未用意のため、実LANでの機器発見と相互運用、物理端末固有のマルチキャスト・権限制約、音声出力を試験していない。",
+    "evidence": [
+      "docs/evidence/issue-75/README.md"
+    ],
+    "limitations": "Galaxy S25、S20、FiiO M21、BubbleUPnP / upmpdcliおよび音声出力は未確認。fixtureやエミュレーターの合格で代用しない。"
   },
   {
     "case_id": "E06-02-qobuz-live-2026-11-10",
@@ -1308,6 +1346,544 @@
     "limitations": "ローカルのサーバーpush部分に限定。NOT_RUNはProviderの実許諾、公開削除APIと派生値・バックアップの失効検証。"
   },
   {
+    "case_id": "E02-07-variant-order-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06",
+      "FR-PLY-09"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "同じ Track の5分版と7分版を選択した実再生順に並べ、2倍速で各曲の残時間と開始予定、キューの終了予定が一致した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "シャッフル済みの順序を計算関数に渡した。実再生順の決定と画面表示は対象外。"
+  },
+  {
+    "case_id": "E02-07-recalculate-inputs-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "シーク後の位置、並べ替えた順序、更新した曲長を入力すると、曲の残時間と開始予定、キューの終了予定が更新された。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "計算関数に観測済みの位置と順序を渡した。キューと再生サービスの接続は #83 で扱う。"
+  },
+  {
+    "case_id": "E02-07-paused-buffering-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "一時停止とバッファリング中は、取得できた曲の残時間だけを返した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "固定の再生状態を入力したホスト試験。実機での画面表示は未実施。"
+  },
+  {
+    "case_id": "E02-07-repeat-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "1曲・全曲リピートとも現在曲の残時間と繰返し状態だけを返し、位置が不明なら残時間も未知になった。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "リピート設定を計算関数に渡した。実再生のリピート動作は対象外。"
+  },
+  {
+    "case_id": "E02-07-unknown-duration-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06",
+      "FR-PLY-09"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "曲長不明の項目より先の時計予定を抑止し、後続の既知の曲長から求めた残時間を保持した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "固定の曲長を入力したホスト試験。外部サービスの曲長の精度は未測定。"
+  },
+  {
+    "case_id": "E02-07-external-position-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06",
+      "FR-PLY-09"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "外部経路で位置を取得できない場合は部分結果を返し、順序・速度が未知、外部委譲、Variant 不一致の場合は算出不可を返した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "固定の経路と能力を入力したホスト試験。実際の経路切替と外部サービスは未検証。"
+  },
+  {
+    "case_id": "E02-07-position-at-end-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "位置が曲長と同じか曲長を超えたときは残時間を0とした。速度が0または NaN のときは算出不可を返した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "固定の位置と速度を入力したホスト試験。"
+  },
+  {
+    "case_id": "E02-07-speed-range-before-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "7478b5f61479f90f1307c8276b240e94df3e2261",
+    "stage": "CURRENT",
+    "outcome": "FAIL",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "修正前の計算に曲長420,000 ms、位置0 ms、速度1e-20、現在時刻1,000,000 ms を与えたところ、終了予定が負になり、算出不可を期待する回帰試験が失敗した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "作業開始時の実装を、作業ツリーで追加した回帰試験で検証した。"
+  },
+  {
+    "case_id": "E02-07-speed-range-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "速度1e-20、0.249、4.001、正の無限大では予定を算出せず、境界の0.25倍と4.0倍では期待する残時間と終了予定を返した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "0.25〜4.0倍を算出範囲とする計算関数のホスト試験。"
+  },
+  {
+    "case_id": "E02-07-local-seek-observation-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "2e6af5715212518dabaf877455636f3bc2aff7d6",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "7分版の1分地点から6分地点へのシークを要求すると位置と予定が未知になり、旧位置の通知で復元されず、新しい位置の観測後に残り1分の予定を公開した。曲長・速度の変更、一時停止、停止による更新も確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "LocalPlayback と偽の再生エンジンを使った接続試験。実機でのシークと外部経路は未検証。"
+  },
+  {
+    "case_id": "E02-07-service-seek-before-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "ef9f92e7fd9c4a4b5bf72b9d236be35a5e2d8d46",
+    "stage": "CURRENT",
+    "outcome": "FAIL",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "修正前の再生サービスでは、再生スレッドを停止した状態でコントローラから3,000 msへシークすると、暫定位置がセッションに公開され、位置が未知であることを期待した試験が失敗した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "作業開始時の実装を、追加した回帰試験で検証した。Robolectric 上の Media3 とローカル WAV が対象。"
+  },
+  {
+    "case_id": "E02-07-service-seek-ready-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "4秒の WAV を一時停止して3,000 msへシークした。Media3 が暫定位置を返す間はセッションの位置と予定が未知のままで、READY 復帰後に位置3,000 msと残り1,000 msを公開した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "API 23・35 の Robolectric 上で、ローカルの Media3 と再生サービスをコントローラ経由で検証した。実機と外部経路は未検証。"
+  },
+  {
+    "case_id": "E02-07-variant-order-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06",
+      "FR-PLY-09"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "同じ Track の5分版と7分版を選択した実再生順に並べ、2倍速で各曲の残時間と開始予定、キューの終了予定が一致した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "シャッフル済みの順序を計算関数に渡した。実再生順の決定と画面表示は対象外。"
+  },
+  {
+    "case_id": "E02-07-recalculate-inputs-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "シーク後の位置、並べ替えた順序、更新した曲長を入力すると、曲の残時間と開始予定、キューの終了予定が更新された。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "計算関数に観測済みの位置と順序を渡した。キューと再生サービスの接続は #83 で扱う。"
+  },
+  {
+    "case_id": "E02-07-paused-buffering-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "一時停止とバッファリング中は、取得できた曲の残時間だけを返した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "固定の再生状態を入力したホスト試験。実機での画面表示は未実施。"
+  },
+  {
+    "case_id": "E02-07-repeat-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "1曲・全曲リピートとも現在曲の残時間と繰返し状態だけを返し、位置が不明なら残時間も未知になった。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "リピート設定を計算関数に渡した。実再生のリピート動作は対象外。"
+  },
+  {
+    "case_id": "E02-07-unknown-duration-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06",
+      "FR-PLY-09"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "曲長不明の項目より先の時計予定を抑止し、後続の既知の曲長から求めた残時間を保持した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "固定の曲長を入力したホスト試験。外部サービスの曲長の精度は未測定。"
+  },
+  {
+    "case_id": "E02-07-external-position-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06",
+      "FR-PLY-09"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "外部経路で位置を取得できない場合は部分結果を返し、順序・速度が未知、外部委譲、Variant 不一致の場合は算出不可を返した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "固定の経路と能力を入力したホスト試験。実際の経路切替と外部サービスは未検証。"
+  },
+  {
+    "case_id": "E02-07-position-at-end-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "位置が曲長と同じか曲長を超えたときは残時間を0とした。速度が0または NaN のときは算出不可を返した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "固定の位置と速度を入力したホスト試験。"
+  },
+  {
+    "case_id": "E02-07-speed-range-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "速度1e-20、0.249、4.001、正の無限大では予定を算出せず、境界の0.25倍と4.0倍では期待する残時間と終了予定を返した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "0.25〜4.0倍を算出範囲とする計算関数のホスト試験。"
+  },
+  {
+    "case_id": "E02-07-local-seek-observation-seek-fix-2026-11-21",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "14ff18c580880ad6b3f18866b89e56dad83e07c0",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "7分版の1分地点から6分地点へのシークを要求すると位置と予定が未知になり、旧位置の通知で復元されず、新しい位置の観測後に残り1分の予定を公開した。曲長・速度の変更、一時停止、停止による更新も確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
+    ],
+    "limitations": "LocalPlayback と偽の再生エンジンを使った接続試験。実機でのシークと外部経路は未検証。"
+  },
+  {
+    "case_id": "E02-07-service-seek-ready-2026-11-22-rerun-65c3da8",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "9836d6984e102f6f8d8b25654d237435434bab5b",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "4秒の WAV を一時停止し、Player の READY とコントローラのシーク可否を待って3,000 msへシークした。バッファリング中は位置と予定が未知で、READY 復帰後に位置3,000 msと残り1,000 msが公開されることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "Robolectric API 23・35 のホスト試験。実機と外部経路は未検証。"
+  },
+  {
+    "case_id": "E02-02-host-becoming-noisy-2026-11-22-rerun-65c3da8",
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
+    "commit": "9836d6984e102f6f8d8b25654d237435434bab5b",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "出力切断通知のレシーバー登録を処理し、WAV の再生要求を確認してから ACTION_AUDIO_BECOMING_NOISY を送った。再生要求が解除され、選曲を保持したまま PAUSED が公開されることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "Robolectric API 23・35 で通知を模擬したホスト試験。実機の出力切断と音声は未検証。"
+  },
+  {
+    "case_id": "E05-01-host-output-route-2026-11-20",
+    "requirement_ids": [
+      "FR-DEV-01",
+      "FR-AUD-01",
+      "NFR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01",
+      "TEST-AUD-01"
+    ],
+    "commit": "01d462f64f7bd38576c0ccd296df2358605eebb6",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "JDK 17でDebugビルド、単体試験193件、Lintが成功した。固定データで内蔵・有線・Bluetooth・USB、USB接続中の内蔵出力、OS申告48 kHzと動作レート不明の区別、複数経路、観測不可・取得拒否からの復旧、古い再生計画・外部確認・解決結果の失効を検査した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/audio/route/OutputRouteMonitorTest.kt",
+      "app/src/test/java/com/audipp/playback/LocalPlaybackTest.kt",
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt",
+      "docs/contracts/output-route-v1.md"
+    ],
+    "limitations": "固定データとホスト試験の部分ケース。実機での出力切替、DAC実測、試験ファミリー全体は対象外。"
+  },
+  {
+    "case_id": "E05-01-host-output-route-review-2026-11-21",
+    "requirement_ids": [
+      "FR-DEV-01",
+      "FR-AUD-01",
+      "NFR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01",
+      "TEST-AUD-01"
+    ],
+    "commit": "ddfb07de62d56e2dbaca4d4dd762a38ad12ea610",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "JDK 17で対象の単体試験16件が成功した。初回の経路観測と同一経路での一時停止・再開でrevisionを維持すること、解決中の経路変化から最新revisionで再解決できること、再解決中の変化は再試行可能なエラーとして呼出元に返ることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/audio/route/OutputRouteMonitorTest.kt",
+      "app/src/test/java/com/audipp/playback/LocalPlaybackTest.kt",
+      "docs/contracts/output-route-v1.md"
+    ],
+    "limitations": "ホストの固定データによる部分ケース。再開時の経路観測は計装試験を実行しておらず、エミュレーターや実機では未確認。"
+  },
+  {
+    "case_id": "E05-01-emulator-output-route-2026-11-20",
+    "requirement_ids": [
+      "FR-DEV-01",
+      "FR-AUD-01",
+      "NFR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01",
+      "TEST-AUD-01"
+    ],
+    "commit": "01d462f64f7bd38576c0ccd296df2358605eebb6",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "自作の無音WAVで標準Media3出力を再生し、AudioTrackの実経路取得と一時停止後の観測解除をAPI 23（1件）とAPI 36（2件）で確認した。API 36では仮想端末の2出力を返すTrack fixtureで複数取得APIの選択と全出力の保持も確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/audio/route/OutputRouteInstrumentedTest.kt",
+      "docs/contracts/output-route-v1.md"
+    ],
+    "limitations": "仮想端末のプラットフォーム動作と固定データを検査した。物理端末での複数出力の同時動作、USB・Bluetoothの実切替、DAC側の動作形式やビット列の測定は未実施。"
+  },
+  {
+    "case_id": "E05-01-hardware-output-route-2026-11-20",
+    "requirement_ids": [
+      "FR-DEV-01",
+      "FR-AUD-01",
+      "NFR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01",
+      "TEST-AUD-01"
+    ],
+    "commit": "01d462f64f7bd38576c0ccd296df2358605eebb6",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "ユーザーから指定された実機のADB serialがないため、対象スマートフォン・DAPおよびDACを使う試験は実施していない。",
+    "evidence": [
+      "docs/contracts/output-route-v1.md"
+    ],
+    "limitations": "Galaxy S25／S20、FiiO M21、ZEN DAC V2・ECHOシリーズ、物理経路切替・複数出力・DAC測定・QLT-01の実機条件は未確認。"
+  },
+  {
     "case_id": "E10-14-compose-ports-2026-11-20",
     "requirement_ids": [
       "NFR-SEC-03"
@@ -1547,6 +2123,166 @@
       "docs/contracts/playback-owner.md"
     ],
     "limitations": "#61の切替契約をホストのFakeで確認した。実Serviceからの効果接続、実SDKでのコマンド終端・失効の保証、外部サービスと実機の再生状態は未確認。"
+  },
+  {
+    "case_id": "E07-02-api23-before-desugaring-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "e5091081a111f29ac5a767dfa3440b392955f49f",
+    "stage": "CURRENT",
+    "outcome": "FAIL",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23エミュレーターでSMBJのNTLM処理が参照するJava 8 APIをロードできず、署名付きSamba fixtureへの接続試験が認証中に失敗した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "Java API desugaringを追加したcommitで再試験した。"
+  },
+  {
+    "case_id": "E07-02-samba-loopback-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "e8f1936bb9d5101ce098d16c4bc53a718c7943bd",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "署名必須のSMB2.1/SMB3.1.1とのローカル相互運用、認証と共有拒否の分類、固定fixtureによる署名エラー分類、取消・タイムアウト・同一offsetへの再試行、差し替えの拒否、失敗後の再選択を確認した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "実NAS・実機・長時間再生は未実施。署名不正の応答をSMBJが内部で破棄した場合はタイムアウトになり得る。"
+  },
+  {
+    "case_id": "E07-02-android-signed-smb-keystore-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01",
+      "NFR-SEC-02"
+    ],
+    "test_ids": [
+      "TEST-NET-01",
+      "TEST-SEC-01"
+    ],
+    "commit": "e8f1936bb9d5101ce098d16c4bc53a718c7943bd",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23/36のエミュレーターからループバックSambaへ署名付きで接続し、Android Keystoreで保護した資格の再取得、非ゼロ位置の読込、許可取消後の拒否を各1件確認した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "固定fixtureとエミュレーターに限定。実機のAndroid LAN権限フローと実利用許可は未確認。"
+  },
+  {
+    "case_id": "E07-02-wav-range-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-01"
+    ],
+    "test_ids": [
+      "TEST-FORMAT-01"
+    ],
+    "commit": "e8f1936bb9d5101ce098d16c4bc53a718c7943bd",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "自作PCM WAVで、先頭、非ゼロoffset、SMB単発要求の上限をまたぐ範囲、終端のbyte列が入力と一致した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "SMB経由のWAVのファイル読込を検証。Media3のデコード、他形式、破損ファイル、音声出力は未実施。"
+  },
+  {
+    "case_id": "E07-02-physical-nas-and-dap-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "e8f1936bb9d5101ce098d16c4bc53a718c7943bd",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "実環境へ接続せずローカルfixtureに限定したため、実NASとGalaxy/FiiOの相互運用および用途許可は確認していない。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "実NASや実機での動作、音声出力、DAC実測は未確認。"
+  },
+  {
+    "case_id": "E07-02-ipv6-literal-loopback-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "a0a9789c1636c285c507e3332012e8a213f73269",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "IPv6リテラルの表記がSMBJで正規化されても、指定したループバックでSMB2交渉を開始し、タイムアウトでソケットが閉じた。",
+    "evidence": [
+      "docs/contracts/smb-v1.md",
+      "app/src/test/java/com/audipp/integrations/network/smb/SmbLoopbackTest.kt"
+    ],
+    "limitations": "IPv6では交渉の開始とソケットの終了を検証した。署名付きSambaとの相互運用を再確認した接続先はIPv4ループバック。"
+  },
+  {
+    "case_id": "E07-02-forged-smb-response-loopback-2026-11-22",
+    "requirement_ids": [
+      "FR-NET-01",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "545e2287aed4697b4556993f7ddd92a9d526ab8a",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "署名必須のSMB 2.1でNTLM認証と署名付きTREE_CONNECTを返すループバック偽サーバーを使った。CREATEへの偽応答4種（未署名でSessionId 0、未署名で別セッション、署名フラグのみでSessionId 0、署名後の改ざん）は、いずれもバイトを返さずSIGNATURE_REJECTEDになり、後続要求と再試行もなかった。修正前は4種ともタイムアウトから再試行に至り、前3種では偽応答が受理されていた。",
+    "evidence": [
+      "docs/contracts/smb-v1.md",
+      "app/src/test/java/com/audipp/integrations/network/smb/SmbLoopbackTest.kt"
+    ],
+    "limitations": "検証はSMB 2.1のHMAC-SHA256に限定。SMB 3.x（AES-CMAC）、暗号化セッション、Samba・実NASとの再確認は未実施。上流SMBJの修正は未マージで、依存側の欠陥はアプリ側の受信前検査で回避している。"
+  },
+  {
+    "case_id": "E07-02-signed-smb-response-reach-loopback-2026-11-22",
+    "requirement_ids": [
+      "FR-NET-01",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "16961925e12bd7142fd2a6a7a9c105541ffca144",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "ループバック偽サーバーが受け取ったコマンドを照合した。CREATEへの偽応答4種は、いずれもCREATEまで届いた後にSIGNATURE_REJECTEDとなり、後続の要求と再試行はなかった。未署名の非同期中間応答に続く署名付きの最終応答と、署名付きのQUERY_INFO、QUERY_DIRECTORY、CLOSEの応答では、一覧の取得が成功した。検査にTREE_CONNECTを拒否する変異を入れると、両方の試験が失敗した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md",
+      "app/src/test/java/com/audipp/integrations/network/smb/SmbLoopbackTest.kt"
+    ],
+    "limitations": "試験したのは一覧の取得で、音源のREADは同じ受信検査を通るが直接は試験していない。SMB 2.1のHMAC-SHA256に限定し、SMB 3.x（AES-CMAC）、暗号化セッション、oplock breakの通知、Samba・実NASとの再確認は未実施。"
   },
   {
     "case_id": "E02-06-host-playback-checkpoint",
