@@ -34,4 +34,6 @@ val settings = store.data.first()
 
 2026-10-30: 上記13件はローカルJVMで成功。引き渡しのDebug/Release・全Unit・Lint・lock検査と対象commit/CI URLは対応PRへ記録する。
 
-未実施: API23/36上の実行、実プロセス再起動、Activity再生成。ADB serial未指定のため実機操作は行わない。画面からの設定変更・保存失敗表示・テーマのOS追従は [テーマと共通トークン v1](theme-v1.md)（#40）で追跡する。Visualizer処理、外部送信、Room、秘密保管は未接続。音声sampleを変更しないためDAC・音質測定は本変更には不適用。TEST-UI-01 / TEST-SEC-01全体やIssue全体の最終レビュー完了とは扱わない。
+2026-11-22: API 23/36 のエミュレーターで、実プロセスの終了をまたぐ初回値・保存値・破損時の保持を `PreferenceStoreRestartTest` で確かめた。手順と結果は [端末上の検証記録](../evidence/issue-27/README.md) を参照。
+
+未実施: Activity再生成、物理端末での実行。ADB serial未指定のため実機操作は行わない。画面からの設定変更・保存失敗表示・テーマのOS追従は [テーマと共通トークン v1](theme-v1.md)（#40）で追跡する。Visualizer処理、外部送信、Room、秘密保管は未接続。音声sampleを変更しないためDAC・音質測定は本変更には不適用。TEST-UI-01 / TEST-SEC-01全体やIssue全体の最終レビュー完了とは扱わない。
