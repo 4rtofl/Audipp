@@ -224,5 +224,26 @@
       "app/src/test/java/com/audipp/integrations/network/smb/SmbLoopbackTest.kt"
     ],
     "limitations": "検証はSMB 2.1のHMAC-SHA256に限定。SMB 3.x（AES-CMAC）、暗号化セッション、Samba・実NASとの再確認は未実施。上流SMBJの修正は未マージで、依存側の欠陥はアプリ側の受信前検査で回避している。"
+  },
+  {
+    "case_id": "E07-02-signed-smb-response-reach-loopback-2026-11-22",
+    "requirement_ids": [
+      "FR-NET-01",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "16961925e12bd7142fd2a6a7a9c105541ffca144",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "ループバック偽サーバーが受け取ったコマンドを照合した。CREATEへの偽応答4種は、いずれもCREATEまで届いた後にSIGNATURE_REJECTEDとなり、後続の要求と再試行はなかった。未署名の非同期中間応答に続く署名付きの最終応答と、署名付きのQUERY_INFO、QUERY_DIRECTORY、CLOSEの応答では、一覧の取得が成功した。検査にTREE_CONNECTを拒否する変異を入れると、両方の試験が失敗した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md",
+      "app/src/test/java/com/audipp/integrations/network/smb/SmbLoopbackTest.kt"
+    ],
+    "limitations": "試験したのは一覧の取得で、音源のREADは同じ受信検査を通るが直接は試験していない。SMB 2.1のHMAC-SHA256に限定し、SMB 3.x（AES-CMAC）、暗号化セッション、oplock breakの通知、Samba・実NASとの再確認は未実施。"
   }
 ]
