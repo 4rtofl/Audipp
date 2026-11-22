@@ -9,11 +9,13 @@ import android.database.Cursor
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.media.AudioTrack
 import android.net.Uri
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.Looper
 import android.os.Process
+import android.os.SystemClock
 import android.os.ParcelFileDescriptor
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -23,6 +25,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
+import com.audipp.data.db.LibraryDatabase
 import com.audipp.domain.model.*
 import com.google.common.util.concurrent.ListenableFuture
 import java.io.File
@@ -32,6 +35,8 @@ import java.nio.ByteOrder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -42,7 +47,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ServiceController
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
+import org.robolectric.annotation.RealObject
 import org.robolectric.shadows.AudioDeviceInfoBuilder
+import org.robolectric.shadows.ShadowAudioTrack
 import org.robolectric.shadows.ShadowContentResolver
 import org.robolectric.util.ReflectionHelpers
 
@@ -400,6 +409,54 @@ class PlaybackServiceTest {
     }
 
     @Test
+    @Config(sdk = [35], shadows = [ClockedAudioTrack::class])
+    fun pauseResumeSeekAndStopSaveOneAttemptWithoutTheSeekGap() {
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        startWav(controller)
+        advancePlaybackUntil { rawPlayer.isPlaying && rawPlayer.currentPosition >= 100 }
+        controller.pause()
+        advancePlaybackUntil { !rawPlayer.isPlaying && !controller.playWhenReady }
+        val pausedAt = rawPlayer.currentPosition
+        shadowOf(Looper.getMainLooper()).idleFor(2, TimeUnit.SECONDS)
+        controller.play()
+        advancePlaybackUntil { rawPlayer.isPlaying && rawPlayer.currentPosition >= pausedAt + 100 }
+        controller.seekTo(2_500)
+        advancePlaybackUntil { rawPlayer.isPlaying && rawPlayer.currentPosition >= 2_600 }
+        controller.stop()
+        advancePlaybackUntil { rawPlayer.playbackState == Player.STATE_IDLE }
+
+        val database = LibraryDatabase.open(service)
+        try {
+            val dao = database.playbackHistoryDao()
+            val eventIds = mutableListOf<String>()
+            advancePlaybackUntil {
+                runBlocking(Dispatchers.IO) {
+                    eventIds.clear()
+                    database.openHelper.readableDatabase.query(
+                        "SELECT play_event_id FROM play_events WHERE end_utc_ms IS NOT NULL",
+                    ).use { cursor ->
+                        while (cursor.moveToNext()) eventIds += cursor.getString(0)
+                    }
+                    eventIds.isNotEmpty()
+                }
+            }
+            runBlocking {
+                val event = dao.event(eventIds.single())!!
+                val segments = dao.segments(event.id)
+                assertEquals("entry", event.entryId)
+                val beforeSeek = segments.filter { it.sourceEndMs < 2_500 }
+                assertTrue(segments.toString(), beforeSeek.size >= 2)
+                assertTrue(segments.toString(), segments.any { it.sourceStartMs >= 2_500 && it.sourceEndMs >= 2_600 })
+                assertTrue(segments.all { it in beforeSeek || it.sourceStartMs >= 2_500 })
+                assertEquals(segments.sumOf { it.listenedMs }, event.playedMs)
+                assertTrue(event.playedMs.toString(), event.playedMs in 1 until 2_000)
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
     fun seekWaitsForPlaybackReadyAfterTheMaskedPosition() {
         val sampleRate = 8_000
         val pcmBytes = sampleRate * 2 * 4
@@ -563,6 +620,37 @@ class PlaybackServiceTest {
         }
         assertTrue("Media3 response timed out", future.isDone)
         return future.get()
+    }
+
+    // The default shadow treats all written PCM as heard immediately, even for a four-second WAV.
+    @Implements(AudioTrack::class)
+    class ClockedAudioTrack : ShadowAudioTrack() {
+        @RealObject private lateinit var track: AudioTrack
+        private var position = 0L
+        private var sampledAt = 0L
+
+        @Implementation
+        override fun play() {
+            sampledAt = SystemClock.elapsedRealtime()
+            super.play()
+        }
+
+        @Implementation
+        override fun getPlaybackHeadPosition(): Int {
+            val now = SystemClock.elapsedRealtime()
+            if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                val frames = (now - sampledAt) * track.sampleRate / 1_000
+                position = (position + frames).coerceAtMost(super.getPlaybackHeadPosition().toLong())
+            }
+            sampledAt = now
+            return position.toInt()
+        }
+
+        @Implementation
+        override fun flush() {
+            super.flush()
+            position = 0
+        }
     }
 
     private fun variant() = TrackVariant(VariantId("variant"), TrackId("track"),

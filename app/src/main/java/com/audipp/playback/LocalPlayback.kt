@@ -50,6 +50,7 @@ internal class LocalPlayback(
     private val engine: LocalPlaybackEngine,
     access: suspend (String) -> Availability,
     timeoutMs: Long = 10_000,
+    private val history: PlaybackHistoryRecorder? = null,
 ) {
     private var context = ResolutionContext(
         PlaybackTarget("android-standard", TargetKind.DEVICE), 0, newTransition(),
@@ -112,6 +113,7 @@ internal class LocalPlayback(
     }
 
     fun stop() {
+        history?.finish()
         invalidatePcm()
         context = context.copy(transitionId = newTransition())
         selectedVariant = null
@@ -121,6 +123,7 @@ internal class LocalPlayback(
     }
 
     fun fail(error: PlaybackError): PlaybackError {
+        history?.finish()
         invalidatePcm()
         context = context.copy(transitionId = newTransition())
         selectedVariant = null
@@ -135,6 +138,12 @@ internal class LocalPlayback(
         if (snapshot.value.effectiveSource == null) return
         seekPending = true
         publish(snapshot.value.copy(positionMs = null))
+    }
+
+    fun onHistoryDiscontinuity(transitionId: TransitionId?, oldPositionMs: Long?, attemptEnded: Boolean) {
+        if (!isCurrentTransition(transitionId)) return
+        history?.discontinuity(oldPositionMs)
+        if (attemptEnded) history?.finish()
     }
 
     fun onRouteRevisionChanged(revision: Long) {
@@ -159,6 +168,8 @@ internal class LocalPlayback(
         canSeek: Boolean,
         speed: Double,
         observedAtEpochMs: Long,
+        routeId: String? = null,
+        clockChanged: Boolean = false,
     ) {
         if (!isCurrentTransition(transitionId)) return
         val previous = snapshot.value
@@ -182,6 +193,12 @@ internal class LocalPlayback(
             executionPlan = plan?.copy(capabilities = plan.capabilities.copy(canSeek = canSeek && duration != null)))
         val variant = selectedVariant
         val entryId = observed.currentEntryId
+        if (variant != null && entryId != null) {
+            history?.observe(entryId, variant, phase == PlaybackPhase.PLAYING, position, duration,
+                speed, observedAtEpochMs, HistoryOutput(context.routeRevision, routeId),
+                clockChanged = clockChanged)
+        }
+        if (enginePhase == LocalEnginePhase.ENDED) history?.finish(observedAtEpochMs)
         val schedule = if (variant != null && entryId != null && phase != PlaybackPhase.ADVANCING) {
             calculatePlaybackSchedule(
                 observed,

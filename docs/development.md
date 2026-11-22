@@ -135,6 +135,10 @@ Issue #32の明示許可・接続寿命・公開属性・UAC descriptor解析の
 
 Issue #29のRoom v1 schema・DAO、保存/消失/rollback、採用依存と検証の追跡は [ライブラリDB v1](contracts/library-db-v1.md) を参照してください。走査・UI・キューとの接続は担当Issueで行います。
 
+## 再生履歴
+
+Issue #78 の試行・聴取区間の記録、Room v5 → v6 の移行、再生回数と Provider 保存許諾の規則は [再生履歴 v1](contracts/history-v1.md) を参照してください。
+
 ## UIレビュー案
 
 Issue #19の完成版ナビゲーション比較、36画面の入口・状態・戻り先・幅の候補と文書検証は [UIレビュー案](specifications/12_navigation_proposal.md) を参照してください。Home起動・Home / Library / Search / Visualizer の構成と幅・戻る規則は2026-11-22に採用し、採否と理由を同文書の§9に記録しています。採用はTEST-UI-01全体・実機操作試験の合格を意味しません。参照は承認済み原典の固定ハッシュ・行番号を変えないよう本ガイドで管理します。対象commitと検証結果は対応PRの証跡で追跡します。

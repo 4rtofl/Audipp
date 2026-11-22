@@ -1,0 +1,34 @@
+# 再生履歴 v1（Issue #78）
+
+標準ローカル再生で観測した試行と聴取区間を端末内の `library.db` に保存する。対応する要求は FR-USE-01 と NFR-PRIV-01、設計は DD-HIST-01 と DD-DB-01、試験は TEST-HIST-01。 [Issue #78](https://github.com/4rtoflow/Audipp/issues/78) · [試験結果](../traceability/results.json)
+
+## 試行と区間
+
+再生中の位置を初めて観測した時点で試行 ID を発行する。一時停止と再開では同じ ID を使い、同じ項目をもう一度再生する場合やリピートでは新しい ID を発行する。Stop、別の項目の再生、現在項目を削除する際の Stop、エラー、自然終了で試行を確定する。
+
+一時停止、バッファリング、シーク、速度・出力経路・タイムゾーン・UTC 時計の変更で区間を閉じる。シークの通知では移動前の位置を区間の終端に使う。再生中に音源位置が進んだ観測間隔だけを聴取時間に加え、音源上の始点と終点も保存する。
+
+1 試行の聴取時間は、保存した区間の合計とする。既知の曲長では `played_ms >= min(source_duration_ms / 2, 240000)`、曲長が不明なら 240,000 ms 以上で 1 回と判定する。曲長 0 または聴取時間 0 の場合は 0 回とする。曲長は選択した Variant の値を使い、その再生で取得できた曲長があれば更新する。
+
+外部 Provider の履歴を書き込む前に、該当スコープの `HISTORY_STORAGE` が `ALLOWED` かを `ProviderAccessGate.permissionState` で確認する。スコープの欠落、有効期限切れ、許諾情報が読めない場合も保存対象から外す。ローカル音源には Provider の許諾を適用しない。
+
+## Implementation Proposal
+
+| Room v6 | 保存内容・制約 |
+| --- | --- |
+| `play_events` | 試行 ID（`play_event_id`、UUID 文字列）、Service セッション ID、キュー項目・Track・Variant・Source の ID、音源種別、取得済みコーデック、開始 UTC、開始時のタイムゾーン ID、曲長、終了 UTC、累計聴取時間、回数判定。キュー・ライブラリの行とは外部キーで結ばず、キュー項目が消えても再生時の ID を保持する。 |
+| `play_segments` | 区間 ID（UUID 文字列）、索引付きの試行 ID、開始 UTC、タイムゾーン ID、聴取時間、音源位置の始点・終点、速度、観測した route ID と profile ID。未取得の属性は NULL とする。各区間の Variant は親の試行から参照する。 |
+
+UTC 時刻と期間、音源位置は整数ミリ秒、速度は REAL で保存する。試行と区間は同じトランザクションで更新する。再生中の区間は同じ ID で上書きし、確定済みの試行には再書き込みを適用しない。Room の v5 → v6 自動移行で履歴 2 テーブルを追加する。 [エクスポート済みスキーマ](../../app/schemas/com.audipp.data.db.LibraryDatabase/6.json)
+
+`PlaybackHistoryRecorder` は Service の再生コマンドと同じ looper で状態を観測する。`PlaybackHistoryJournal` は更新を受け、IO 上で Room へ順番に書き込む。プロセスが停止したときは最後に保存された区間までが残る。途中の試行は終了 UTC が NULL のまま残り、再開までの時間は補完しない。
+
+UTC 時計の変更は Android の時刻変更通知、または区間開始からの UTC 経過と `SystemClock.elapsedRealtime()` の経過の差が 1,000 ms 以上になった時点で検出する。タイムゾーン変更は Android の通知と標本のタイムゾーン ID で検出する。変化を検出するまでの聴取時間には区間開始時の UTC と単調経過を対応させ、新しい区間には観測時の UTC とタイムゾーンを保存する。
+
+T18-04 が指摘するように、DD-HIST-01 は再生位置と状態に基づく推定と記述している。技術設計決定記録（08）は単調時計の聴取区間と音源区間を分けている。本実装は 08 の規則に従い、再生位置を進行の確認と音源区間の記録に使う。たとえば 2 倍速で音源が 2 秒進んだときに、聴取した 1 秒と音源内の 2 秒をそれぞれ記録できる。 [技術設計決定記録](../specifications/08_design_decisions.md#再生履歴統計の確定規則) · [T18-04](../traceability/README.md)
+
+## 検証範囲
+
+固定時計の JVM 試験で区間と回数判定を確認する。Robolectric では Room 移行と既存のキュー・プレイリスト・チェックポイント保持、許諾の判定、標準再生の Service からの履歴保存を確認する。現在の再生経路から得られるのは route ID までで、profile ID は NULL となる。
+
+Android API 23／36 の計装、実機の経路・時計変更、実利用 DB、プロセス強制終了、実 Provider とプロファイル切替の結合は未検証。実 Provider からの再生状態取得は各 Adapter の接続範囲で扱う。集計・ランキング（#111）、履歴削除と派生値への反映（#131）、Last.fm（#114）、同期（#115）、UI（#139）は後続 Issue で扱う。
