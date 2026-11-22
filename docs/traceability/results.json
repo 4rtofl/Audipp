@@ -3229,5 +3229,94 @@
     "reason": "画面での1,000曲のスクロールと物理端末での検索は未実施。画面実装は Issue #84 と #117 で扱う。",
     "evidence": ["app/src/androidTest/java/com/audipp/data/db/LibraryQueryDeviceTest.kt"],
     "limitations": "検索層のデータ取得時間を計測した。フレーム時間、画像描画、実ライブラリでの動作は未測定。"
+  },
+  {
+    "case_id": "E05-08-safety-policy-and-service",
+    "requirement_ids": [
+      "FR-AUD-08",
+      "FR-DEV-05",
+      "NFR-AUD-03",
+      "FR-PLY-03"
+    ],
+    "test_ids": [
+      "TEST-AUD-03",
+      "TEST-DEVICE-01",
+      "TEST-PLY-02"
+    ],
+    "commit": "212527f3c48a2f5aac23e5bfb409a99fac24a8fc",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "JVM 5件と Robolectric の API 23・35 各6件で、無音観測、BT→有線、USB 抜き差し、経路不明、スピーカーへの切替、未使用機器の増減、古い復元要求の無効化、保存済みプリセットの適用順序、極端な IR/EQ の拒否を確認した。Debug APK、単体試験401件成功・既存 SMB 試験1件スキップ、Lint エラー0件・警告16件（変更ファイル0件）。",
+    "evidence": [
+      "app/src/test/java/com/audipp/audio/route/OutputSafetyTest.kt",
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt",
+      "docs/contracts/output-route-v1.md"
+    ],
+    "limitations": "模擬経路とアプリが設定したデジタルゲインを検査した。物理経路での出力音量と DSP 後の True Peak は別の試験で測定する。"
+  },
+  {
+    "case_id": "E05-08-api23-standard-route",
+    "requirement_ids": [
+      "FR-DEV-05"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01"
+    ],
+    "commit": "212527f3c48a2f5aac23e5bfb409a99fac24a8fc",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "emulator-5580（API 23）で1件成功。標準出力で無音の AudioTrack から実経路を取得し、一時停止・再開時の観測と安全状態を確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/audio/route/OutputRouteInstrumentedTest.kt"
+    ],
+    "limitations": "エミュレーターの既定出力。API 36 の複数経路取得と、物理 BT・USB DAC の切替は対象外。"
+  },
+  {
+    "case_id": "E05-08-api36-standard-route",
+    "requirement_ids": [
+      "FR-DEV-05"
+    ],
+    "test_ids": [
+      "TEST-DEVICE-01"
+    ],
+    "commit": "212527f3c48a2f5aac23e5bfb409a99fac24a8fc",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "emulator-5582（API 36）で2件成功。標準出力で無音の AudioTrack の経路を観測し、複数経路を取得する API の境界を fixture で確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/audio/route/OutputRouteInstrumentedTest.kt"
+    ],
+    "limitations": "複数経路はテスト用 AudioTrack が返す fixture。物理 BT・USB DAC の切替と出力音量は測定していない。"
+  },
+  {
+    "case_id": "E05-08-physical-switching-and-level",
+    "requirement_ids": [
+      "FR-AUD-08",
+      "FR-DEV-05",
+      "NFR-AUD-03",
+      "FR-PLY-03"
+    ],
+    "test_ids": [
+      "TEST-AUD-03",
+      "TEST-DEVICE-01",
+      "TEST-PLY-02"
+    ],
+    "commit": "212527f3c48a2f5aac23e5bfb409a99fac24a8fc",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "指定されたエミュレーターで検証し、Galaxy S25、FiiO M21、Galaxy S20 と物理 BT・USB DAC は操作していない。エミュレーターでは BT→有線、USB DAC の抜き差し、通知前のスピーカー出力を再現できない。",
+    "evidence": [
+      "docs/contracts/output-route-v1.md",
+      "docs/contracts/device-profiles-v1.md"
+    ],
+    "limitations": "実機で切替前後の出力レベル、スピーカーへの過渡的な出力、DAC のハードウェア音量、高感度イヤホンでの急増を測定する。DSP 実行時の QLT-13 の True Peak も未測定。"
   }
 ]
