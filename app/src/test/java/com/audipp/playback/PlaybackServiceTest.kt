@@ -81,6 +81,9 @@ class PlaybackServiceTest {
         assertSame(player, service.onGetSession(ownApp)!!.player)
         assertTrue(second.isConnected)
         assertEquals(PlaybackPhase.IDLE, PlaybackConnection.snapshot(second.sessionExtras)!!.phase)
+        assertEquals(PlaybackSchedule.Unknown, PlaybackConnection.schedule(second.sessionExtras))
+        assertEquals(EvidenceLevel.OS_REPORTED, service.outputRoute.value.connectedOutputs.level)
+        assertEquals(EvidenceLevel.UNKNOWN, service.outputRoute.value.observedOutputs.level)
     }
 
     @Test
@@ -328,11 +331,16 @@ class PlaybackServiceTest {
     @Test
     fun becomingNoisyPausesWithCurrentSelectionRetained() {
         val controller = connect(service.onGetSession(ownApp)!!.token)
+        // Media3 registers the broadcast receiver asynchronously on the playback looper.
+        shadowOf(rawPlayer.playbackLooper).idle()
         startWav(controller)
-        assertTrue(rawPlayer.playWhenReady)
+        advancePlaybackUntil { rawPlayer.playWhenReady }
         service.sendBroadcast(Intent(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
-        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
-        assertFalse(rawPlayer.playWhenReady)
+        shadowOf(Looper.getMainLooper()).idle()
+        advancePlaybackUntil {
+            !rawPlayer.playWhenReady &&
+                PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED
+        }
         assertEquals(QueueEntryId("entry"), PlaybackConnection.snapshot(controller.sessionExtras)?.currentEntryId)
     }
 
@@ -341,23 +349,40 @@ class PlaybackServiceTest {
     fun callModePausesAndRejectsResumeUntilCallEnds() {
         val controller = connect(service.onGetSession(ownApp)!!.token)
         val audio = service.getSystemService(AudioManager::class.java)
-        startWav(controller)
-        assertTrue(rawPlayer.playWhenReady)
-        audio.mode = AudioManager.MODE_RINGTONE
-        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
+        val mainLooper = shadowOf(Looper.getMainLooper())
+        val playbackLooper = shadowOf(rawPlayer.playbackLooper)
+        // Hold preparation so the fixture cannot end while testing play intent on the main looper.
+        playbackLooper.pause()
+        try {
+            startWav(controller)
+            mainLooper.idle()
+            assertTrue(rawPlayer.playWhenReady)
+            assertTrue(controller.playWhenReady)
 
-        for (mode in listOf(AudioManager.MODE_RINGTONE, AudioManager.MODE_IN_CALL)) {
-            audio.mode = mode
-            controller.play()
-            shadowOf(Looper.getMainLooper()).idle()
+            audio.mode = AudioManager.MODE_RINGTONE
+            mainLooper.idle()
             assertFalse(rawPlayer.playWhenReady)
             assertFalse(controller.playWhenReady)
+            assertEquals(PlaybackPhase.PAUSED, PlaybackConnection.snapshot(controller.sessionExtras)?.phase)
+
+            for (mode in listOf(AudioManager.MODE_RINGTONE, AudioManager.MODE_IN_CALL)) {
+                audio.mode = mode
+                mainLooper.idle()
+                controller.play()
+                mainLooper.idle()
+                assertFalse(rawPlayer.playWhenReady)
+                assertFalse(controller.playWhenReady)
+            }
+            audio.mode = AudioManager.MODE_NORMAL
+            mainLooper.idle()
+            assertFalse(rawPlayer.playWhenReady)
+            controller.play()
+            mainLooper.idle()
+            assertTrue(rawPlayer.playWhenReady)
+            assertTrue(controller.playWhenReady)
+        } finally {
+            playbackLooper.unPause()
         }
-        audio.mode = AudioManager.MODE_NORMAL
-        shadowOf(Looper.getMainLooper()).idle()
-        assertFalse(rawPlayer.playWhenReady)
-        controller.play()
-        advancePlaybackUntil { rawPlayer.playWhenReady }
     }
 
     @Test
@@ -372,6 +397,61 @@ class PlaybackServiceTest {
 
         controller.play()
         advancePlaybackUntil { rawPlayer.playWhenReady && controller.playWhenReady }
+    }
+
+    @Test
+    fun seekWaitsForPlaybackReadyAfterTheMaskedPosition() {
+        val sampleRate = 8_000
+        val pcmBytes = sampleRate * 2 * 4
+        val wave = ByteBuffer.allocate(44 + pcmBytes).order(ByteOrder.LITTLE_ENDIAN)
+            .put("RIFF".toByteArray()).putInt(36 + pcmBytes).put("WAVEfmt ".toByteArray())
+            .putInt(16).putShort(1).putShort(1).putInt(sampleRate).putInt(sampleRate * 2)
+            .putShort(2).putShort(16).put("data".toByteArray()).putInt(pcmBytes)
+        val file = File(service.cacheDir, "seek.wav").apply { writeBytes(wave.array()) }
+        registerProvider("seek", object : DeniedProvider() {
+            override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor =
+                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        })
+        val session = service.onGetSession(ownApp)!!
+        val controller = connect(session.token)
+        val audio = variant().copy(source = variant().source.copy(localDocumentUri = "content://seek/song.wav"))
+        assertEquals(SessionResult.RESULT_SUCCESS,
+            await(PlaybackConnection.playLocal(controller, QueueEntryId("entry"), audio)).resultCode)
+        session.player.pause()
+
+        val player = rawPlayer
+        val playbackLooper = shadowOf(player.playbackLooper)
+        val mainLooper = shadowOf(Looper.getMainLooper())
+        advancePlaybackUntil {
+            player.playbackState == Player.STATE_READY &&
+                controller.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM) &&
+                PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED
+        }
+
+        val targetMs = 3_000L
+        playbackLooper.pause()
+        try {
+            controller.seekTo(targetMs)
+            mainLooper.idle()
+            assertEquals(Player.STATE_BUFFERING, player.playbackState)
+            assertEquals(targetMs, player.currentPosition)
+            val snapshot = PlaybackConnection.snapshot(controller.sessionExtras)!!
+            assertEquals(PlaybackPhase.PAUSED, snapshot.phase)
+            assertNull(snapshot.positionMs)
+            assertEquals(PlaybackSchedule.Unknown, PlaybackConnection.schedule(controller.sessionExtras))
+        } finally {
+            playbackLooper.unPause()
+        }
+
+        advancePlaybackUntil {
+            val snapshot = PlaybackConnection.snapshot(controller.sessionExtras)
+            player.playbackState == Player.STATE_READY &&
+                snapshot?.phase == PlaybackPhase.PAUSED && snapshot.positionMs == targetMs
+        }
+        assertEquals(
+            PlaybackSchedule.RemainingDurationOnly(RemainingPlaybackTime(1_000, emptyMap(), 1_000)),
+            PlaybackConnection.schedule(controller.sessionExtras),
+        )
     }
 
     @Test

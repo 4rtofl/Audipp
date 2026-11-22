@@ -34,8 +34,10 @@ class NetworkEndpoint(val protocol: NetworkProtocol, val uri: String) {
 }
 
 enum class NetworkFailure {
+    SIGNATURE_REJECTED,
     OFFLINE, AUTH_REQUIRED, PERMISSION_REQUIRED, TIMEOUT, IO, UNSUPPORTED,
-    INVALID_INPUT, INVALID_RESPONSE, STALE_RESPONSE, EXPIRED,
+    INVALID_INPUT, INVALID_RESPONSE, STALE_RESPONSE, EXPIRED, RATE_LIMITED,
+    MISSING, REFRESH_REQUIRED, DIRECTORY_LIMIT_EXCEEDED,
 }
 
 sealed interface NetworkResult<out T> {
@@ -50,8 +52,9 @@ class NetworkDirectory(val id: String, val name: String) {
     override fun toString() = "NetworkDirectory(redacted)"
 }
 
-class NetworkMedia(val variant: TrackVariant) {
+class NetworkMedia(val variant: TrackVariant, val name: String? = null) {
     init {
+        name?.let(::requireNetworkText)
         require(variant.source.kind == SourceKind.NETWORK)
         requireNetworkText(variant.source.sourceId.value)
         requireNetworkText(variant.variantId.value)

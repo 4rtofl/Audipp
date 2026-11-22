@@ -32,6 +32,8 @@ import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
 import com.audipp.MainActivity
 import com.audipp.R
+import com.audipp.audio.route.ObservedAudioOutputProvider
+import com.audipp.audio.route.OutputRouteMonitor
 import com.audipp.domain.model.ErrorDomain
 import com.audipp.domain.model.ModelJson
 import com.audipp.domain.model.PlaybackError
@@ -59,6 +61,8 @@ import kotlinx.coroutines.launch
 @UnstableApi
 class PlaybackService : MediaLibraryService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private lateinit var routeMonitor: OutputRouteMonitor
+    internal val outputRoute get() = routeMonitor.snapshot
     private var mediaSession: MediaLibrarySession? = null
     private lateinit var player: ExoPlayer
     private lateinit var playback: LocalPlayback
@@ -82,6 +86,9 @@ class PlaybackService : MediaLibraryService() {
                 .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
         }
+        routeMonitor = OutputRouteMonitor(this) {
+            playback.onRouteRevisionChanged(it)
+        }
         player = ExoPlayer.Builder(this)
             .setLooper(mainLooper)
             .setTrackSelector(selector)
@@ -92,6 +99,7 @@ class PlaybackService : MediaLibraryService() {
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
+            .setAudioOutputProvider(ObservedAudioOutputProvider(this, routeMonitor))
             .build()
         playback = LocalPlayback(object : LocalPlaybackEngine {
             override fun prepare(entryId: QueueEntryId, transitionId: TransitionId,
@@ -161,8 +169,10 @@ class PlaybackService : MediaLibraryService() {
                     return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
                 }
                 val duration = seekableDuration()
-                if (mediaItemIndex == player.currentMediaItemIndex && duration != null && positionMs in 0..duration
-                ) player.seekTo(positionMs)
+                if (mediaItemIndex == player.currentMediaItemIndex && duration != null && positionMs in 0..duration) {
+                    playback.onSeekRequested()
+                    player.seekTo(positionMs)
+                }
                 return Futures.immediateVoidFuture()
             }
         }
@@ -185,7 +195,10 @@ class PlaybackService : MediaLibraryService() {
         scope.launch {
             while (isActive) {
                 delay(1_000)
-                if (player.isPlaying) updateEngineSnapshot()
+                if (player.isPlaying) {
+                    routeMonitor.refreshRoute()
+                    updateEngineSnapshot()
+                }
             }
         }
     }
@@ -194,6 +207,7 @@ class PlaybackService : MediaLibraryService() {
         if (controllerInfo.uid == Process.myUid() || controllerInfo.isTrusted) mediaSession else null
 
     override fun onDestroy() {
+        if (::routeMonitor.isInitialized) routeMonitor.close()
         scope.cancel()
         unregisterModeListener?.invoke()
         if (::audioManager.isInitialized) audioManager.unregisterAudioDeviceCallback(outputCallback)
@@ -219,7 +233,8 @@ class PlaybackService : MediaLibraryService() {
         }
         playback.onEngineState(transition, phase, player.playWhenReady, player.isPlaying,
             player.currentPosition.takeUnless { it == C.TIME_UNSET },
-            player.duration.takeUnless { it == C.TIME_UNSET }, seekableDuration() != null)
+            player.duration.takeUnless { it == C.TIME_UNSET }, seekableDuration() != null,
+            player.playbackParameters.speed.toDouble(), System.currentTimeMillis())
     }
 
     private fun currentTransition() = player.currentMediaItem?.localConfiguration?.tag as? TransitionId
@@ -255,6 +270,7 @@ class PlaybackService : MediaLibraryService() {
     private fun snapshotExtras() = Bundle().apply {
         putString(PlaybackConnection.SNAPSHOT,
             ModelJson.encode(playback.snapshot.value.withoutDocumentUri()))
+        putString(PlaybackConnection.SCHEDULE, ModelJson.encode(playback.schedule.value))
     }
 
     internal inner class SessionCallback : MediaLibrarySession.Callback {

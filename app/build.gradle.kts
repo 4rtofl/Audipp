@@ -43,11 +43,14 @@ android {
         compose = true
     }
 
+    sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -66,6 +69,7 @@ dependencyLocking {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.material3)
@@ -76,8 +80,11 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.session)
+    implementation(libs.okhttp)
+    testImplementation(libs.mockwebserver)
     testImplementation(libs.robolectric)
     implementation(libs.androidx.room.runtime)
+    implementation(libs.smbj)
     ksp(libs.androidx.room.compiler)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.junit)

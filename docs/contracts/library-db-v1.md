@@ -25,7 +25,7 @@ SourceとTrackArtistでは、主キーに一致する行をUPDATEし、更新件
 | `artists` | `artist_id` 主キー。同名を許す |
 | `track_artists` | `(track_id, artist_id, role)` 複合主キー。Track/ArtistへFK。`(track_id, role, ordinal)` 一意、artist_id索引 |
 
-Providerの部分一意（NULL除外）は、Roomがschemaに出力できる通常の複合UNIQUE索引で実現する案とする。`WHERE` 付きの物理的なpartial indexは追加しない。[SQLiteのUNIQUE](https://www.sqlite.org/lang_createindex.html#unique_indexes) はNULL同士を異なる値とみなすため、同じ制約になる。SourceRefの既存条件により、Providerの組は両方必須、LOCAL/NETWORKは両方NULLであり、LOCAL複数行とProvider間の同じitem IDを許す。組が同じ別source_idはMISSING状態でも拒否する。Provider IDは楽曲/マスター同一性の根拠にしない。
+Providerの部分一意（NULL除外）は、Roomがschemaに出力できる通常の複合UNIQUE索引で実現する案とする。`WHERE` 付きの物理的なpartial indexは追加しない。[SQLiteのUNIQUE](https://www.sqlite.org/lang_createindex.html#unique_indexes) はNULL同士を異なる値とみなすため、同じ制約になる。SourceRefの条件により、Providerの組は両方必須、LOCALは両方NULL、NETWORKは`provider_key`がNULLである。NETWORKの`provider_item_id`には接続先ルートからの相対パスを置けるが、`provider_key`がNULLのため索引では制約されない。LOCAL複数行、Provider間の同じitem ID、別の接続先の同じ相対パスを許す。組が同じ別source_idはMISSING状態でも拒否する。Provider IDは楽曲/マスター同一性の根拠にしない。
 
 FKはすべて既定のNO ACTIONで、削除を連鎖させない。`markSourceMissing` はSourceのavailabilityとupdated_atだけを更新し、Variantとの参照と全メタデータを保持する。存在しないSourceにはfalseを返す。再登録時は同じIDで保存して状態を回復できる。キュー/プレイリストを実装する #38 / #39 / #44 もVariantの参照を連鎖削除せず、消失状態を扱う必要がある。
 
