@@ -1,5 +1,9 @@
 package com.audipp.playback
 
+import com.audipp.audio.pcm.NativePcmProcessor
+import com.audipp.audio.pcm.PcmFormat
+import com.audipp.audio.pcm.PcmOpenResult
+import com.audipp.audio.pcm.PcmTransform
 import com.audipp.data.db.QueueRepeatMode
 import com.audipp.domain.model.Availability
 import com.audipp.domain.model.ErrorDomain
@@ -26,11 +30,13 @@ import com.audipp.playback.source.TargetKind
 import java.io.IOException
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
 
 internal interface LocalPlaybackEngine {
     fun prepare(entryId: QueueEntryId, transitionId: TransitionId, document: SourceDescriptor.LocalDocument)
@@ -54,6 +60,8 @@ internal class LocalPlayback(
     val schedule: StateFlow<PlaybackSchedule> = mutableSchedule.asStateFlow()
     private var selectedVariant: TrackVariant? = null
     private var seekPending = false
+    private var pcmProcessor: NativePcmProcessor? = null
+    private var pcmSetup: Any? = null
     private val resolver = SourceResolver(
         mapOf(AdapterKey(SourceKind.LOCAL, TargetKind.DEVICE) to LocalDocumentSourceAdapter(
             PlaybackCapabilities(canPlay = true, canPause = true, canReadPosition = true), access,
@@ -104,6 +112,7 @@ internal class LocalPlayback(
     }
 
     fun stop() {
+        invalidatePcm()
         context = context.copy(transitionId = newTransition())
         selectedVariant = null
         seekPending = false
@@ -112,6 +121,7 @@ internal class LocalPlayback(
     }
 
     fun fail(error: PlaybackError): PlaybackError {
+        invalidatePcm()
         context = context.copy(transitionId = newTransition())
         selectedVariant = null
         seekPending = false
@@ -129,6 +139,7 @@ internal class LocalPlayback(
 
     fun onRouteRevisionChanged(revision: Long) {
         if (revision <= context.routeRevision) return
+        invalidatePcm()
         context = context.copy(routeRevision = revision)
         val previous = snapshot.value
         if (previous.executionPlan != null) publish(previous.copy(executionPlan = null), schedule.value)
@@ -155,7 +166,10 @@ internal class LocalPlayback(
         val phase = when (enginePhase) {
             LocalEnginePhase.BUFFERING -> if (playRequested) PlaybackPhase.BUFFERING else PlaybackPhase.PAUSED
             LocalEnginePhase.READY -> if (isPlaying) PlaybackPhase.PLAYING else PlaybackPhase.PAUSED
-            LocalEnginePhase.ENDED -> PlaybackPhase.ADVANCING
+            LocalEnginePhase.ENDED -> {
+                invalidatePcm()
+                PlaybackPhase.ADVANCING
+            }
         }
         val duration = durationMs?.takeIf { it >= 0 }
         val observedPosition = positionMs?.takeIf { it >= 0 }
@@ -181,6 +195,48 @@ internal class LocalPlayback(
             PlaybackSchedule.Unknown
         }
         publish(observed, schedule)
+    }
+
+    suspend fun openPcmProcessor(
+        transitionId: TransitionId,
+        routeRevision: Long,
+        format: PcmFormat,
+        transform: PcmTransform,
+        bufferMs: Int = 80,
+    ): PcmOpenResult {
+        if (transitionId != context.transitionId || routeRevision != context.routeRevision) {
+            return PcmOpenResult.Rejected.STALE_PLAYBACK
+        }
+        val current = snapshot.value
+        if (current.executionPlan == null || current.phase == PlaybackPhase.ADVANCING) {
+            return PcmOpenResult.Rejected.NO_LOCAL_PLAYBACK
+        }
+        // The local-only resolver authorizes the document. The caller must decode that same
+        // document under its OS grant; a standard Media3 plan does not attest to PCM capture.
+        val attempt = Any()
+        pcmSetup = attempt
+        try {
+            val result = withContext(Dispatchers.IO) {
+                NativePcmProcessor.open(format, transform, bufferMs)
+            }
+            if (pcmSetup !== attempt) {
+                if (result is PcmOpenResult.Ready) result.processor.close()
+                return PcmOpenResult.Rejected.STALE_PLAYBACK
+            }
+            if (result is PcmOpenResult.Ready) {
+                pcmProcessor?.close()
+                pcmProcessor = result.processor
+            }
+            return result
+        } finally {
+            if (pcmSetup === attempt) pcmSetup = null
+        }
+    }
+
+    fun invalidatePcm() {
+        pcmSetup = null
+        pcmProcessor?.close()
+        pcmProcessor = null
     }
 
     private fun publish(value: PlaybackSnapshot, schedule: PlaybackSchedule = PlaybackSchedule.Unknown) {

@@ -154,7 +154,7 @@ jobs:
           java-version: '17'
           cache: gradle
       - name: Install Android SDK packages
-        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0" "platform-tools" > /dev/null'
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0" "platform-tools" "ndk;28.2.13676358" "cmake;3.22.1" > /dev/null'
       - name: Detect dependency changes
         id: dependencies
         env:
@@ -168,7 +168,7 @@ jobs:
             fi
           fi
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
-      - name: Debug build, unit tests, lint, unsigned Release build
+      - name: Debug and test APKs, unit tests, lint, unsigned Release build
         env:
           DEPENDENCIES_CHANGED: ${{ steps.dependencies.outputs.changed }}
         run: |
@@ -176,7 +176,7 @@ jobs:
           if [[ "$DEPENDENCIES_CHANGED" == 'true' ]]; then
             lock_args+=(--write-locks)
           fi
-          ./gradlew --no-daemon --console=plain :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleRelease "${lock_args[@]}"
+          ./gradlew --no-daemon --console=plain :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug :app:assembleRelease "${lock_args[@]}"
       - name: Verify committed dependency locks
         run: git diff --exit-code -- '*.lockfile'
       - name: Upload test and lint reports

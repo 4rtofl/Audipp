@@ -131,6 +131,12 @@ class PlaybackService : MediaLibraryService() {
                 }) pauseForInterruption()
                 updateEngineSnapshot()
             }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) = playback.invalidatePcm()
         })
         val sessionPlayer = object : ForwardingSimpleBasePlayer(player) {
             override fun getState(): State {

@@ -1,5 +1,10 @@
 package com.audipp.playback
 
+import android.media.AudioFormat
+import com.audipp.audio.pcm.PcmFormat
+import com.audipp.audio.pcm.PcmOpenResult
+import com.audipp.audio.pcm.PcmSample
+import com.audipp.audio.pcm.PcmTransform
 import com.audipp.domain.model.*
 import com.audipp.playback.source.SourceDescriptor
 import java.io.IOException
@@ -61,6 +66,28 @@ class LocalPlaybackTest {
     }
 
     @Test
+    fun missingNativeLibraryAndUnsupportedFormatsDoNotStopStandardPlayback() = runBlocking {
+        val engine = Engine()
+        val playback = LocalPlayback(engine, { Availability.PLAYABLE })
+        assertNull(playback.start(entry, variant))
+        val plan = playback.snapshot.value.executionPlan!!
+        val format = PcmFormat(PcmSample.SIGNED_32, 48_000, AudioFormat.CHANNEL_OUT_STEREO)
+        suspend fun open(input: PcmFormat, bufferMs: Int = 80) = playback.openPcmProcessor(
+            plan.transitionId, plan.routeRevision, input, PcmTransform.PRESERVE_INTEGER, bufferMs,
+        )
+
+        assertEquals(PcmOpenResult.Rejected.UNSUPPORTED_FORMAT, open(format.copy(sampleRateHz = 384_001)))
+        assertEquals(PcmOpenResult.Rejected.UNSUPPORTED_FORMAT, open(format.copy(channelMask = 0)))
+        assertEquals(PcmOpenResult.Rejected.UNSUPPORTED_FORMAT, open(format.copy(sample = PcmSample.FLOAT_32)))
+        assertEquals(PcmOpenResult.Rejected.UNSUPPORTED_FORMAT, open(format, bufferMs = 50))
+        assertEquals(PcmOpenResult.Rejected.NATIVE_UNAVAILABLE, open(format))
+        assertTrue(engine.active)
+        assertFalse(playback.snapshot.value.executionPlan!!.capabilities.canAccessPcm)
+        playback.stop()
+        assertEquals(PcmOpenResult.Rejected.STALE_PLAYBACK, open(format))
+    }
+
+    @Test
     fun pausedBufferingKeepsPositionAndNaturalEndAdvancesWithoutPreparingAnotherItem() = runBlocking {
         val engine = Engine()
         val playback = LocalPlayback(engine, { Availability.PLAYABLE })
@@ -71,6 +98,11 @@ class LocalPlaybackTest {
         playback.onEngineState(engine.transition, LocalEnginePhase.ENDED, true, false, 100, 100, true, 1.0, 0)
         assertEquals(PlaybackPhase.ADVANCING, playback.snapshot.value.phase)
         assertEquals(listOf(entry), engine.prepared)
+        val plan = playback.snapshot.value.executionPlan!!
+        val format = PcmFormat(PcmSample.SIGNED_32, 48_000, AudioFormat.CHANNEL_OUT_STEREO)
+        assertEquals(PcmOpenResult.Rejected.NO_LOCAL_PLAYBACK, playback.openPcmProcessor(
+            plan.transitionId, plan.routeRevision, format, PcmTransform.PRESERVE_INTEGER,
+        ))
     }
 
     @Test

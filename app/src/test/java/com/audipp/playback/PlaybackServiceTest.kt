@@ -349,23 +349,40 @@ class PlaybackServiceTest {
     fun callModePausesAndRejectsResumeUntilCallEnds() {
         val controller = connect(service.onGetSession(ownApp)!!.token)
         val audio = service.getSystemService(AudioManager::class.java)
-        startWav(controller)
-        assertTrue(rawPlayer.playWhenReady)
-        audio.mode = AudioManager.MODE_RINGTONE
-        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
+        val mainLooper = shadowOf(Looper.getMainLooper())
+        val playbackLooper = shadowOf(rawPlayer.playbackLooper)
+        // Hold preparation so the fixture cannot end while testing play intent on the main looper.
+        playbackLooper.pause()
+        try {
+            startWav(controller)
+            mainLooper.idle()
+            assertTrue(rawPlayer.playWhenReady)
+            assertTrue(controller.playWhenReady)
 
-        for (mode in listOf(AudioManager.MODE_RINGTONE, AudioManager.MODE_IN_CALL)) {
-            audio.mode = mode
-            controller.play()
-            shadowOf(Looper.getMainLooper()).idle()
+            audio.mode = AudioManager.MODE_RINGTONE
+            mainLooper.idle()
             assertFalse(rawPlayer.playWhenReady)
             assertFalse(controller.playWhenReady)
+            assertEquals(PlaybackPhase.PAUSED, PlaybackConnection.snapshot(controller.sessionExtras)?.phase)
+
+            for (mode in listOf(AudioManager.MODE_RINGTONE, AudioManager.MODE_IN_CALL)) {
+                audio.mode = mode
+                mainLooper.idle()
+                controller.play()
+                mainLooper.idle()
+                assertFalse(rawPlayer.playWhenReady)
+                assertFalse(controller.playWhenReady)
+            }
+            audio.mode = AudioManager.MODE_NORMAL
+            mainLooper.idle()
+            assertFalse(rawPlayer.playWhenReady)
+            controller.play()
+            mainLooper.idle()
+            assertTrue(rawPlayer.playWhenReady)
+            assertTrue(controller.playWhenReady)
+        } finally {
+            playbackLooper.unPause()
         }
-        audio.mode = AudioManager.MODE_NORMAL
-        shadowOf(Looper.getMainLooper()).idle()
-        assertFalse(rawPlayer.playWhenReady)
-        controller.play()
-        advancePlaybackUntil { rawPlayer.playWhenReady }
     }
 
     @Test
