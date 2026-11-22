@@ -75,7 +75,8 @@ class AudioContainerTest {
     fun imageBrandsBypassMovieValidation() {
         for (brand in listOf("avif", "avis", "heic", "heix", "mif1")) {
             val image = box("ftyp", ascii(brand) + be32(0)) + box("meta", be32(0))
-            assertRejected(image, AudioProbeProblem.NON_MEDIA)
+            assertRejected(image, AudioProbeProblem.NON_MEDIA, "cover.$brand")
+            assertRejected(image, AudioProbeProblem.EXTENSION_MISMATCH, "track.m4a")
         }
         val audio = box("ftyp", ascii("M4A ") + be32(0))
         assertRejected(audio, AudioProbeProblem.MALFORMED, "track.m4a")
@@ -155,7 +156,8 @@ class AudioContainerTest {
 
     @Test
     fun dffDistinguishesDstFromRawDsd() {
-        val frames = iff("DSTF", byteArrayOf(1)) + iff("DSTC", be32(0)) + iff("DSTF", byteArrayOf(2))
+        val frames = iff("DSTF", byteArrayOf(1)) + iff("DSTC", be32(0)) +
+            iff("DSTF", byteArrayOf(2)) + iff("DSTC", be32(0))
         val result = read(dst(2, frames), "track.dff")
         assertEquals("audio/x-dst", result.format.codec)
         assertEquals(26L, result.durationMs)

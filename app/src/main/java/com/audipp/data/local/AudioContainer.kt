@@ -62,7 +62,11 @@ internal fun probeAudioContainer(
             else -> identified
         }
     } catch (failure: ContainerFailure) {
-        rejected(failure.problem)
+        if (expected && failure.problem == AudioProbeProblem.NON_MEDIA) {
+            rejected(AudioProbeProblem.EXTENSION_MISMATCH)
+        } else {
+            rejected(failure.problem)
+        }
     }
 }
 
