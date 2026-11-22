@@ -10,18 +10,31 @@ import com.hierynomus.mssmb.SMB1NotSupportedException
 import com.hierynomus.mssmb2.SMB2CreateDisposition.FILE_OPEN
 import com.hierynomus.mssmb2.SMB2CreateOptions.FILE_OPEN_REPARSE_POINT
 import com.hierynomus.mssmb2.SMB2Dialect
+import com.hierynomus.mssmb2.SMB2MessageFlag
+import com.hierynomus.mssmb2.SMB2PacketData
+import com.hierynomus.mssmb2.SMB2PacketHeader
 import com.hierynomus.mssmb2.SMB2ShareAccess
 import com.hierynomus.mssmb2.SMBApiException
 import com.hierynomus.msdtyp.AccessMask
 import com.hierynomus.protocol.commons.socket.ProxySocketFactory
+import com.hierynomus.protocol.transport.PacketHandlers
+import com.hierynomus.protocol.transport.PacketReceiver
+import com.hierynomus.protocol.transport.TransportException
+import com.hierynomus.protocol.transport.TransportLayer
+import com.hierynomus.security.SecurityProvider
+import com.hierynomus.smb.SMBPacket
+import com.hierynomus.smb.SMBPacketData
 import com.hierynomus.smbj.SMBClient
 import com.hierynomus.smbj.SmbConfig
 import com.hierynomus.smbj.auth.NtlmAuthenticator
 import com.hierynomus.smbj.common.SMBRuntimeException
 import com.hierynomus.smbj.paths.PathResolver
 import com.hierynomus.smbj.session.SMB2GuestSigningRequiredException
+import com.hierynomus.smbj.session.Session
 import com.hierynomus.smbj.share.DiskShare
 import com.hierynomus.smbj.share.File
+import com.hierynomus.smbj.transport.TransportLayerFactory
+import com.hierynomus.smbj.transport.tcp.direct.DirectTcpTransportFactory
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.NoRouteToHostException
@@ -30,6 +43,7 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.nio.charset.CharacterCodingException
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import java.util.concurrent.TimeoutException
@@ -125,7 +139,8 @@ internal class SmbjTransport(
                     return socket
                 }
             }
-            return SMBClient(smbConfig(policy).withSocketFactory(factory).build()).use { client ->
+            val responses = SignedResponses(socket)
+            return SMBClient(smbConfig(policy).withSocketFactory(factory).withTransportLayerFactory(responses).build()).use { client ->
                 val connection = client.connect(endpoint.host, endpoint.port)
                 try {
                     if (!isLanReadAllowed()) throw SmbRejected(NetworkFailure.PERMISSION_REQUIRED)
@@ -134,6 +149,7 @@ internal class SmbjTransport(
                     if (!session.isSigningRequired && !session.sessionContext.isEncryptData) {
                         throw SmbRejected(NetworkFailure.SIGNATURE_REJECTED)
                     }
+                    responses.session = session
                     val share = session.connectShare(endpoint.share)
                     if (share !is DiskShare) throw SmbRejected(NetworkFailure.UNSUPPORTED)
                     // SMBJ follows symlink responses by default even when DFS is off.
@@ -165,6 +181,54 @@ internal fun smbConfig(policy: NetworkCallPolicy): SmbConfig.Builder = SmbConfig
     .withBufferSize(64 * 1024)
     .withTimeout(policy.operationTimeoutMs, MILLISECONDS)
     .withSoTimeout(policy.operationTimeoutMs, MILLISECONDS)
+
+/**
+ * SMBJ 0.13.0 through 0.15.0 hand plain responses whose SessionId is 0 or unknown, and signed responses with SessionId 0,
+ * to the waiting request without verifying them, and drop a failed signature so the caller only sees a timeout.
+ * The upstream fix (hierynomus/smbj#911) is unmerged. Once the session exists, this receiver runs before SMBJ's
+ * handlers and ends the attempt unless each plain response is signed by that session.
+ */
+private class SignedResponses(private val socket: Socket) : TransportLayerFactory<SMBPacketData<*>, SMBPacket<*, *>> {
+    @Volatile var session: Session? = null
+
+    override fun createTransportLayer(
+        handlers: PacketHandlers<SMBPacketData<*>, SMBPacket<*, *>>,
+        config: SmbConfig,
+    ): TransportLayer<SMBPacket<*, *>> {
+        val receiver = object : PacketReceiver<SMBPacketData<*>> {
+            override fun handle(packet: SMBPacketData<*>) {
+                val session = session
+                // Encrypted frames reach SMBJ as a different type and are authenticated by decrypting with the session key.
+                if (session != null && packet is SMB2PacketData && !packet.isSignedBy(session, config.securityProvider)) {
+                    // Closing first keeps SMBJ's error handling from waiting on a LOGOFF the stopped reader cannot receive.
+                    closeSocket(socket)
+                    throw TransportException(SmbRejected(NetworkFailure.SIGNATURE_REJECTED))
+                }
+                handlers.receiver.handle(packet)
+            }
+
+            override fun handleError(error: Throwable) = handlers.receiver.handleError(error)
+        }
+        return DirectTcpTransportFactory<SMBPacketData<*>, SMBPacket<*, *>>()
+            .createTransportLayer(PacketHandlers(handlers.serializer, receiver, handlers.packetFactory), config)
+    }
+}
+
+private fun SMB2PacketData.isSignedBy(session: Session, provider: SecurityProvider): Boolean {
+    val header = header
+    // SMBJ never sends compounded requests, and it verifies later compound members over the wrong bytes.
+    if (header.nextCommandOffset != 0) return false
+    // [MS-SMB2] 3.2.5.1.3 exempts interim responses and break notifications; SMBJ completes no request with them.
+    if (header.messageId == -1L || isIntermediateAsyncResponse) return true
+    if (!header.isFlagSet(SMB2MessageFlag.SMB2_FLAGS_SIGNED) || header.sessionId != session.sessionId) return false
+    val key = session.getSigningKey(header, false) ?: return false
+    val bytes = dataBuffer.array()
+    val mac = provider.getMac(key.algorithm).apply { init(key.encoded) }
+    mac.update(bytes, 0, SMB2PacketHeader.SIGNATURE_OFFSET)
+    mac.update(SMB2PacketHeader.EMPTY_SIGNATURE)
+    mac.update(bytes, SMB2PacketHeader.STRUCTURE_SIZE, header.messageEndPosition - SMB2PacketHeader.STRUCTURE_SIZE)
+    return MessageDigest.isEqual(mac.doFinal().copyOf(SMB2PacketHeader.SIGNATURE_SIZE), header.signature)
+}
 
 private fun closeSocket(socket: Socket) {
     try {
