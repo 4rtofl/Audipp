@@ -1,0 +1,69 @@
+# SMBライブラリ v1
+
+[Issue #73](https://github.com/4rtoflow/Audipp/issues/73) の実装提案。FR-NET-01、DD-NET-01/02と[共通LAN契約](network-v1.md)に従う。
+
+## 一覧と読込
+
+- `SmbLibrary` に許可判定と利用者が指定した `smb://host[:port]/share[/path]` を渡す。既定ポートは445。対象は指定ディレクトリと、その一覧から選択した子孫に限定する。SMB1交渉、DFS referral、SMBシンボリックリンク応答の追跡を行わない。reparse属性付きの一覧項目を除外し、開いたファイルとディレクトリの属性も確認する。サーバーが透明に転送するローカルパスの実体はクライアントから確認できない。
+- 直下のディレクトリと拡張子で候補と判断した音源をページで返す。`NetworkMedia.name` はPR #184と同じ任意項目を使う。ディレクトリIDと音源IDはendpointと相対パスから導出する。内部のパス対応表は各4,096件、選択ハンドルは128件、一覧の走査は20,000項目、相対パスは2,048文字まで。応答の順序はサーバーに従い、ページ間のスナップショットは提供しない。
+- `SmbPassword.encode` で作ったNTLM資格を `verifyCredential` で確認し、本人の認証成功時に既存の `NetworkCredentials.authorize` で暗号保管する。同一endpointに限って `resume` した資格を使える。認証拒否で資格が失効した場合は再入力して選択し直す。ユーザー名・パスワード・share/pathは解決済み記述子やエラーの本文に入らない。
+- `NetworkLibrarySourceAdapter` で端末出力用の `DeviceResource` を解決する。`readRange` は指定オフセットから最大256 KiBを返す。SMBJのファイルAPIで読取専用に開き、SMB側の書込・削除共有を許さない。サーバーGUID、ファイル番号、最終書込・変更時刻、サイズを読取前後で比較する。識別に必要な値を得られないファイルは選択できない。識別情報はサーバーの申告に基づく。
+- 途中で切断した場合は部分データを破棄し、同じ位置で再試行する。再接続でも識別情報を照合する。変更・削除・再試行上限に達した場合は失敗を返して選択を失効させる。呼出側は旧バッファを破棄して再選択できる。キューとローカル音源はそのまま使える。選択の取消時は呼出元のJobを取り消し、`release` でハンドルを破棄する。
+- 共通の既定値はTCP接続10秒、各操作30秒、オフライン・I/O・タイムアウトの最大3試行。各試行がソケットを所有し、取消時に閉じる。認証不成立、明示的な署名エラー、アクセス拒否は別の失敗を返す。
+- SMBJ 0.13.0は、SessionIdが0または未知の未署名応答と、SessionId 0の署名フラグ付き応答を検証せずに待機中の要求へ渡す。署名不一致の応答は黙って破棄する。最新の0.15.0も同じで、上流の修正（[hierynomus/smbj#911](https://github.com/hierynomus/smbj/pull/911)）は2026年11月22日時点で未マージ。このため認証後は、SMBJの受信処理より前で、暗号化されていない各応答に認証済みセッションのIDと署名を求め、MACを検証する。中間応答（STATUS_PENDING）とMessageId `0xFFFFFFFFFFFFFFFF` の通知は仕様どおり除外する。SMBJが送らない複合応答は拒否する。不合格の応答を受けたら、その試行のソケットを閉じ、待機中の要求を `SIGNATURE_REJECTED` で終える。バイトは返さず、再試行もしない。暗号化された応答は、SMBJがセッション鍵で復号できたものだけを受け入れる。
+- 正規のサーバーでも、セッションを失ったときの未署名エラー（STATUS_USER_SESSION_DELETEDなど）は真正性を確認できないので、`SIGNATURE_REJECTED` として扱う。要求と要求の間に不正な応答が届いた場合は、接続を閉じた後の次の要求が `IO` になり、再試行されることがある。SMBJ 0.13.0の `SMB2AsyncResponsePacketHandler` は、MessageId `0xFFFFFFFFFFFFFFFF` の通知でも保留中の要求の有無を確かめずに参照するため、受信スレッドが止まり得る。SMBJのCREATEはoplockを要求せず（RequestedOplockLevelは0）、リースにも対応しない。そのため正規のサーバーはこの通知を送らない想定で、防御は追加していない。
+- ホスト名の名前解決は、TCP接続の期限や取消より前に同期で行う。DNSが応答しない場合は、接続期限や取消が効くまで時間がかかることがある。名前解決へ期限と取消を適用する対応は後続とする。
+
+再生所有者は読込の失敗を扱う。Media3への接続、LAN利用許諾の画面、実行時の権限要求、コーデックによる再生とリモートレンダラーへの登録は後続の統合範囲。範囲ごとに新規接続するため、長時間再生の往復回数やスループットは測定が必要。
+
+## 依存とローカル試験
+
+[SMBJ 0.13.0](https://github.com/hierynomus/smbj/tree/v0.13.0) の既定 `BCSecurityProvider` はBouncy Castleの軽量APIを使う。AndroidのJCAグローバルproviderを追加・置換せず、NTLMとSMB署名を行う。実行時推移依存は `bcprov-jdk18on` 1.75、`slf4j-api` 2.0.9、`mbassador` 1.3.0、`asn-one` 0.6.0。JVMテストは既存のRobolectricの依存解決でBouncy Castle 1.81を使用する。SLF4Jのログ出力実装は追加しない。API 23でNTLMが呼ぶ `Collection.removeIf` と `java.util.function.Predicate` を解決するため、`desugar_jdk_libs` 2.1.5をビルドに使用する。 [AndroidのJava API desugaring](https://developer.android.com/studio/write/java8-support)API 23/36の計測テストではアプリのAPKに含まれる依存とAndroid Keystoreを使う。
+
+### ループバックfixture
+
+ローカルのSambaを `127.0.0.1` と試験用ポートにのみbindし、読み取り専用の `music` 共有と同じ試験利用者を拒否する `denied` 共有を用意する。署名を必須にし、SMB2.1とSMB3.1.1の試験ではそれぞれ対応するプロトコルに制限する。試験用DBと共有は独立した一時ディレクトリに置く。試験用NTLM資格は `WORKGROUP` の `root` / `audipp-fixture-test`。
+
+`music/album` の試験用WAVを次のように作成する。コーデックの動作確認には使わない。
+
+```sh
+python3 - '<一時共有>/album/track.wav' <<'PY'
+import sys
+import wave
+
+with wave.open(sys.argv[1], 'wb') as wav:
+    wav.setparams((1, 2, 44100, 0, 'NONE', 'not compressed'))
+    wav.writeframes(b'0123456789abcdefghijklmnopqrstuvwxyz' * 2048)
+PY
+```
+
+```sh
+AUDIPP_SMB_FIXTURE_PORTS=29445,29446 ./gradlew :app:testDebugUnitTest --tests 'com.audipp.integrations.network.smb.*'
+```
+
+ポート指定がないときはSambaとの相互運用ケースだけスキップする。自動テストの残りは固定の応答とループバックソケットを使う。Androidの再現ではテスト用エミュレーターのシリアルを指定し、`adb -s SERIAL reverse tcp:PORT tcp:PORT` でループバックfixtureを転送する。`SmbAndroidTest` を実行するときは `am instrument` に `-e smbFixturePort PORT` を渡す。
+
+実行結果と検証commitは[試験台帳](../traceability/results.json)を参照。実NAS、指定の実機、利用許諾、製品のUIからの再生、音声出力の実測は別途確認が必要。
+
+## 2026年11月20日の検証結果
+
+実装commit `e8f1936bb9d5101ce098d16c4bc53a718c7943bd` を検証した。
+
+| 環境 | 結果 |
+|---|---|
+| JDK 17、Samba 4.25.0（ループバック） | SMB2.1とSMB3.1.1で必須署名付き認証、一覧、WAVの先頭・非ゼロ位置・64 KiBを超える範囲・終端の読込、認証失敗と共有拒否の区別を確認 |
+| 固定応答とループバックソケット | SMB2からの交渉、署名エラーの分類、タイムアウトと取消時のソケット閉鎖、途中切断後の同一offset、媒体差し替えと読込中の変更の拒否、再接続失敗後の再選択、資格のスコープと読込終了後の消去を確認 |
+| Androidエミュレーター API 23（SMB2.1）、API 36（SMB3.1.1） | それぞれ1件成功。実APKで署名付き接続、Android Keystoreによる資格保管・再取得、非ゼロ位置の読込、許可取消後の読込拒否を確認 |
+| 引き渡し検証 | Debug、未署名Release、AndroidテストAPKの組み立て成功。JVM 199件成功（SMB 11件を含む）。Lintエラー0件、警告14件 |
+
+最初のAPI 23試験（`e5091081a111f29ac5a767dfa3440b392955f49f`）は `NtlmAuthenticator.java:120` の `removeIf` が参照するクラスをロードできず失敗した。Java API desugaringを追加した実装commitで再実行した。Sambaではローカルfixture用のユーザー名前空間内でグループ切替を代替しているため、ホストのOS権限の検証は結果に含まれない。
+
+PR #184と共通になる `NetworkMedia.name` は同じ形を採用し、SMBJとWebDAV依存のlockは別の座標を使う。PR #187と共有するManifestの `INTERNET` は既存宣言を使用する。両PRのheadを各々重ねたGitの試算に内容衝突はなかった。
+
+IPv6の追検証は `a0a9789c1636c285c507e3332012e8a213f73269` で行った。SMBJが `[::1]` の表記を展開しても、指定したループバックでSMB2交渉を開始し、応答を待つ操作のタイムアウトでソケットを閉じることを確認した。JVMは200件（SMB 12件）成功し、API 23/36で署名付きSambaの同じ試験も各1件成功した。
+
+## 2026年11月22日の署名検証の追加
+
+作業開始時のcommit `7cdba0ad709adc240d5a0d94e4be8feb5f33a7f6` に対して、署名の検証を追加した。`SmbLoopbackTest` の偽サーバーは、SMB 2.1のNTLM認証を完了し、復元したセッション鍵で署名したTREE_CONNECTを返す。続くCREATEには、未署名でSessionId 0のもの、未署名で別セッションのもの、署名フラグだけでSessionId 0のもの、署名後に改ざんしたものの4種を返した。修正前の結果は次のとおり。前3種では偽のCREATEが受理され、クライアントがQUERY_INFOを送った後にタイムアウトと再試行に至った。4種目は黙って破棄され、同じくタイムアウトと再試行になった。修正後は4種とも `SIGNATURE_REJECTED` を返し、後続の要求と再接続はなかった。ただし、この時点の試験はクライアントがCREATEを送ったことを確認していなかった。そのため、正規のTREE_CONNECTを誤って拒否しても合格し得た。SMB 3.x（AES-CMAC）の陽性確認と、Samba・実NASとの再確認は未実施。
+
+修正確認の指摘を受けて、試験を次のように直した。偽サーバーは受け取ったコマンドをすべて記録する。偽造4種では、NEGOTIATE、SESSION_SETUP 2回、TREE_CONNECT、CREATEまで届き、その後は何も届かないことを必須にした。正規の応答の試験も追加した。CREATEには、未署名の非同期中間応答（STATUS_PENDING）に続けて署名付きの非同期最終応答を返す。続くQUERY_INFO、QUERY_DIRECTORY 2回、CLOSEにも署名付きで応答し、一覧が成功してサーバーの返した名前が届くことを確認する。検査に一時的な変異を入れ、TREE_CONNECTを拒否させると、偽造の試験はTREE_CONNECTの後で止まり、正規の応答の試験も失敗した。修正前の試験はこの変異でも合格する。試験の対象は一覧の取得で、音源のREADは同じ受信検査を通るが、直接は試験していない。
