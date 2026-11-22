@@ -9,10 +9,10 @@ internal interface SafAccess {
     fun releaseReadGrant(tree: Uri)
     suspend fun rootReadable(tree: Uri): Boolean
     fun children(tree: Uri, directoryId: String): Flow<SafEntry>
-    suspend fun analyze(document: Uri): SafAudio?
+    suspend fun analyze(document: Uri, displayName: String? = null): SafAudio?
 }
 
-internal data class SafEntry(val id: String, val directory: Boolean)
+internal data class SafEntry(val id: String, val directory: Boolean, val displayName: String? = null)
 
 internal data class SafAudio(
     val codec: String,
@@ -25,6 +25,11 @@ internal data class SafAudio(
     val albumArtist: String? = null,
     val track: Int? = null,
     val disc: Int? = null,
+    val container: AudioContainer? = null,
+    val bitDepth: Int? = null,
+    val pcm: PcmLayout? = null,
+    val artwork: EmbeddedArtwork? = null,
+    val standardPath: Boolean = true,
 )
 
 internal data class ScanLimits(
@@ -40,3 +45,5 @@ internal data class ScanLimits(
 internal class SafTimeout : Exception()
 
 internal class SafIncompleteRead : Exception()
+
+internal class SafAudioRejected(val issue: LibraryScanIssue) : Exception()

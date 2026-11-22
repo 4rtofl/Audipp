@@ -3,6 +3,7 @@ package com.audipp.data.local
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.pm.ProviderInfo
+import android.content.res.AssetFileDescriptor
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.media.MediaFormat
@@ -11,8 +12,12 @@ import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
+import android.system.Os
 import java.io.File
+import java.io.FileDescriptor
+import java.io.FileInputStream
 import java.io.IOException
+import java.nio.ByteBuffer
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -26,6 +31,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowContentResolver
 import org.robolectric.shadows.ShadowMediaExtractor
 import org.robolectric.shadows.util.DataSource
@@ -79,6 +86,14 @@ class AndroidSafAccessTest {
     }
 
     @Test
+    fun readsDisplayNameWithoutTreatingTheProviderMimeAsAnAudioFormat() {
+        val rows = MatrixCursor(arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_MIME_TYPE, Document.COLUMN_DISPLAY_NAME))
+            .apply { addRow(arrayOf("arbitrary-id", "application/octet-stream", "actually-an-audio-file.wav")) }
+        assertEquals(listOf(SafEntry("arbitrary-id", false, "actually-an-audio-file.wav")), list(rows))
+        assertTrue(rows.isClosed)
+    }
+
+    @Test
     fun rootProbeChecksThatTheProviderCanStillReadTheSelectedDirectory() = runBlocking {
         var response = cursor().apply { addRow(arrayOf(rootId, Document.MIME_TYPE_DIR)) }
         val access = register { uri ->
@@ -93,18 +108,28 @@ class AndroidSafAccessTest {
     }
 
     @Test
+    @Config(shadows = [Api23PreadShadow::class])
     fun skipsNonMediaFilesAndContainersWithAVideoTrack() = runBlocking {
         val content = File.createTempFile("saf-document", ".bin", context.cacheDir)
         try {
+            content.writeText("plain text")
             val access = register(content) { null }
             val document = DocumentsContract.buildDocumentUriUsingTree(tree, "album/file")
             // Robolectric does not parse media, so the opened descriptor is mapped to fixture tracks.
             DataSource.setFileDescriptorTransform { _, _ -> "document" }
             val source = DataSource.toDataSource("document")
-            ShadowMediaExtractor.addTrack(source, MediaFormat.createAudioFormat("audio/flac", 44_100, 2), ByteArray(0))
+            ShadowMediaExtractor.addTrack(source, MediaFormat.createAudioFormat("audio/flac", 44_100, 2), byteArrayOf(1))
             assertEquals("audio/flac", access.analyze(document)?.codec)
 
+            val mp4 = ByteBuffer.allocate(24)
+                .putInt(16).put("ftypisom".toByteArray()).putInt(0)
+                .putInt(8).put("moov".toByteArray()).array()
+            content.writeBytes(mp4)
+            assertEquals(AudioContainer.MP4, access.analyze(document, "track.mp4")?.container)
+
             ShadowMediaExtractor.addTrack(source, MediaFormat.createVideoFormat("video/avc", 16, 16), ByteArray(0))
+            assertNull(access.analyze(document, "track.mp4"))
+            content.writeText("plain text")
             assertNull(access.analyze(document))
 
             // MediaExtractor rejects images and text files by throwing IOException from setDataSource.
@@ -112,6 +137,17 @@ class AndroidSafAccessTest {
             assertNull(access.analyze(document))
         } finally {
             content.delete()
+        }
+    }
+
+    @Implements(Os::class, maxSdk = 23)
+    class Api23PreadShadow {
+        companion object {
+            // Robolectric only provides positional reads through its API 26+ Linux shadow.
+            @JvmStatic
+            @Implementation
+            fun pread(fd: FileDescriptor, bytes: ByteArray, offset: Int, count: Int, position: Long): Int =
+                FileInputStream(fd).channel.read(ByteBuffer.wrap(bytes, offset, count), position).coerceAtLeast(0)
         }
     }
 
@@ -133,6 +169,9 @@ class AndroidSafAccessTest {
             ) = rows(uri)
             override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor =
                 ParcelFileDescriptor.open(requireNotNull(file), ParcelFileDescriptor.MODE_READ_ONLY)
+            // Robolectric's fstat shadow cannot determine the size from a file descriptor.
+            override fun openAssetFile(uri: Uri, mode: String): AssetFileDescriptor =
+                AssetFileDescriptor(openFile(uri, mode), 0, requireNotNull(file).length())
             override fun getType(uri: Uri): String? = null
             override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = error("read-only")
             override fun insert(uri: Uri, values: ContentValues?): Uri? = error("read-only")

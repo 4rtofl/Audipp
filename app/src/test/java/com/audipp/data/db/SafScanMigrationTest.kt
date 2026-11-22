@@ -22,7 +22,7 @@ class SafScanMigrationTest {
     private val context get() = RuntimeEnvironment.getApplication()
 
     @Test
-    fun migratesV1ThroughV4WithoutChangingIdsAndStartsWithoutScanRoots() = runBlocking {
+    fun migratesV1ThroughV5WithoutChangingIdsAndStartsWithoutScanRoots() = runBlocking {
         val name = "saf-scan-migration-v1.db"
         context.createLibraryDatabaseFromSchema(name, version = 1) { old ->
             old.execSQL(
@@ -38,6 +38,7 @@ class SafScanMigrationTest {
             assertEquals(TrackId("track"), variant.trackId)
             assertEquals(Availability.MISSING, variant.source.availability)
             assertEquals("Existing", upgraded.libraryDao().track("track")?.title)
+            assertNull(upgraded.libraryDao().variant("variant")?.localMetadata)
 
             val scans = upgraded.safScanDao()
             assertEquals(emptyList<String>(), scans.roots())
@@ -47,7 +48,7 @@ class SafScanMigrationTest {
             assertEquals(0, scans.recordStatus("root", "older-scan", LibraryScanStatus.COMPLETE))
             assertEquals(1, scans.recordStatus("root", "scan", LibraryScanStatus.ACCESS_LOST))
             assertEquals(LibraryScanStatus.ACCESS_LOST, scans.lastScanStatus("root"))
-            assertEquals(4, upgraded.openHelper.writableDatabase.version)
+            assertEquals(5, upgraded.openHelper.writableDatabase.version)
         } finally {
             upgraded.close()
             context.deleteDatabase(name)
@@ -55,14 +56,17 @@ class SafScanMigrationTest {
     }
 
     @Test
-    fun migratesV3WithoutDroppingPlaylistsOrQueues() = runBlocking {
-        val name = "saf-scan-migration-v3.db"
-        context.createLibraryDatabaseFromSchema(name, version = 3) { old ->
+    fun migratesV4WithoutDroppingPlaylistsQueuesOrScanState() = runBlocking {
+        val name = "saf-scan-migration-v4.db"
+        context.createLibraryDatabaseFromSchema(name, version = 4) { old ->
             old.execSQL(
                 "INSERT INTO sources (source_id, kind, availability, updated_at) VALUES ('source', 'LOCAL', 'PLAYABLE', 1)",
             )
             old.execSQL("INSERT INTO tracks (track_id) VALUES ('track')")
-            old.execSQL("INSERT INTO track_variants (variant_id, track_id, source_id) VALUES ('variant', 'track', 'source')")
+            old.execSQL("INSERT INTO track_variants (variant_id, track_id, source_id, bit_depth) VALUES ('variant', 'track', 'source', 24)")
+            old.execSQL("INSERT INTO local_scan_roots (root_id, tree_uri, scan_id, last_scan_status) " +
+                "VALUES ('root', 'content://fixture/tree/root', 'scan', 'COMPLETE')")
+            old.execSQL("INSERT INTO local_scan_sources (source_id, root_id, last_seen_scan_id) VALUES ('source', 'root', 'scan')")
             old.execSQL(
                 "INSERT INTO playlists (playlist_id, name, created_at, updated_at, revision) VALUES ('list', 'List', 1, 2, 3)",
             )
@@ -90,8 +94,17 @@ class SafScanMigrationTest {
             val queue = requireNotNull(upgraded.queueDao().read("queue"))
             assertEquals(7L, queue.queue.revision)
             assertEquals(listOf("q"), queue.entries.map { it.entryId.value })
-            assertEquals(emptyList<String>(), upgraded.safScanDao().roots())
-            assertEquals(4, upgraded.openHelper.writableDatabase.version)
+            val variant = requireNotNull(upgraded.libraryDao().variant("variant"))
+            assertEquals(24, variant.bitDepth)
+            assertNull(variant.localMetadata)
+            val scans = upgraded.safScanDao()
+            assertEquals(listOf("root"), scans.roots())
+            assertEquals("scan", scans.currentScanId("root"))
+            assertEquals(LibraryScanStatus.COMPLETE, scans.lastScanStatus("root"))
+            assertEquals(0, scans.markUnvisitedMissing("root", "scan", 2))
+            assertEquals(1, scans.beginScan("root", "next"))
+            assertEquals(1, scans.markUnvisitedMissing("root", "next", 3))
+            assertEquals(5, upgraded.openHelper.writableDatabase.version)
         } finally {
             upgraded.close()
             context.deleteDatabase(name)

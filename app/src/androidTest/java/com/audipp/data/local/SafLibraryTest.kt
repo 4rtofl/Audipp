@@ -157,6 +157,55 @@ class SafLibraryTest {
     }
 
     @Test
+    fun formatErrorsKeepScanningAndARescanReplacesOnlyThatVariantsMetadata() = runBlocking {
+        val scanner = library
+        val (root, song) = indexSong(scanner, this)
+        val previous = dao.variant(song.value)
+        access.entries["root"] = listOf("song", "empty", "spoof", "dsd", "final").map(::file)
+        access.analysisFailures["song"] = SafAudioRejected(LibraryScanIssue.CORRUPT_AUDIO)
+        access.analysisFailures["empty"] = SafAudioRejected(LibraryScanIssue.EMPTY_AUDIO)
+        access.analysisFailures["spoof"] = SafAudioRejected(LibraryScanIssue.FORMAT_MISMATCH)
+        access.audioById["dsd"] = SafAudio(
+            codec = "audio/x-dsd", container = AudioContainer.DSF, sampleRate = 2_822_400,
+            standardPath = false, title = "DSD", channels = 2,
+        )
+        access.audioById["final"] = SafAudio(codec = "audio/raw", title = "Other edition")
+        val result = scanner.startScan(root, this).await()
+        assertEquals(LibraryScanStatus.COMPLETE, result.status)
+        assertEquals(2, result.progress.indexed)
+        assertEquals(3, result.progress.failed)
+        assertEquals(0, result.missing)
+        assertEquals(setOf(
+            LibraryScanIssue.CORRUPT_AUDIO, LibraryScanIssue.EMPTY_AUDIO,
+            LibraryScanIssue.FORMAT_MISMATCH, LibraryScanIssue.UNSUPPORTED_AUDIO,
+        ), result.issues)
+        assertEquals(previous, dao.variant(song.value))
+        assertEquals(Availability.UNKNOWN, availability(song))
+        val dsd = variant("root", "dsd")
+        assertEquals(Availability.UNSUPPORTED, availability(dsd))
+        assertEquals("DSF", dao.variant(dsd.value)?.localMetadata?.container)
+
+        access.analysisFailures.remove("song")
+        access.audioById["song"] = SafAudio(
+            codec = "audio/raw", container = AudioContainer.WAVE, sampleRate = 96_000, durationMs = 1_234,
+            bitDepth = 20, pcm = PcmLayout(24, false), artwork = EmbeddedArtwork(512, 4096, "image/jpeg"),
+        )
+        assertEquals(3, scanner.startScan(root, this).await().progress.updated)
+        assertEquals(song, variant("root"))
+        assertEquals(Availability.PLAYABLE, availability(song))
+        val row = dao.variant(song.value)!!
+        assertEquals(1_234L, row.durationMs)
+        assertEquals(96_000, row.sampleRate)
+        assertEquals(20, row.bitDepth)
+        assertNull(row.localMetadata?.title)
+        assertNull(row.localMetadata?.artist)
+        assertEquals(24, row.localMetadata?.pcmStorageBits)
+        assertEquals(false, row.localMetadata?.pcmFloatingPoint)
+        assertEquals("embedded:512:4096:image/jpeg", row.localMetadata?.artworkRef)
+        assertEquals("Other edition", dao.variant(variant("root", "final").value)?.localMetadata?.title)
+    }
+
+    @Test
     fun limitsKeepUnvisitedSourcesAndRetainIndexedWork() = runBlocking {
         val scanner = library
         val (root, song) = indexSong(scanner, this)
@@ -340,6 +389,7 @@ class SafLibraryTest {
     private class FixtureAccess : SafAccess {
         val grants = mutableSetOf<Uri>()
         val entries = mutableMapOf<String, List<SafEntry>>()
+        val audioById = mutableMapOf<String, SafAudio>()
         val analysisFailures = mutableMapOf<String, Exception>()
         val listingFailures = mutableMapOf<String, Exception>()
         var beforeListing: suspend () -> Unit = {}
@@ -369,10 +419,10 @@ class SafLibraryTest {
             listingFailures[directoryId]?.let { throw it }
         }
 
-        override suspend fun analyze(document: Uri): SafAudio {
+        override suspend fun analyze(document: Uri, displayName: String?): SafAudio {
             val id = DocumentsContract.getDocumentId(document)
             analysisFailures[id]?.let { throw it }
-            return SafAudio(codec = "audio/flac", title = id, sampleRate = 44_100)
+            return audioById[id] ?: SafAudio(codec = "audio/flac", title = id, sampleRate = 44_100)
         }
     }
 

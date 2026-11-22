@@ -1,6 +1,7 @@
 package com.audipp.data.db
 
 import androidx.room.ColumnInfo
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -107,6 +108,7 @@ data class VariantEntity(
     @ColumnInfo(name = "bit_depth") val bitDepth: Int? = null,
     val channels: Int? = null,
     @ColumnInfo(name = "mastering_label") val masteringLabel: String? = null,
+    @Embedded(prefix = "local_") val localMetadata: VariantLocalMetadata? = null,
 ) {
     init {
         VariantId(variantId)
@@ -142,6 +144,17 @@ data class VariantEntity(
         )
     }
 }
+
+data class VariantLocalMetadata(
+    val container: String? = null,
+    val title: String? = null,
+    val artist: String? = null,
+    val album: String? = null,
+    @ColumnInfo(name = "album_artist") val albumArtist: String? = null,
+    @ColumnInfo(name = "pcm_storage_bits") val pcmStorageBits: Int? = null,
+    @ColumnInfo(name = "pcm_floating_point") val pcmFloatingPoint: Boolean? = null,
+    @ColumnInfo(name = "artwork_ref") val artworkRef: String? = null,
+)
 
 @Entity(
     tableName = "track_artists",
