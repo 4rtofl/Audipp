@@ -29,5 +29,5 @@ adb -s SERIAL shell am instrument -w -r -e class com.audipp.playback.source.Sour
 ## 確かめていない範囲
 
 - API 23 での実 ContentResolver 経由の解決、物理端末（ADB シリアルの指定なし）
-- システムの文書提供元（SAF ピッカーで許可した実フォルダ）を通した解決。試験用の提供元だけを使った
+- システムの文書提供元（SAF ピッカーで許可した実フォルダ）を経由した解決。試験用の提供元だけを使った
 - Provider・NETWORK・Renderer の実アダプター。本 Issue では未登録時に `ADAPTER_UNAVAILABLE` を返すところまでを扱い、接続は #49・#73・#74・#105・#106 などで行う

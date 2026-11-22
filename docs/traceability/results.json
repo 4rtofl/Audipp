@@ -2869,7 +2869,6 @@
   {
     "case_id": "E02-09-resolver-content-resolver-api36-2026-11-22",
     "requirement_ids": [
-      "FR-SRC-01",
       "FR-PLY-07"
     ],
     "test_ids": [
@@ -2890,7 +2889,6 @@
   {
     "case_id": "E02-09-resolver-content-resolver-api23-2026-11-22",
     "requirement_ids": [
-      "FR-SRC-01",
       "FR-PLY-07"
     ],
     "test_ids": [
