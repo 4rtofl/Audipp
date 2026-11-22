@@ -2,9 +2,13 @@ package com.audipp.playback
 
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.Intent
 import android.content.pm.ProviderInfo
 import android.content.res.AssetFileDescriptor
 import android.database.Cursor
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.CancellationSignal
@@ -23,6 +27,8 @@ import com.audipp.domain.model.*
 import com.google.common.util.concurrent.ListenableFuture
 import java.io.File
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -36,6 +42,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ServiceController
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.AudioDeviceInfoBuilder
 import org.robolectric.shadows.ShadowContentResolver
 import org.robolectric.util.ReflectionHelpers
 
@@ -74,6 +81,8 @@ class PlaybackServiceTest {
         assertSame(player, service.onGetSession(ownApp)!!.player)
         assertTrue(second.isConnected)
         assertEquals(PlaybackPhase.IDLE, PlaybackConnection.snapshot(second.sessionExtras)!!.phase)
+        assertEquals(EvidenceLevel.OS_REPORTED, service.outputRoute.value.connectedOutputs.level)
+        assertEquals(EvidenceLevel.UNKNOWN, service.outputRoute.value.observedOutputs.level)
     }
 
     @Test
@@ -177,6 +186,194 @@ class PlaybackServiceTest {
         assertEquals(0L, cancelled.count)
         assertEquals(PlaybackPhase.IDLE, PlaybackConnection.snapshot(controller.sessionExtras)!!.phase)
         assertEquals(0, session.player.mediaItemCount)
+        assertFalse(session.player.playWhenReady)
+    }
+
+    @Test
+    fun sessionSeekRequiresMediaAndRejectsOutOfRangePositionsAndKeepsNewestValidSeek() {
+        val session = service.onGetSession(ownApp)!!
+        val controller = connect(session.token)
+        assertFalse(controller.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM))
+        startWav(controller)
+        controller.pause()
+        advancePlaybackUntil {
+            !rawPlayer.playWhenReady && controller.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+        }
+        assertEquals(4_000L, rawPlayer.duration)
+
+        controller.seekTo(4_000)
+        // Media3 may resolve the end seek to the last millisecond inside the period.
+        advancePlaybackUntil { rawPlayer.currentPosition in 3_999L..4_000L }
+        controller.seekTo(0)
+        advancePlaybackUntil { rawPlayer.currentPosition == 0L }
+        controller.seekTo(3_000)
+        controller.seekTo(1_000)
+        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.positionMs == 1_000L }
+        controller.seekTo(-1)
+        controller.seekTo(4_001)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1_000L, rawPlayer.currentPosition)
+        assertEquals(1_000L, controller.currentPosition)
+        assertEquals(1_000L, PlaybackConnection.snapshot(controller.sessionExtras)?.positionMs)
+    }
+
+    @Test
+    fun externalOutputRemovalPausesAndReconnectionDoesNotResume() {
+        val session = service.onGetSession(ownApp)!!
+        val controller = connect(session.token)
+        val device = usbOutput()
+        val callback = ReflectionHelpers.getField<AudioDeviceCallback>(service, "outputCallback")
+        startWav(controller)
+        assertTrue(rawPlayer.playWhenReady)
+
+        callback.onAudioDevicesRemoved(arrayOf(device))
+        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
+        assertFalse(rawPlayer.playWhenReady)
+        callback.onAudioDevicesAdded(arrayOf(device))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(rawPlayer.playWhenReady)
+        assertEquals(QueueEntryId("entry"), PlaybackConnection.snapshot(controller.sessionExtras)?.currentEntryId)
+    }
+
+    @Test
+    fun externalOutputRemovalDuringResolutionKeepsSelectionPausedAfterPrepare() {
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        val opened = CountDownLatch(1)
+        val proceed = CountDownLatch(1)
+        val wav = registerWav {
+            opened.countDown()
+            check(proceed.await(5, TimeUnit.SECONDS))
+        }
+        val entry = QueueEntryId("entry")
+        val pending = PlaybackConnection.playLocal(controller, entry, wav)
+        try {
+            advancePlaybackUntil { opened.count == 0L }
+            assertEquals(PlaybackPhase.RESOLVING, PlaybackConnection.snapshot(controller.sessionExtras)?.phase)
+            val callback = ReflectionHelpers.getField<AudioDeviceCallback>(service, "outputCallback")
+            callback.onAudioDevicesRemoved(arrayOf(usbOutput()))
+        } finally {
+            proceed.countDown()
+        }
+        assertEquals(SessionResult.RESULT_SUCCESS, await(pending).resultCode)
+        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
+        assertEquals(entry, PlaybackConnection.snapshot(controller.sessionExtras)?.currentEntryId)
+        assertFalse(controller.playWhenReady)
+        assertFalse(rawPlayer.playWhenReady)
+        controller.play()
+        advancePlaybackUntil { rawPlayer.playWhenReady }
+    }
+
+    @Test
+    @Config(sdk = [35])
+    fun transientFocusLossResumesWhenFocusReturns() {
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        val audio = shadowOf(service.getSystemService(AudioManager::class.java))
+        startWav(controller)
+        advancePlaybackUntil { audio.lastAudioFocusRequest?.listener != null && rawPlayer.playWhenReady }
+        val listener = audio.lastAudioFocusRequest.listener
+        listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)
+        advancePlaybackUntil {
+            rawPlayer.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS &&
+                rawPlayer.playbackState == Player.STATE_READY
+        }
+        assertTrue(rawPlayer.playWhenReady)
+        assertFalse(rawPlayer.isPlaying)
+        listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_GAIN)
+        advancePlaybackUntil { rawPlayer.isPlaying }
+        assertTrue(rawPlayer.playWhenReady)
+    }
+
+    @Test
+    @Config(sdk = [23])
+    fun transientFocusLossDuringCallClearsPlayIntentOnLegacyAndroid() {
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        val audio = service.getSystemService(AudioManager::class.java)
+        startWav(controller)
+        val shadowAudio = shadowOf(audio)
+        advancePlaybackUntil { shadowAudio.lastAudioFocusRequest?.listener != null && rawPlayer.playWhenReady }
+        val listener = shadowAudio.lastAudioFocusRequest.listener
+        audio.mode = AudioManager.MODE_IN_CALL
+        listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)
+        advancePlaybackUntil { !rawPlayer.playWhenReady }
+        audio.mode = AudioManager.MODE_NORMAL
+        listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_GAIN)
+        shadowOf(rawPlayer.playbackLooper).idle()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(rawPlayer.playWhenReady)
+        assertEquals(PlaybackPhase.PAUSED, PlaybackConnection.snapshot(controller.sessionExtras)?.phase)
+    }
+
+    @Test
+    @Config(sdk = [23])
+    fun focusLossBeforeCallModeChangeDoesNotResumeAfterCallOnLegacyAndroid() {
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        val audio = service.getSystemService(AudioManager::class.java)
+        val shadowAudio = shadowOf(audio)
+        startWav(controller)
+        advancePlaybackUntil { shadowAudio.lastAudioFocusRequest?.listener != null && rawPlayer.playWhenReady }
+        val listener = shadowAudio.lastAudioFocusRequest.listener
+        assertEquals(AudioManager.MODE_NORMAL, audio.mode)
+        listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)
+        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
+
+        audio.mode = AudioManager.MODE_IN_CALL
+        shadowOf(Looper.getMainLooper()).idle()
+        audio.mode = AudioManager.MODE_NORMAL
+        listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_GAIN)
+        shadowOf(rawPlayer.playbackLooper).idle()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(rawPlayer.playWhenReady)
+        assertFalse(controller.playWhenReady)
+        assertEquals(PlaybackPhase.PAUSED, PlaybackConnection.snapshot(controller.sessionExtras)?.phase)
+    }
+
+    @Test
+    fun becomingNoisyPausesWithCurrentSelectionRetained() {
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        startWav(controller)
+        assertTrue(rawPlayer.playWhenReady)
+        service.sendBroadcast(Intent(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
+        assertFalse(rawPlayer.playWhenReady)
+        assertEquals(QueueEntryId("entry"), PlaybackConnection.snapshot(controller.sessionExtras)?.currentEntryId)
+    }
+
+    @Test
+    @Config(sdk = [35])
+    fun callModePausesAndRejectsResumeUntilCallEnds() {
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        val audio = service.getSystemService(AudioManager::class.java)
+        startWav(controller)
+        assertTrue(rawPlayer.playWhenReady)
+        audio.mode = AudioManager.MODE_RINGTONE
+        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
+
+        for (mode in listOf(AudioManager.MODE_RINGTONE, AudioManager.MODE_IN_CALL)) {
+            audio.mode = mode
+            controller.play()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(rawPlayer.playWhenReady)
+            assertFalse(controller.playWhenReady)
+        }
+        audio.mode = AudioManager.MODE_NORMAL
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(rawPlayer.playWhenReady)
+        controller.play()
+        advancePlaybackUntil { rawPlayer.playWhenReady }
+    }
+
+    @Test
+    fun communicationModePreventsAutostartButAllowsExplicitPlay() {
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        val audio = service.getSystemService(AudioManager::class.java)
+        audio.mode = AudioManager.MODE_IN_COMMUNICATION
+        startWav(controller)
+        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
+        assertFalse(controller.playWhenReady)
+        assertFalse(rawPlayer.playWhenReady)
+
+        controller.play()
+        advancePlaybackUntil { rawPlayer.playWhenReady && controller.playWhenReady }
     }
 
     @Test
@@ -230,6 +427,50 @@ class PlaybackServiceTest {
 
     private fun connect(token: androidx.media3.session.SessionToken): MediaController =
         await(MediaController.Builder(service, token).buildAsync()).also { controllers += it }
+
+    private val rawPlayer: ExoPlayer get() = ReflectionHelpers.getField(service, "player")
+
+    private fun advancePlaybackUntil(condition: () -> Boolean) {
+        val deadline = System.nanoTime() + 5_000_000_000L
+        while (!condition() && System.nanoTime() < deadline) {
+            shadowOf(rawPlayer.playbackLooper).idleFor(20, TimeUnit.MILLISECONDS)
+            shadowOf(Looper.getMainLooper()).idleFor(20, TimeUnit.MILLISECONDS)
+            Thread.sleep(5)
+        }
+        assertTrue("condition timed out, state=${rawPlayer.playbackState}, position=${rawPlayer.currentPosition}",
+            condition())
+    }
+
+    private fun startWav(controller: MediaController) {
+        val result = await(PlaybackConnection.playLocal(controller, QueueEntryId("entry"), registerWav()))
+        assertEquals(SessionResult.RESULT_SUCCESS, result.resultCode)
+    }
+
+    private fun usbOutput(): AudioDeviceInfo {
+        val device = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_USB_DEVICE).build()
+        val port = ReflectionHelpers.getField<Any>(device, "mPort")
+        ReflectionHelpers.setField(port, "mRole", 2) // AudioPort.ROLE_SINK
+        assertTrue(device.isSink)
+        return device
+    }
+
+    private fun registerWav(beforeOpen: () -> Unit = {}): TrackVariant {
+        val sampleRate = 8_000
+        val pcmBytes = 4 * sampleRate * Short.SIZE_BYTES
+        val wav = ByteBuffer.allocate(44 + pcmBytes).order(ByteOrder.LITTLE_ENDIAN)
+            .put("RIFF".toByteArray()).putInt(36 + pcmBytes).put("WAVEfmt ".toByteArray())
+            .putInt(16).putShort(1).putShort(1).putInt(sampleRate).putInt(sampleRate * Short.SIZE_BYTES)
+            .putShort(2).putShort(16).put("data".toByteArray()).putInt(pcmBytes).array()
+        val file = File(service.cacheDir, "four-seconds.wav").apply { writeBytes(wav) }
+        registerProvider("wav", object : DeniedProvider() {
+            override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
+                beforeOpen()
+                return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+            }
+        })
+        val source = variant().source.copy(localDocumentUri = "content://wav/song")
+        return variant().copy(source = source)
+    }
 
     private fun registerProvider(authority: String, provider: ContentProvider) {
         provider.attachInfo(service, ProviderInfo().apply { this.authority = authority })

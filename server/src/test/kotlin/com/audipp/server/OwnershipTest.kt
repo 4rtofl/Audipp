@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit
 
 class OwnershipTest {
     companion object {
-        private const val issuer = "https://identity.example.test/realms/audipp"
+        internal const val issuer = "https://identity.example.test/realms/audipp"
         private const val audience = "audipp-api"
         private val key = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
         private val algorithm = Algorithm.RSA256(key.public as RSAPublicKey, key.private as java.security.interfaces.RSAPrivateKey)
@@ -40,7 +40,14 @@ class OwnershipTest {
             if (id != "fixture") throw SigningKeyNotFoundException("missing", null)
             jwk
         }
-        private val verifier = accessTokenVerifier(issuer, audience, provider)
+        internal val verifier = accessTokenVerifier(issuer, audience, provider)
+        internal fun token(subject: String? = "alice", tokenIssuer: String = issuer, tokenAudience: String = audience,
+                           expires: Instant? = Instant.now().plusSeconds(300), type: String = "Bearer",
+                           signer: Algorithm = algorithm, kid: String = "fixture", future: Boolean = false): String =
+            JWT.create().withKeyId(kid).withIssuer(tokenIssuer).withAudience(tokenAudience).withSubject(subject)
+                .withClaim("typ", type).withClaim("email", "same@example.test").withClaim("user_id", "client-forged-user")
+                .apply { expires?.let { withExpiresAt(Date.from(it)) }; if (future) withNotBefore(Date.from(Instant.now().plusSeconds(300))) }
+                .sign(signer)
         private lateinit var pg: EmbeddedPostgres
         private lateinit var source: PGSimpleDataSource
         private lateinit var database: Database
@@ -69,16 +76,10 @@ class OwnershipTest {
     }
 
     @Before fun clearOwners() {
-        source.connection.use { it.createStatement().use { statement -> statement.execute("TRUNCATE devices, identities, users") } }
+        source.connection.use { it.createStatement().use { statement ->
+            statement.execute("TRUNCATE sync_events, history_epochs, history_tombstones, devices, identities, users")
+        } }
     }
-
-    private fun token(subject: String? = "alice", tokenIssuer: String = issuer, tokenAudience: String = audience,
-                      expires: Instant? = Instant.now().plusSeconds(300), type: String = "Bearer",
-                      signer: Algorithm = algorithm, kid: String = "fixture", future: Boolean = false): String =
-        JWT.create().withKeyId(kid).withIssuer(tokenIssuer).withAudience(tokenAudience).withSubject(subject)
-            .withClaim("typ", type).withClaim("email", "same@example.test").withClaim("user_id", "client-forged-user")
-            .apply { expires?.let { withExpiresAt(Date.from(it)) }; if (future) withNotBefore(Date.from(Instant.now().plusSeconds(300))) }
-            .sign(signer)
 
     private fun count(table: String): Int = source.connection.use { connection ->
         connection.createStatement().use { it.executeQuery("SELECT count(*) FROM $table").use { rows -> rows.next(); rows.getInt(1) } }
@@ -272,6 +273,18 @@ class OwnershipTest {
                 assertTrue(response.headers().firstValue("content-type").orElse("").startsWith("application/json"))
                 assertTrue(response.sslSession().get().protocol in setOf("TLSv1.2", "TLSv1.3"))
                 assertEquals(1, count("users"))
+                suspend fun post(path: String, body: String): java.net.http.HttpResponse<String> = withContext(Dispatchers.IO) {
+                    val post = java.net.http.HttpRequest.newBuilder(java.net.URI("https://localhost:$port$path"))
+                        .timeout(java.time.Duration.ofSeconds(3)).header("Authorization", "Bearer " + token())
+                        .header("Content-Type", "application/json").POST(java.net.http.HttpRequest.BodyPublishers.ofString(body)).build()
+                    http.send(post, java.net.http.HttpResponse.BodyHandlers.ofString())
+                }
+                val device = UUID.randomUUID()
+                assertEquals(200, post("/v1/auth/session", """{"device_id":"$device"}""").statusCode())
+                val consent = syncEvent("consent", "cloud_sync", """{"version":1,"granted":true}""")
+                val push = post("/v1/sync/batches", syncBatch(device, consent))
+                assertEquals(200, push.statusCode())
+                assertEquals("no-store", push.headers().firstValue("cache-control").orElse(""))
                 try {
                     withContext(Dispatchers.IO) { java.net.http.HttpClient.newHttpClient().send(request, java.net.http.HttpResponse.BodyHandlers.ofString()) }
                     fail("untrusted certificate accepted")
@@ -309,21 +322,33 @@ class OwnershipTest {
             isolated.migrate()
             isolated.migrate()
             migrationSource.connection.use { connection ->
-                connection.createStatement().use { it.executeQuery("SELECT count(*) FROM schema_migrations").use { rows -> assertTrue(rows.next()); assertEquals(1, rows.getInt(1)) } }
+                connection.createStatement().use { it.executeQuery("SELECT count(*) FROM schema_migrations").use { rows -> assertTrue(rows.next()); assertEquals(2, rows.getInt(1)) } }
             }
         } finally { source.connection.use { it.createStatement().use { statement -> statement.execute("DROP SCHEMA migration_failure CASCADE") } } }
     }
 
     @Test fun `migration restart is idempotent checksum changes refused and auth DB cannot be accessed`() = runBlocking {
         database.migrate()
-        assertEquals(1, count("schema_migrations"))
-        source.connection.use { it.createStatement().use { statement -> statement.execute("UPDATE schema_migrations SET sha256 = 'tampered'") } }
-        try { database.migrate(); fail("changed migration accepted") } catch (_: IllegalStateException) { }
-        source.connection.use { it.createStatement().use { statement -> statement.execute("DELETE FROM schema_migrations") } }
-        // Restore the checksum without replaying DDL against the existing schema.
-        val sql = checkNotNull(javaClass.getResource("/db/migration/V001__ownership.sql")).readText()
-        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(sql.toByteArray()).joinToString("") { "%02x".format(it) }
-        source.connection.use { it.prepareStatement("INSERT INTO schema_migrations VALUES (1, ?)").use { s -> s.setString(1, hash); s.executeUpdate() } }
+        assertEquals(2, count("schema_migrations"))
+        for ((version, migration) in listOf("V001__ownership.sql", "V002__sync_push.sql").withIndex()) {
+            val sql = checkNotNull(javaClass.getResource("/db/migration/$migration")).readText()
+            val hash = java.security.MessageDigest.getInstance("SHA-256").digest(sql.toByteArray()).joinToString("") { "%02x".format(it) }
+            fun setChecksum(value: String) = source.connection.use { connection ->
+                connection.prepareStatement("UPDATE schema_migrations SET sha256 = ? WHERE version = ?").use {
+                    it.setString(1, value)
+                    it.setInt(2, version + 1)
+                    it.executeUpdate()
+                }
+            }
+            setChecksum("tampered")
+            try {
+                database.migrate()
+                fail("changed migration accepted")
+            } catch (_: IllegalStateException) {
+            } finally {
+                setChecksum(hash)
+            }
+        }
         try {
             database.verifySeparation("business", "business"); fail("same DB/user accepted")
         } catch (_: IllegalStateException) { }
@@ -334,5 +359,40 @@ class OwnershipTest {
         try { auth.connection.use { }; fail("auth database accessible") } catch (expected: java.sql.SQLException) { assertEquals("42501", expected.sqlState) }
         val superuser = Database(pg.postgresDatabase)
         try { superuser.verifySeparation("identity_store", "identity_store"); fail("superuser accepted") } catch (_: IllegalStateException) { }
+    }
+
+    @Test fun `V002 failure preserves an existing V001 owner and upgrade can retry`() = runBlocking {
+        val schema = "sync_upgrade"
+        source.connection.use { it.createStatement().use { statement -> statement.execute("CREATE SCHEMA $schema") } }
+        val upgradeSource = PGSimpleDataSource().apply {
+            serverNames = arrayOf("localhost"); portNumbers = intArrayOf(pg.port)
+            databaseName = "business"; user = "business"; password = "local-test-only"; currentSchema = schema
+        }
+        val isolated = Database(upgradeSource)
+        val identity = Identity(issuer, "existing-v001")
+        val deviceId = UUID.randomUUID()
+        try {
+            val v1 = checkNotNull(javaClass.getResource("/db/migration/V001__ownership.sql")).readText()
+            val digest = java.security.MessageDigest.getInstance("SHA-256").digest(v1.toByteArray()).joinToString("") { "%02x".format(it) }
+            val original = isolated.transaction { connection ->
+                connection.createStatement().use {
+                    it.execute(v1)
+                    it.execute("CREATE TABLE schema_migrations (version integer PRIMARY KEY, sha256 text NOT NULL)")
+                    it.execute("INSERT INTO schema_migrations VALUES (1, '$digest')")
+                    it.execute("CREATE TABLE sync_events (collision integer)")
+                }
+                isolated.registerDevice(connection, isolated.resolve(connection, identity), deviceId)
+            }
+            try { isolated.migrate(); fail("conflicting sync schema accepted") } catch (expected: java.sql.SQLException) { assertEquals("42P07", expected.sqlState) }
+            isolated.transaction { connection ->
+                assertEquals(original, isolated.device(connection, isolated.resolve(connection, identity), deviceId))
+                connection.createStatement().use { it.execute("DROP TABLE sync_events") }
+            }
+            isolated.migrate()
+            val batch = syncBatch(deviceId, syncEvent("consent", "cloud_sync", """{"version":1,"granted":true}"""))
+            assertEquals(1, isolated.pushSync(identity, parseSyncBatch(batch)).results.size)
+        } finally {
+            source.connection.use { it.createStatement().use { statement -> statement.execute("DROP SCHEMA $schema CASCADE") } }
+        }
     }
 }
