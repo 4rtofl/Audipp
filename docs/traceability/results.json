@@ -3177,5 +3177,57 @@
       "docs/evidence/issue-64/ui-verification.md"
     ],
     "limitations": "採用済みナビゲーション案と TEST-UI-01 の試験範囲のうち、今回のエミュレーターと単体試験で確認できなかった項目。"
+  },
+  {
+    "case_id": "E01-05-query-unit-and-robolectric-2026-11-22",
+    "requirement_ids": ["FR-SRC-03"],
+    "test_ids": ["TEST-LIB-02"],
+    "commit": "6e09949ecd1b179f7b4be578fd26af30f4ffa47e",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric の Room 試験4件と Flow の単体試験1件が成功した。6属性の並びと件数、欠損タグ、日本語・英語・長い文字列・空条件、ページ境界、DB 更新後の再取得、旧検索の取消と保留中の結果の破棄を確認した。",
+    "evidence": ["app/src/test/java/com/audipp/data/db/LibraryQueryDaoTest.kt"],
+    "limitations": "合成データを使った。旧検索の取消と遅延結果の試験は DAO の結果 Flow を置き換えて実施した。"
+  },
+  {
+    "case_id": "E01-05-query-api23-2026-11-22",
+    "requirement_ids": ["FR-SRC-03"],
+    "test_ids": ["TEST-LIB-02"],
+    "commit": "6e09949ecd1b179f7b4be578fd26af30f4ffa47e",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23 の x86_64 エミュレーターで計装試験2件が成功した。日本語・英語・長い文字列・空条件、同名アルバムの別 ID、欠損タグ、空ページの総件数を確認した。インメモリ DB の合成1,000曲に対し、Main から50曲ずつ20ページを順次取得した。取得待ち時間は合計114.5 ms、初回8.1 ms、最大8.5 msだった。",
+    "evidence": ["app/src/androidTest/java/com/audipp/data/db/LibraryQueryDeviceTest.kt"],
+    "limitations": "DB への投入時間、端末上の UI 描画とスクロール、実利用 DB の性能は測定範囲外。"
+  },
+  {
+    "case_id": "E01-05-query-api36-2026-11-22",
+    "requirement_ids": ["FR-SRC-03"],
+    "test_ids": ["TEST-LIB-02"],
+    "commit": "8ff6abe99148bce0615ac272c12dbccd648facd4",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 36 の x86_64 エミュレーターで計装試験2件が成功した。API 23 と同じ条件を確認し、インメモリ DB の合成1,000曲を Main から50曲ずつ20ページ順に取得した。取得待ち時間は合計106.7 ms、初回17.9 ms、最大17.9 msだった。",
+    "evidence": ["app/src/androidTest/java/com/audipp/data/db/LibraryQueryDeviceTest.kt"],
+    "limitations": "DB への投入時間、端末上の UI 描画とスクロール、実利用 DB の性能は測定範囲外。"
+  },
+  {
+    "case_id": "E01-05-query-scroll-and-device-2026-11-22",
+    "requirement_ids": ["FR-SRC-03"],
+    "test_ids": ["TEST-LIB-02"],
+    "commit": "6e09949ecd1b179f7b4be578fd26af30f4ffa47e",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "画面での1,000曲のスクロールと物理端末での検索は未実施。画面実装は Issue #84 と #117 で扱う。",
+    "evidence": ["app/src/androidTest/java/com/audipp/data/db/LibraryQueryDeviceTest.kt"],
+    "limitations": "検索層のデータ取得時間を計測した。フレーム時間、画像描画、実ライブラリでの動作は未測定。"
   }
 ]
