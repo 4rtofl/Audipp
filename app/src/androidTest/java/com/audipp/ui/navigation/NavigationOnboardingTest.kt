@@ -30,7 +30,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.audipp.MainActivity
 import com.audipp.R
 import com.audipp.audio.route.OutputConfirmation
+import com.audipp.data.local.Artwork
 import com.audipp.domain.device.VolumeSettings
+import com.audipp.domain.model.PlaceholderReason
 import com.audipp.domain.model.PlaybackPhase
 import com.audipp.playback.OutputConfirmationRequest
 import com.audipp.ui.theme.AudippTheme
@@ -151,6 +153,8 @@ class NavigationOnboardingTest {
                                 NavigationPlaybackBar(
                                     NavigationPlaybackState.Current(PlaybackPhase.PAUSED, null, null, null,
                                         outputConfirmation = displayed.value),
+                                    loadArtwork = { _, _ -> Artwork.Placeholder(PlaceholderReason.NO_ARTWORK) },
+                                    onExpand = {},
                                     onTogglePlayback = { error("Ordinary playback must stay blocked") },
                                     onConfirmOutput = { requests.add(it) },
                                 )

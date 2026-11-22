@@ -60,6 +60,7 @@ internal class LocalPlayback(
     private val mutableSchedule = MutableStateFlow<PlaybackSchedule>(PlaybackSchedule.Unknown)
     val schedule: StateFlow<PlaybackSchedule> = mutableSchedule.asStateFlow()
     private var selectedVariant: TrackVariant? = null
+    internal val variant: TrackVariant? get() = selectedVariant
     private var seekPending = false
     private var pcmProcessor: NativePcmProcessor? = null
     private var pcmSetup: Any? = null

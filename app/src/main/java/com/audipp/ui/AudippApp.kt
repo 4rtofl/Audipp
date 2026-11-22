@@ -29,6 +29,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import com.audipp.data.local.Artwork
+import com.audipp.domain.model.VariantId
+import com.audipp.ui.nowplaying.NowPlayingScreen
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -70,13 +76,21 @@ internal enum class NavigationPage(@param:StringRes val label: Int) {
     QUEUE(R.string.navigation_queue),
 }
 
+/** Full-screen layers over the tab and page being viewed; closing them returns to that screen. */
+internal enum class NowPlayingLayer { PLAYER, QUEUE }
+
 internal data class NavigationDestination(
     val tab: NavigationTab,
     val page: NavigationPage?,
+    val nowPlaying: NowPlayingLayer? = null,
 ) {
     fun select(tab: NavigationTab) = NavigationDestination(tab, null)
 
+    fun openNowPlaying() = copy(nowPlaying = NowPlayingLayer.PLAYER)
+
     fun back(): NavigationDestination? = when {
+        nowPlaying == NowPlayingLayer.QUEUE -> copy(nowPlaying = NowPlayingLayer.PLAYER)
+        nowPlaying == NowPlayingLayer.PLAYER -> copy(nowPlaying = null)
         page == NavigationPage.APPEARANCE || page == NavigationPage.UPNP -> copy(page = NavigationPage.SETTINGS)
         page != null -> copy(page = null)
         tab != NavigationTab.HOME -> select(NavigationTab.HOME)
@@ -102,22 +116,74 @@ internal fun AudippApp(
     onRetryPlayback: () -> Unit,
     onTogglePlayback: (PlaybackControl) -> Unit,
     onConfirmOutput: (OutputConfirmationRequest) -> Unit,
+    onSeek: (Long) -> Unit,
+    loadArtwork: suspend (VariantId, Int) -> Artwork,
+    openNowPlaying: Boolean,
+    onOpenNowPlayingHandled: () -> Unit,
 ) {
     var tab by rememberSaveable { mutableStateOf(NavigationTab.HOME) }
     var page by rememberSaveable { mutableStateOf<NavigationPage?>(null) }
-    val destination = NavigationDestination(tab, page)
+    var nowPlaying by rememberSaveable { mutableStateOf<NowPlayingLayer?>(null) }
+    val destination = NavigationDestination(tab, page, nowPlaying)
     val screenState = rememberSaveableStateHolder()
     val previous = destination.back()
     fun navigate(next: NavigationDestination) {
         tab = next.tab
         page = next.page
+        nowPlaying = next.nowPlaying
     }
     val onTab: (NavigationTab) -> Unit = { navigate(destination.select(it)) }
     val currentPage = page
     BackHandler(enabled = previous != null) { previous?.let(::navigate) }
 
+    // A notification opens Now Playing, or Home when nothing is playing. Wait until the service answers.
+    LaunchedEffect(openNowPlaying, playback) {
+        if (!openNowPlaying || playback == NavigationPlaybackState.Connecting) return@LaunchedEffect
+        navigate(
+            if (playback is NavigationPlaybackState.Current) destination.openNowPlaying()
+            else NavigationDestination(NavigationTab.HOME, null),
+        )
+        onOpenNowPlayingHandled()
+    }
+    // Closing Now Playing hands focus back to the mini player that opened it.
+    val miniFocus = remember { FocusRequester() }
+    var wasNowPlaying by remember { mutableStateOf(false) }
+    LaunchedEffect(nowPlaying) {
+        if (nowPlaying == null && wasNowPlaying && playback is NavigationPlaybackState.Current) {
+            miniFocus.requestFocus()
+        }
+        wasNowPlaying = nowPlaying != null
+    }
+
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         BoxWithConstraints(Modifier.safeDrawingPadding()) {
+            if (nowPlaying == NowPlayingLayer.PLAYER) {
+                NowPlayingScreen(
+                    playback, loadArtwork,
+                    onBack = { nowPlaying = null },
+                    onQueue = { nowPlaying = NowPlayingLayer.QUEUE },
+                    onTogglePlayback, onSeek, onConfirmOutput, onRetryPlayback,
+                )
+                return@BoxWithConstraints
+            }
+            if (nowPlaying == NowPlayingLayer.QUEUE) {
+                Column(Modifier.fillMaxSize()) {
+                    Surface(color = MaterialTheme.colorScheme.surface) {
+                        FlowRow(Modifier.fillMaxWidth().padding(horizontal = AudippSpacing.small)) {
+                            TextButton(onClick = { nowPlaying = NowPlayingLayer.PLAYER }) { Text(stringResource(R.string.back)) }
+                        }
+                    }
+                    ScreenColumn {
+                        Text(
+                            stringResource(R.string.navigation_queue),
+                            modifier = Modifier.semantics { heading() },
+                            style = MaterialTheme.typography.headlineLarge,
+                        )
+                        QueueContent(playback)
+                    }
+                }
+                return@BoxWithConstraints
+            }
             val useRail = maxWidth >= 600.dp
             Column(Modifier.fillMaxSize()) {
                 Surface(color = MaterialTheme.colorScheme.surface) {
@@ -172,14 +238,7 @@ internal fun AudippApp(
                                             Text(androidVersion, style = MaterialTheme.typography.bodyMedium)
                                         }
                                         NavigationPage.APPEARANCE -> ThemeSettingsScreen(themeState, onTheme, onRetryTheme)
-                                        NavigationPage.QUEUE -> when (playback) {
-                                            NavigationPlaybackState.Idle -> Text(stringResource(R.string.navigation_queue_empty))
-                                            is NavigationPlaybackState.Current -> {
-                                                Text(stringResource(R.string.navigation_queue_current), style = MaterialTheme.typography.titleLarge)
-                                                Text(playback.title ?: stringResource(R.string.playback_unknown_title))
-                                            }
-                                            else -> Text(stringResource(R.string.navigation_queue_unavailable))
-                                        }
+                                        NavigationPage.QUEUE -> QueueContent(playback)
                                         NavigationPage.UPNP -> Unit
                                         null -> when (tab) {
                                             NavigationTab.HOME, NavigationTab.LIBRARY -> {
@@ -214,7 +273,11 @@ internal fun AudippApp(
                     }
                 }
                 if (playback is NavigationPlaybackState.Current) {
-                    NavigationPlaybackBar(playback, onTogglePlayback, onConfirmOutput)
+                    NavigationPlaybackBar(
+                        playback, loadArtwork,
+                        onExpand = { nowPlaying = NowPlayingLayer.PLAYER },
+                        onTogglePlayback, onConfirmOutput, miniFocus,
+                    )
                 }
                 if (!useRail) {
                     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
@@ -227,6 +290,18 @@ internal fun AudippApp(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun QueueContent(playback: NavigationPlaybackState) {
+    when (playback) {
+        NavigationPlaybackState.Idle -> Text(stringResource(R.string.navigation_queue_empty))
+        is NavigationPlaybackState.Current -> {
+            Text(stringResource(R.string.navigation_queue_current), style = MaterialTheme.typography.titleLarge)
+            Text(playback.title ?: stringResource(R.string.playback_unknown_title))
+        }
+        else -> Text(stringResource(R.string.navigation_queue_unavailable))
     }
 }
 
