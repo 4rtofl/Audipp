@@ -28,7 +28,18 @@ class AudioContainerTest {
 
         assertNull(read(wave(encoding = 1, storage = 24, valid = 0)).format.bitDepth)
         assertRejected(wave(encoding = 1, storage = 24, valid = 25), AudioProbeProblem.MALFORMED)
-        assertRejected(wave(encoding = 6, storage = 8, valid = 8), AudioProbeProblem.UNSUPPORTED)
+    }
+
+    @Test
+    fun nonPcmWaveRequiresStructuralValidationButHasNoPcmLayout() {
+        val alaw = wave(encoding = 6, storage = 8, valid = 8)
+        val result = read(alaw, "track.wav")
+        assertEquals(AudioContainer.WAVE, result.container)
+        assertNull(result.format.codec)
+        assertNull(result.format.bitDepth)
+        assertNull(result.pcm)
+        assertNull(result.durationMs)
+        assertRejected(alaw.copyOf(alaw.size - 1), AudioProbeProblem.MALFORMED)
     }
 
     @Test
@@ -61,15 +72,23 @@ class AudioContainerTest {
     }
 
     @Test
+    fun imageBrandsBypassMovieValidation() {
+        for (brand in listOf("avif", "avis", "heic", "heix", "mif1")) {
+            val image = box("ftyp", ascii(brand) + be32(0)) + box("meta", be32(0))
+            assertRejected(image, AudioProbeProblem.NON_MEDIA)
+        }
+        val audio = box("ftyp", ascii("M4A ") + be32(0))
+        assertRejected(audio, AudioProbeProblem.MALFORMED, "track.m4a")
+    }
+
+    @Test
     fun flacReadsStreamInfoAndSkipsImagePayload() {
         val png = ascii("image/png")
         val pictureHeader = be32(3) + be32(png.size) + png + be32(0) +
             be32(3000) + be32(3000) + be32(24) + be32(0) + be32(2_000_000)
         val imageOffset = 42 + 4 + pictureHeader.size
         val fileSize = imageOffset + 2_000_000 + 9
-        val packed = (96_000L shl 44) or (1L shl 41) or (23L shl 36) or 192_000L
-        val streamInfo = ByteArray(10) + be64(packed) + ByteArray(16)
-        val metadata = ascii("fLaC") + byteArrayOf(0, 0, 0, 34) + streamInfo +
+        val metadata = ascii("fLaC") + byteArrayOf(0, 0, 0, 34) + streamInfo(192, 192) +
             be32(0x86000000.toInt() or (pictureHeader.size + 2_000_000)) + pictureHeader
         val probed = probeAudioContainer(fileSize.toLong(), null) { offset, count ->
             assertTrue(count <= 64)
@@ -83,6 +102,15 @@ class AudioContainerTest {
         assertEquals(24, probed.format.bitDepth)
         assertEquals(2_000L, probed.durationMs)
         assertEquals(EmbeddedArtwork(imageOffset.toLong(), 2_000_000, "image/png"), probed.artwork)
+    }
+
+    @Test
+    fun flacRejectsInvalidStreamInfoBlockSizes() {
+        for ((min, max) in listOf(0 to 0, 15 to 192, 192 to 16)) {
+            val bytes = ascii("fLaC") + byteArrayOf(0x80.toByte(), 0, 0, 34) + streamInfo(min, max) +
+                byteArrayOf(0xff.toByte(), 0xf8.toByte(), 0x19, 0x18) + ByteArray(5)
+            assertRejected(bytes, AudioProbeProblem.MALFORMED, "track.flac")
+        }
     }
 
     @Test
@@ -127,17 +155,38 @@ class AudioContainerTest {
 
     @Test
     fun dffDistinguishesDstFromRawDsd() {
+        val frames = iff("DSTF", byteArrayOf(1)) + iff("DSTC", be32(0)) + iff("DSTF", byteArrayOf(2))
+        val result = read(dst(2, frames), "track.dff")
+        assertEquals("audio/x-dst", result.format.codec)
+        assertEquals(26L, result.durationMs)
+        assertNull(result.format.bitDepth)
+    }
+
+    @Test
+    fun dstRejectsFrameCountMismatchAndOutOfBoundsFrames() {
+        val frame = iff("DSTF", byteArrayOf(1))
+        assertRejected(dst(2, frame), AudioProbeProblem.MALFORMED)
+        assertRejected(dst(1, frame + frame), AudioProbeProblem.MALFORMED)
+        assertRejected(dst(1, ascii("DSTF") + be64(4) + byteArrayOf(1, 0)), AudioProbeProblem.MALFORMED)
+    }
+
+    @Test
+    fun dstLeavesDurationUnknownWhenFramesExceedTheInspectionBudget() {
+        val frames = List(520) { iff("DSTF", byteArrayOf(1)) }.reduce(ByteArray::plus)
+        val result = read(dst(520, frames, iff("ID3 ", ByteArray(10))))
+        assertEquals("audio/x-dst", result.format.codec)
+        assertNull(result.durationMs)
+        assertEquals(10L, result.id3?.let { it.limit - it.offset })
+    }
+
+    private fun dst(declared: Int, frames: ByteArray, suffix: ByteArray = byteArrayOf()): ByteArray {
         val properties = ascii("SND ") +
             iff("FS  ", be32(2_822_400)) +
             iff("CHNL", byteArrayOf(0, 2) + ascii("SLFTSRGT")) +
             iff("CMPR", ascii("DST ") + byteArrayOf(0))
-        val data = iff("FRTE", be32(150) + byteArrayOf(0, 75)) + iff("DSTF", byteArrayOf(1))
-        val bytes = iff("FRM8", ascii("DSD ") + iff("FVER", be32(0x01050000)) +
-            iff("PROP", properties) + iff("DST ", data))
-        val result = read(bytes, "track.dff")
-        assertEquals("audio/x-dst", result.format.codec)
-        assertEquals(2_000L, result.durationMs)
-        assertNull(result.format.bitDepth)
+        val data = iff("FRTE", be32(declared) + byteArrayOf(0, 75)) + frames
+        return iff("FRM8", ascii("DSD ") + iff("FVER", be32(0x01050000)) +
+            iff("PROP", properties) + iff("DST ", data) + suffix)
     }
 
     @Test
@@ -178,6 +227,11 @@ class AudioContainerTest {
     }
 
     private fun box(id: String, bytes: ByteArray) = be32(bytes.size + 8) + ascii(id) + bytes
+
+    private fun streamInfo(min: Int, max: Int): ByteArray {
+        val packed = (96_000L shl 44) or (1L shl 41) or (23L shl 36) or 192_000L
+        return be32((min shl 16) or max) + ByteArray(6) + be64(packed) + ByteArray(16)
+    }
 
     private fun iff(id: String, bytes: ByteArray) =
         ascii(id) + be64(bytes.size.toLong()) + bytes + ByteArray(bytes.size % 2)

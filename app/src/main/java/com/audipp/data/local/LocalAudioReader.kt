@@ -50,6 +50,7 @@ internal fun readSafAudio(
                 analyzeIdentified(descriptor, probe, tagged?.first ?: AudioTags(), probe.artwork ?: tagged?.second, signal)
             }
             is AudioProbeResult.Rejected -> when (probe.problem) {
+                AudioProbeProblem.NON_MEDIA -> null
                 AudioProbeProblem.UNRECOGNIZED -> (platformStream(descriptor) as? PlatformStream.Audio)
                     ?.let { readTags(descriptor, it.metadata) }
                 AudioProbeProblem.UNSUPPORTED -> throw SafAudioRejected(LibraryScanIssue.UNSUPPORTED_AUDIO)
@@ -83,11 +84,13 @@ private fun analyzeIdentified(
         AudioContainer.MP3 -> platform?.codec?.takeIf { it == "audio/mpeg" }
         AudioContainer.ADTS -> platform?.codec?.takeIf { it == "audio/mp4a-latm" }
         AudioContainer.MP4 -> platform?.codec
+        AudioContainer.WAVE -> source.codec ?: platform?.codec
         else -> source.codec
-    } ?: throw SafAudioRejected(
-        if (header.container == AudioContainer.MP4) LibraryScanIssue.PLATFORM_AUDIO_UNAVAILABLE
-        else LibraryScanIssue.CORRUPT_AUDIO,
-    )
+    } ?: throw SafAudioRejected(when (header.container) {
+        AudioContainer.MP4 -> LibraryScanIssue.PLATFORM_AUDIO_UNAVAILABLE
+        AudioContainer.WAVE -> LibraryScanIssue.UNSUPPORTED_AUDIO
+        else -> LibraryScanIssue.CORRUPT_AUDIO
+    })
     val audio = SafAudio(
         codec = codec,
         sampleRate = source.sampleRateHz ?: platform?.sampleRate,

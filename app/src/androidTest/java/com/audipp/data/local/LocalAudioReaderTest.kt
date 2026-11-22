@@ -84,6 +84,45 @@ class LocalAudioReaderTest {
     }
 
     @Test
+    fun extractsAlawWaveAndReportsUnsupportedEncodingSeparately() {
+        val samples = ByteArray(800) { 0xd5.toByte() }
+        val wave = ByteBuffer.allocate(58 + samples.size).order(ByteOrder.LITTLE_ENDIAN)
+            .put("RIFF".toByteArray()).putInt(50 + samples.size).put("WAVEfmt ".toByteArray())
+            .putInt(18).putShort(6).putShort(1).putInt(8000).putInt(8000).putShort(1).putShort(8)
+            .putShort(0).put("fact".toByteArray()).putInt(4).putInt(samples.size)
+            .put("data".toByteArray()).putInt(samples.size).put(samples).array()
+        withSlice(wave, prefix = 21) { descriptor ->
+            val audio = readSafAudio(descriptor, "track.wav", CancellationSignal())!!
+            assertEquals(AudioContainer.WAVE, audio.container)
+            assertEquals("audio/g711-alaw", audio.codec)
+            assertEquals(8_000, audio.sampleRate)
+            assertEquals(1, audio.channels)
+            assertEquals(100L, audio.durationMs)
+            assertNull(audio.bitDepth)
+            assertNull(audio.pcm)
+            assertTrue(audio.standardPath)
+        }
+        ByteBuffer.wrap(wave).order(ByteOrder.LITTLE_ENDIAN).putShort(20, 0x7fff)
+        withSlice(wave) { descriptor ->
+            val rejected = assertThrows(SafAudioRejected::class.java) {
+                readSafAudio(descriptor, "unsupported.wav", CancellationSignal())
+            }
+            assertEquals(LibraryScanIssue.UNSUPPORTED_AUDIO, rejected.issue)
+        }
+    }
+
+    @Test
+    fun skipsAvifAndMp4WithVideoTracks() {
+        val assets = InstrumentationRegistry.getInstrumentation().context.assets
+        for (name in listOf("cover.avif", "video-with-audio.mp4")) {
+            val bytes = assets.open("audio-format/$name").use { it.readBytes() }
+            withSlice(bytes) { descriptor ->
+                assertNull(name, readSafAudio(descriptor, name, CancellationSignal()))
+            }
+        }
+    }
+
+    @Test
     fun readsDsfSliceAndRejectsSpoofingEmptyAndTruncation() {
         val dsf = ByteBuffer.allocate(92 + 8192).order(ByteOrder.LITTLE_ENDIAN)
             .put("DSD ".toByteArray()).putLong(28).putLong(92 + 8192).putLong(0)
