@@ -136,6 +136,45 @@
     "limitations": "許可は試験環境の用途に限る。実機上の端末メーカー固有の権限挙動、実機レンダラーのSSDP応答、有線LAN、実音声は未検証。"
   },
   {
+    "case_id": "E07-04-upnp-discovery-labels-2026-11-22",
+    "requirement_ids": [
+      "FR-NET-02"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "adfc0b00455643f48a3fd714fc68ab6c30dd7cbc",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "同名で同一ホスト・ポートの候補を固定データで探索し、UDNの末尾12文字が一致する2件はUDN全体で区別でき、重複しない候補は短い表示になることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpControlPointTest.kt"
+    ],
+    "limitations": "ホスト単体試験で一覧のラベル文字列を確認した。Android画面での描画や実LANでの探索は今回未確認。"
+  },
+  {
+    "case_id": "E07-04-upnp-android-permission-decision-27-2026-11-22",
+    "requirement_ids": [
+      "NFR-SEC-01"
+    ],
+    "test_ids": [
+      "TEST-SEC-01"
+    ],
+    "commit": "adfc0b00455643f48a3fd714fc68ab6c30dd7cbc",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "今回の検証はホスト試験と文書確認。決定27反映後のAndroid 16の権限画面は実機・エミュレーターで未実施。",
+    "evidence": [
+      "docs/evidence/issue-75/README.md",
+      "docs/contracts/upnp-v1.md"
+    ],
+    "limitations": "E07-04-upnp-android-boundary-2026-11-20は決定27より前の版の実行記録。現行版でEPERM/EACCES時だけ権限を再要求できることは端末上で未確認。"
+  },
+  {
     "case_id": "E07-04-upnp-real-devices-2026-11-20",
     "requirement_ids": [
       "FR-NET-02",
