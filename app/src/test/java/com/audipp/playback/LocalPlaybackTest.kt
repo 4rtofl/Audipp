@@ -1,6 +1,7 @@
 package com.audipp.playback
 
 import android.media.AudioFormat
+import com.audipp.audio.pcm.NativePcmProcessor
 import com.audipp.audio.pcm.PcmFormat
 import com.audipp.audio.pcm.PcmOpenResult
 import com.audipp.audio.pcm.PcmSample
@@ -18,7 +19,17 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
+import org.robolectric.shadow.api.Shadow
+import org.robolectric.util.ReflectionHelpers
+import org.robolectric.util.ReflectionHelpers.ClassParameter
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
 class LocalPlaybackTest {
     private val variant = TrackVariant(VariantId("five-minute"), TrackId("song"),
         SourceRef(SourceId("local:song"), SourceKind.LOCAL,
@@ -191,6 +202,83 @@ class LocalPlaybackTest {
 
         assertNull(playback.start(entry, variant))
         assertEquals(1L, playback.snapshot.value.executionPlan!!.routeRevision)
+    }
+
+    @Test
+    @Config(instrumentedPackages = ["com.audipp.audio.pcm"], shadows = [PcmOpenerShadow::class])
+    fun routeRevisionClosesOpenPcmProcessorAndDiscardsLateReplacement() = runBlocking {
+        val playback = LocalPlayback(Engine(), { Availability.PLAYABLE })
+        assertNull(playback.start(entry, variant))
+        val plan = playback.snapshot.value.executionPlan!!
+        val format = PcmFormat(PcmSample.SIGNED_32, 48_000, AudioFormat.CHANNEL_OUT_STEREO)
+        suspend fun open() = playback.openPcmProcessor(
+            plan.transitionId, plan.routeRevision, format, PcmTransform.PRESERVE_INTEGER,
+        )
+        val current = (open() as PcmOpenResult.Ready).processor
+        assertTrue(current.isActive)
+
+        val gate = PcmOpenGate()
+        Shadow.extract<PcmOpenerShadow>(NativePcmProcessor.Companion).nextOpen = gate
+        val pending = async { open() }
+        val replacement = withTimeout(5_000) { gate.prepared.await() }
+        playback.onRouteRevisionChanged(plan.routeRevision + 1)
+        val closedAtRouteChange = !current.isActive
+        gate.release.complete(Unit)
+
+        assertTrue(closedAtRouteChange)
+        assertEquals(PcmOpenResult.Rejected.STALE_PLAYBACK, withTimeout(5_000) { pending.await() })
+        assertFalse(replacement.isActive)
+    }
+
+    @Test
+    @Config(instrumentedPackages = ["com.audipp.audio.pcm"], shadows = [PcmOpenerShadow::class])
+    fun routeRevisionDiscardsFirstPcmOpenWhileItIsPreparing() = runBlocking {
+        val playback = LocalPlayback(Engine(), { Availability.PLAYABLE })
+        assertNull(playback.start(entry, variant))
+        val plan = playback.snapshot.value.executionPlan!!
+        val format = PcmFormat(PcmSample.SIGNED_32, 48_000, AudioFormat.CHANNEL_OUT_STEREO)
+        val gate = PcmOpenGate()
+        Shadow.extract<PcmOpenerShadow>(NativePcmProcessor.Companion).nextOpen = gate
+        val pending = async {
+            playback.openPcmProcessor(plan.transitionId, plan.routeRevision, format, PcmTransform.PRESERVE_INTEGER)
+        }
+
+        val prepared = withTimeout(5_000) { gate.prepared.await() }
+        playback.onRouteRevisionChanged(plan.routeRevision + 1)
+        gate.release.complete(Unit)
+
+        assertEquals(PcmOpenResult.Rejected.STALE_PLAYBACK, withTimeout(5_000) { pending.await() })
+        assertFalse(prepared.isActive)
+    }
+
+    internal class PcmOpenGate {
+        val prepared = CompletableDeferred<NativePcmProcessor>()
+        val release = CompletableDeferred<Unit>()
+    }
+
+    @Implements(className = "com.audipp.audio.pcm.NativePcmProcessor\$Companion", isInAndroidSdk = false)
+    internal class PcmOpenerShadow {
+        var nextOpen: PcmOpenGate? = null
+
+        @Implementation
+        @Suppress("UNUSED_PARAMETER")
+        protected fun open(format: PcmFormat, transform: PcmTransform, bufferMs: Int): PcmOpenResult {
+            // Keep close() observable on the real processor without loading Android JNI on the host.
+            val processor = ReflectionHelpers.callConstructor(
+                NativePcmProcessor::class.java,
+                ClassParameter.from(PcmFormat::class.java, format),
+                ClassParameter.from(PcmFormat::class.java, format),
+                ClassParameter.from(Int::class.javaPrimitiveType, format.sampleRateHz * bufferMs / 1_000),
+                ClassParameter.from(Int::class.javaPrimitiveType, -format.sample.bytes),
+            )
+            val gate = nextOpen
+            nextOpen = null
+            if (gate != null) {
+                gate.prepared.complete(processor)
+                runBlocking { withTimeout(5_000) { gate.release.await() } }
+            }
+            return PcmOpenResult.Ready(processor)
+        }
     }
 
     @Test
