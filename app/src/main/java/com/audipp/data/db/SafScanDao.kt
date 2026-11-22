@@ -11,6 +11,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Upsert
 import com.audipp.data.local.LibraryScanStatus
+import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "local_scan_roots")
 internal data class LocalScanRoot(
@@ -41,6 +42,9 @@ internal interface SafScanDao {
 
     @Query("SELECT root_id FROM local_scan_roots ORDER BY root_id")
     suspend fun roots(): List<String>
+
+    @Query("SELECT * FROM local_scan_roots ORDER BY root_id")
+    fun observeRoots(): Flow<List<LocalScanRoot>>
 
     @Query("SELECT * FROM local_scan_roots WHERE root_id = :id")
     suspend fun root(id: String): LocalScanRoot?

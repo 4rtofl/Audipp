@@ -19,19 +19,15 @@ internal class PlaybackHistoryJournal(database: LibraryDatabase, gate: ProviderA
 
     init {
         val writer = CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val dao = database.playbackHistoryDao()
-                for (write in writes) {
-                    try {
-                        dao.saveHistory(write, gate)
-                    } catch (_: IOException) {
-                        // An unreadable policy cannot authorize a write.
-                    } catch (_: SQLiteException) {
-                        // Each Room transaction rolls back independently of playback.
-                    }
+            val dao = database.playbackHistoryDao()
+            for (write in writes) {
+                try {
+                    dao.saveHistory(write, gate)
+                } catch (_: IOException) {
+                    // An unreadable policy cannot authorize a write.
+                } catch (_: SQLiteException) {
+                    // Each Room transaction rolls back independently of playback.
                 }
-            } finally {
-                database.close()
             }
         }
         writer.invokeOnCompletion { writes.close() }

@@ -1,5 +1,6 @@
 package com.audipp.data.db
 
+import android.content.ContextWrapper
 import androidx.room.Room
 import com.audipp.data.preferences.providerPolicyStore
 import com.audipp.domain.model.PermissionState
@@ -9,13 +10,18 @@ import com.audipp.domain.model.ProviderUse
 import com.audipp.domain.model.SourceKind
 import com.audipp.domain.model.UsePermission
 import com.audipp.integrations.streaming.ProviderAccessGate
+import com.audipp.playback.PlaybackHistoryJournal
 import com.audipp.playback.PlaybackHistoryWrite
 import com.audipp.playback.saveHistory
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -53,6 +59,29 @@ class PlaybackHistoryDatabaseTest {
             assertEquals(final.copy(playedMs = 500, qualified = true), dao.event(event.id))
             assertEquals(listOf(updated), dao.segments(event.id))
         }
+    }
+
+    @Test
+    fun homeReceivesJournalWritesThroughTheSharedDatabaseAfterTheWriterCloses() = runBlocking {
+        val uiDatabase = ContextWrapper(context).libraryDatabase
+        val serviceDatabase = ContextWrapper(context).libraryDatabase
+        assertSame(uiDatabase, serviceDatabase)
+        uiDatabase.libraryDao().save(LibraryBatch(tracks = listOf(TrackEntity(event.trackId, title = "Test recording"))))
+
+        val journal = PlaybackHistoryJournal(serviceDatabase, ProviderAccessGate(context.providerPolicyStore))
+        val later = event.copy(id = "later-event", trackId = "removed-track", startUtcMs = 200)
+        val observed = withTimeout(10_000) {
+            uiDatabase.playbackHistoryDao().observeRecentPlays().onEach { plays ->
+                if (plays.isEmpty()) {
+                    journal.enqueue(PlaybackHistoryWrite(event, segment, null))
+                    journal.enqueue(PlaybackHistoryWrite(later, segment.copy(id = "later-segment", eventId = later.id), null))
+                    journal.enqueue(PlaybackHistoryWrite(event.copy(id = "unplayed", startUtcMs = 300), null, null))
+                    journal.close()
+                }
+            }.first { it.size == 2 }
+        }
+        assertEquals(listOf(RecentPlay(null, 200), RecentPlay("Test recording", 100)), observed)
+        assertEquals(observed, uiDatabase.playbackHistoryDao().observeRecentPlays().first())
     }
 
     @Test
