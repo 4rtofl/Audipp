@@ -3208,14 +3208,14 @@
     "case_id": "E01-05-query-api36-2026-11-22",
     "requirement_ids": ["FR-SRC-03"],
     "test_ids": ["TEST-LIB-02"],
-    "commit": "6e09949ecd1b179f7b4be578fd26af30f4ffa47e",
+    "commit": "8ff6abe99148bce0615ac272c12dbccd648facd4",
     "stage": "CURRENT",
-    "outcome": "NOT_RUN",
-    "execution": "NOT_RUN",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
     "permission": "NOT_REQUIRED",
-    "reason": "共有の emulator-5582 が起動の確認後に切断され、API 36 の計装試験とページ取得の測定を開始できなかった。",
+    "reason": "API 36 の x86_64 エミュレーターで計装試験2件が成功した。API 23 と同じ条件を確認し、インメモリ DB の合成1,000曲を Main から50曲ずつ20ページ順に取得した。取得待ち時間は合計106.7 ms、初回17.9 ms、最大17.9 msだった。",
     "evidence": ["app/src/androidTest/java/com/audipp/data/db/LibraryQueryDeviceTest.kt"],
-    "limitations": "共有エミュレーターの再起動を避け、指定シリアルの復帰を待った。"
+    "limitations": "DB への投入時間、端末上の UI 描画とスクロール、実利用 DB の性能は測定範囲外。"
   },
   {
     "case_id": "E01-05-query-scroll-and-device-2026-11-22",
