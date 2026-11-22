@@ -3645,5 +3645,99 @@
       "docs/contracts/artwork-v1.md"
     ],
     "limitations": "取得・UI・同期との接続、タグ書込みの同意は未確認。TEST-META-01 の全体の合格ではない。"
+  },
+  {
+    "case_id": "E03-05-now-playing-state-unit-2026-11-23",
+    "requirement_ids": [
+      "FR-UI-01",
+      "FR-UI-02",
+      "FR-UI-06",
+      "FR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-UI-01",
+      "TEST-AUD-01"
+    ],
+    "commit": "9c104895809aeb0cb46c9833e9701fbbc85fad08",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "JDK 17 と Robolectric の単体試験で、シーク可否（曲長不明・シーク不可・準備中・確認待ち）、停止・準備中・確認待ち（無音）の区別、出力種別の写像、placeholder 理由ごとの文言、戻る規則、セッション extras（Variant・申告形式・観測した出力種別）の内容と URI・機器名の非公開、通知の content intent を確認した。引き渡し検証の487件が成功し、Debug build と Lint（新規の警告なし）も成功した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/ui/navigation/NowPlayingPresentationTest.kt",
+      "app/src/test/java/com/audipp/ui/navigation/NavigationDestinationTest.kt",
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt",
+      "docs/contracts/now-playing-v1.md"
+    ],
+    "limitations": "写像と契約の検査で、画面の描画は含まない。"
+  },
+  {
+    "case_id": "E03-05-now-playing-ui-api23-api36-2026-11-23",
+    "requirement_ids": [
+      "FR-UI-01",
+      "FR-UI-02",
+      "FR-UI-06"
+    ],
+    "test_ids": [
+      "TEST-UI-01"
+    ],
+    "commit": "9c104895809aeb0cb46c9833e9701fbbc85fad08",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "API 23（emulator-5580）で com.audipp.ui の計装試験15件、API 36（emulator-5582）で19件が成功した（各1件は撮影専用でスキップ）。固定の再生状態で、ミニの展開が再生要求を送らないこと、戻りでのフォーカス、無効化の理由、確認待ち（320 dp・文字200%・日英）、横画面での操作への到達を確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/ui/nowplaying/NowPlayingUiTest.kt",
+      "docs/evidence/issue-85/ui-verification.md"
+    ],
+    "limitations": "固定の再生状態を使う試験で、実際の再生は API 36 の統合試験で確認した。物理端末と TalkBack は未実施。"
+  },
+  {
+    "case_id": "E03-05-now-playing-service-integration-api36-2026-11-23",
+    "requirement_ids": [
+      "FR-UI-01",
+      "FR-UI-02",
+      "FR-UI-06",
+      "FR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-UI-01",
+      "TEST-AUD-01"
+    ],
+    "commit": "9c104895809aeb0cb46c9833e9701fbbc85fad08",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "API 36 の実サービスで WAV を再生し、ミニからの一時停止・再開、一時停止中の展開で再開や再開始が起きないこと、Now Playing からのシークの反映、回転後の保持、通知の曲名と一時停止操作が表示と一致することを確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/ui/navigation/NavigationPlaybackIntegrationTest.kt"
+    ],
+    "limitations": "API 23 では MediaStore の試験音源を作れないため実施していない（API 29 以上）。実機の通知、無音の WAV のみ。音声出力と DAC は測定していない。"
+  },
+  {
+    "case_id": "E03-05-now-playing-hardware-and-talkback",
+    "requirement_ids": [
+      "FR-UI-01",
+      "FR-UI-02",
+      "FR-UI-06",
+      "FR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-UI-01",
+      "TEST-AUD-01"
+    ],
+    "commit": "9c104895809aeb0cb46c9833e9701fbbc85fad08",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "reason": "物理端末（Galaxy S25・FiiO M21・S20）、TalkBack の読み上げ、実際のアート画像を持つ音源、USB・Bluetooth の実経路の表示、音声出力・DAC の測定は行っていない。",
+    "evidence": [
+      "docs/evidence/issue-85/ui-verification.md"
+    ],
+    "limitations": "エミュレーターの結果を実機の合格として扱わない。TEST-UI-01 全体の合格ではない。"
   }
 ]
