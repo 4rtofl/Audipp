@@ -36,16 +36,19 @@ internal class OutputRouteMonitor(
     private val audioManager: AudioManager?,
     private val handler: Handler,
     private val queryRoutedDevices: (AudioTrack) -> List<AudioDeviceInfo> = ::androidRoutedDevices,
+    private val safety: OutputSafety? = null,
     private val onRouteRevisionChanged: (Long) -> Unit,
 ) : AutoCloseable {
-    constructor(context: Context, onRouteRevisionChanged: (Long) -> Unit) : this(
+    constructor(context: Context, safety: OutputSafety, onRouteRevisionChanged: (Long) -> Unit) : this(
         context.getSystemService(AudioManager::class.java), Handler(context.mainLooper),
-        onRouteRevisionChanged = onRouteRevisionChanged,
+        safety = safety, onRouteRevisionChanged = onRouteRevisionChanged,
     )
 
     private var closed = false
     private var activeOutput: Any? = null
     private var track: AudioTrack? = null
+    private var safetyGain: ((Float) -> Unit)? = null
+    private var awaitingObservation = false
     private var removeRoutingListener: (() -> Unit)? = null
     private var lastRouteId: String? = null
     private var hasObservedRoute = false
@@ -54,7 +57,13 @@ internal class OutputRouteMonitor(
 
     private val deviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = refreshInventory()
-        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) = refreshInventory()
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
+            if (!closed && safety?.onRemoved(removedDevices.map { it.id }.toSet()) == true) {
+                safetyGain = null
+                awaitingObservation = false
+            }
+            refreshInventory()
+        }
     }
 
     init {
@@ -62,17 +71,32 @@ internal class OutputRouteMonitor(
     }
 
     // Media3 invokes its output on the playback thread. The handler also owns the inventory and plan.
-    fun onPlaying(output: Any, audioTrack: AudioTrack?) {
+    fun onPlaying(
+        output: Any,
+        audioTrack: AudioTrack?,
+        isCurrent: () -> Boolean = { true },
+        setGain: ((Float) -> Unit)? = null,
+    ) {
         handler.post {
-            if (closed) return@post
+            if (closed || !isCurrent()) return@post
             if (audioTrack != null && audioTrack.playState != AudioTrack.PLAYSTATE_PLAYING) return@post
             if (activeOutput !== output) {
-                removeRoutingListener?.invoke()
+                detachOutput()
                 activeOutput = output
                 track = audioTrack
                 removeRoutingListener = audioTrack?.let { listenForRouting(it, output) }
             }
+            safetyGain = setGain
+            awaitingObservation = setGain != null
             refreshRoute()
+            if (awaitingObservation) {
+                // Some routes become queryable only after AudioTrack has started receiving data.
+                handler.postDelayed({
+                    if (activeOutput === output && awaitingObservation) {
+                        refresh(snapshot.value.connectedOutputs.value, observationTimedOut = true)
+                    }
+                }, 1_000)
+            }
         }
     }
 
@@ -81,6 +105,12 @@ internal class OutputRouteMonitor(
             if (closed || activeOutput !== output) return@post
             detachOutput()
             refreshRoute()
+        }
+    }
+
+    fun onDraining(output: Any) {
+        handler.post {
+            if (!closed && activeOutput === output) refreshRoute()
         }
     }
 
@@ -95,17 +125,21 @@ internal class OutputRouteMonitor(
     }
 
     private fun detachOutput() {
+        safetyGain?.invoke(0f)
         removeRoutingListener?.invoke()
         removeRoutingListener = null
         activeOutput = null
         track = null
+        safetyGain = null
+        awaitingObservation = false
+        safety?.onInactive()
     }
 
     private fun refreshInventory() {
         if (!closed) refresh(readInventory())
     }
 
-    private fun refresh(inventory: List<OutputCapabilities>?) {
+    private fun refresh(inventory: List<OutputCapabilities>?, observationTimedOut: Boolean = false) {
         val previous = snapshot.value
         val currentTrack = track
         val playing = currentTrack != null && currentTrack.playState == AudioTrack.PLAYSTATE_PLAYING
@@ -119,6 +153,14 @@ internal class OutputRouteMonitor(
             if (routeId != null) hasObservedRoute = true
         }
         val inventoryChanged = inventory != previous.connectedOutputs.value
+        val outputActive = playing || (activeOutput != null && currentTrack == null)
+        val gain = safetyGain
+        if (gain != null && outputActive && (routeChanged || observationTimedOut ||
+                awaitingObservation && outputs != null)
+        ) {
+            awaitingObservation = false
+            safety?.onObservation(outputs, gain)
+        }
         if (!routeChanged && !inventoryChanged && outputs == previous.observedOutputs.value) return
         val revision = previous.route.routeRevision + if (routeChanged || inventoryChanged) 1 else 0
         val connected = if (inventoryChanged) inventoryEvidence(inventory) else previous.connectedOutputs

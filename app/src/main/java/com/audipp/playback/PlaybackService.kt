@@ -5,8 +5,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.media.AudioDeviceCallback
-import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
@@ -39,8 +37,12 @@ import com.audipp.MainActivity
 import com.audipp.R
 import com.audipp.audio.route.ObservedAudioOutputProvider
 import com.audipp.audio.route.OutputRouteMonitor
+import com.audipp.audio.route.OutputSafety
+import com.audipp.audio.route.ProfileApplication
 import com.audipp.data.db.libraryDatabase
+import com.audipp.data.device.DeviceProfileStore
 import com.audipp.data.preferences.providerPolicyStore
+import com.audipp.domain.device.OutputBackend
 import com.audipp.domain.model.ErrorDomain
 import com.audipp.domain.model.ModelJson
 import com.audipp.domain.model.PlaybackError
@@ -65,12 +67,15 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @UnstableApi
 class PlaybackService : MediaLibraryService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var routeMonitor: OutputRouteMonitor
     internal val outputRoute get() = routeMonitor.snapshot
+    private lateinit var safety: OutputSafety
+    internal val outputSafety get() = safety.state
     private var mediaSession: MediaLibrarySession? = null
     private lateinit var player: ExoPlayer
     private lateinit var playback: LocalPlayback
@@ -81,11 +86,6 @@ class PlaybackService : MediaLibraryService() {
     private var unregisterModeListener: (() -> Unit)? = null
     private val clockReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) = updateEngineSnapshot(clockChanged = true)
-    }
-    private val outputCallback = object : AudioDeviceCallback() {
-        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
-            if (removedDevices.any { it.isExternalOutput() }) pauseForInterruption()
-        }
     }
 
     override fun onCreate() {
@@ -98,7 +98,8 @@ class PlaybackService : MediaLibraryService() {
                 .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
         }
-        routeMonitor = OutputRouteMonitor(this) {
+        safety = OutputSafety({ audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) }, ::pauseForInterruption)
+        routeMonitor = OutputRouteMonitor(this, safety) {
             playback.onRouteRevisionChanged(it)
             updateEngineSnapshot()
         }
@@ -124,7 +125,7 @@ class PlaybackService : MediaLibraryService() {
                         .setIsBrowsable(false).setIsPlayable(true).build()).build())
                 val mode = audioManager.mode
                 player.playWhenReady = playWhenPrepared && !mode.isPhoneCallMode() &&
-                    mode != AudioManager.MODE_IN_COMMUNICATION
+                    mode != AudioManager.MODE_IN_COMMUNICATION && safety.canPlay()
                 player.prepare()
             }
 
@@ -181,7 +182,7 @@ class PlaybackService : MediaLibraryService() {
                 if (!playWhenReady) {
                     if (playback.snapshot.value.phase == PlaybackPhase.RESOLVING) stopPlayback()
                     else pauseForInterruption()
-                } else if (playback.isCurrentTransition(currentTransition()) && !audioManager.mode.isPhoneCallMode()) {
+                } else if (canRequestPlay() && safety.canPlay()) {
                     player.play()
                 }
                 return Futures.immediateVoidFuture()
@@ -204,7 +205,6 @@ class PlaybackService : MediaLibraryService() {
                 Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
             .build()
         val handler = Handler(player.applicationLooper)
-        audioManager.registerAudioDeviceCallback(outputCallback, handler)
         // Both actions are protected broadcasts sent by Android.
         ContextCompat.registerReceiver(this, clockReceiver, IntentFilter(Intent.ACTION_TIME_CHANGED).apply {
             addAction(Intent.ACTION_TIMEZONE_CHANGED)
@@ -242,7 +242,6 @@ class PlaybackService : MediaLibraryService() {
         if (::routeMonitor.isInitialized) routeMonitor.close()
         scope.cancel()
         unregisterModeListener?.invoke()
-        if (::audioManager.isInitialized) audioManager.unregisterAudioDeviceCallback(outputCallback)
         mediaSession?.release()
         mediaSession = null
         if (::player.isInitialized) player.release()
@@ -277,6 +276,30 @@ class PlaybackService : MediaLibraryService() {
         it >= 0 && playback.isCurrentTransition(currentTransition()) &&
             player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM) && player.isCurrentMediaItemSeekable
     }
+
+    private fun canRequestPlay() =
+        playback.isCurrentTransition(currentTransition()) && !audioManager.mode.isPhoneCallMode()
+
+    internal fun confirmOutput(id: Long, restoreDigitalVolume: Boolean): Boolean =
+        safety.confirm(id, restoreDigitalVolume)
+
+    internal fun retryOutputObservation(id: Long): Boolean {
+        if (!canRequestPlay() || !safety.canRetryObservation(id)) return false
+        player.play()
+        return true
+    }
+
+    internal suspend fun applyOutputProfile(profileId: String, presetId: String): ProfileApplication =
+        withContext(Dispatchers.Main.immediate) {
+            val revision = safety.revision
+            val preset = withContext(Dispatchers.IO) {
+                DeviceProfileStore.open(this@PlaybackService).use { store ->
+                    store.profile(profileId)?.presets?.firstOrNull { it.id == presetId }
+                }
+            } ?: return@withContext ProfileApplication.UNSUPPORTED
+            // The service owns only Media3 standard output; other backends cannot be installed here.
+            safety.applyProfile(revision, preset) { it == OutputBackend.ANDROID_STANDARD }
+        }
 
     private fun pauseForInterruption() {
         if (!scope.isActive) return
@@ -374,18 +397,6 @@ class PlaybackService : MediaLibraryService() {
 }
 
 private fun Int.isPhoneCallMode() = this == AudioManager.MODE_RINGTONE || this == AudioManager.MODE_IN_CALL
-
-// Android reports device inventory here, including removals before a route is observable.
-private fun AudioDeviceInfo.isExternalOutput(): Boolean {
-    val deviceType = type
-    if (!isSink || deviceType == AudioDeviceInfo.TYPE_UNKNOWN) return false
-    return when (deviceType) {
-        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE, AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
-        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE, AudioDeviceInfo.TYPE_TELEPHONY,
-        AudioDeviceInfo.TYPE_REMOTE_SUBMIX -> false
-        else -> true
-    }
-}
 
 private fun errorResult(error: PlaybackError,
     code: Int = when (error.domain) {

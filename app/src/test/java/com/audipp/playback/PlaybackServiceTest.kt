@@ -6,11 +6,12 @@ import android.content.Intent
 import android.content.pm.ProviderInfo
 import android.content.res.AssetFileDescriptor
 import android.database.Cursor
-import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
+import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.Looper
@@ -25,7 +26,15 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
+import com.audipp.audio.route.OutputConfirmation
+import com.audipp.audio.route.OutputRouteMonitor
+import com.audipp.audio.route.OutputSafetyState
+import com.audipp.audio.route.ProfileApplication
 import com.audipp.data.db.LibraryDatabase
+import com.audipp.data.device.DeviceProfileStore
+import com.audipp.domain.device.AudioPreset
+import com.audipp.domain.device.DeviceProfile
+import com.audipp.domain.device.VolumeSettings
 import com.audipp.domain.model.*
 import com.google.common.util.concurrent.ListenableFuture
 import java.io.File
@@ -36,6 +45,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -66,6 +77,7 @@ class PlaybackServiceTest {
 
     @Before
     fun createService() {
+        setRoutedOutput(outputDevice(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, 1))
         lifecycle = Robolectric.buildService(PlaybackService::class.java).create()
         service = lifecycle.get()
     }
@@ -228,25 +240,41 @@ class PlaybackServiceTest {
     }
 
     @Test
+    @Config(shadows = [ClockedAudioTrack::class])
     fun externalOutputRemovalPausesAndReconnectionDoesNotResume() {
         val session = service.onGetSession(ownApp)!!
         val controller = connect(session.token)
-        val device = usbOutput()
-        val callback = ReflectionHelpers.getField<AudioDeviceCallback>(service, "outputCallback")
+        val device = outputDevice(AudioDeviceInfo.TYPE_WIRED_HEADPHONES, 2)
+        val audio = shadowOf(service.getSystemService(AudioManager::class.java))
+        audio.addOutputDevice(device, true)
+        setRoutedOutput(device)
         startWav(controller)
-        assertTrue(rawPlayer.playWhenReady)
+        advancePlaybackUntil { service.outputSafety.value == OutputSafetyState.Ready }
+        assertEquals(0f, ClockedAudioTrack.volumeAtPlay, 0f)
 
-        callback.onAudioDevicesRemoved(arrayOf(device))
+        audio.removeOutputDevice(device, true)
         advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
         assertFalse(rawPlayer.playWhenReady)
-        callback.onAudioDevicesAdded(arrayOf(device))
+        assertEquals(0f, ClockedAudioTrack.volume, 0f)
+        audio.addOutputDevice(device, true)
+        setRoutedOutput(outputDevice(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, 1))
+        controller.play()
         shadowOf(Looper.getMainLooper()).idle()
         assertFalse(rawPlayer.playWhenReady)
         assertEquals(QueueEntryId("entry"), PlaybackConnection.snapshot(controller.sessionExtras)?.currentEntryId)
+
+        val disconnected = service.outputSafety.value as OutputSafetyState.ConfirmationRequired
+        assertTrue(service.retryOutputObservation(disconnected.id))
+        advancePlaybackUntil {
+            (service.outputSafety.value as? OutputSafetyState.ConfirmationRequired)?.reason ==
+                OutputConfirmation.ROUTE_CHANGED
+        }
+        assertEquals(0f, ClockedAudioTrack.volumeAtPlay, 0f)
+        assertEquals(0f, ClockedAudioTrack.volume, 0f)
     }
 
     @Test
-    fun externalOutputRemovalDuringResolutionKeepsSelectionPausedAfterPrepare() {
+    fun unusedOutputRemovalDuringResolutionDoesNotCancelAutoplay() {
         val controller = connect(service.onGetSession(ownApp)!!.token)
         val opened = CountDownLatch(1)
         val proceed = CountDownLatch(1)
@@ -255,22 +283,125 @@ class PlaybackServiceTest {
             check(proceed.await(5, TimeUnit.SECONDS))
         }
         val entry = QueueEntryId("entry")
+        val audio = shadowOf(service.getSystemService(AudioManager::class.java))
+        val unused = outputDevice(AudioDeviceInfo.TYPE_USB_DEVICE, 2)
+        audio.addOutputDevice(unused, true)
         val pending = PlaybackConnection.playLocal(controller, entry, wav)
         try {
             advancePlaybackUntil { opened.count == 0L }
             assertEquals(PlaybackPhase.RESOLVING, PlaybackConnection.snapshot(controller.sessionExtras)?.phase)
-            val callback = ReflectionHelpers.getField<AudioDeviceCallback>(service, "outputCallback")
-            callback.onAudioDevicesRemoved(arrayOf(usbOutput()))
+            audio.removeOutputDevice(unused, true)
         } finally {
             proceed.countDown()
         }
         assertEquals(SessionResult.RESULT_SUCCESS, await(pending).resultCode)
-        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
+        advancePlaybackUntil { rawPlayer.playWhenReady }
         assertEquals(entry, PlaybackConnection.snapshot(controller.sessionExtras)?.currentEntryId)
-        assertFalse(controller.playWhenReady)
+    }
+
+    @Test
+    @Config(shadows = [ClockedAudioTrack::class])
+    fun actualBluetoothToWiredChangePausesEvenWhenUnusedDeviceChangesDoNot() {
+        val audio = shadowOf(service.getSystemService(AudioManager::class.java))
+        val bluetooth = outputDevice(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, 2)
+        val wired = outputDevice(AudioDeviceInfo.TYPE_WIRED_HEADPHONES, 3)
+        setRoutedOutput(bluetooth)
+        audio.addOutputDevice(bluetooth, true)
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        startWav(controller)
+        advancePlaybackUntil { service.outputSafety.value == OutputSafetyState.Ready }
+        assertEquals(0f, ClockedAudioTrack.volumeAtPlay, 0f)
+        assertTrue(ClockedAudioTrack.volume > 0f)
+
+        audio.addOutputDevice(wired, true)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(rawPlayer.playWhenReady)
+        assertTrue(ClockedAudioTrack.volume > 0f)
+
+        setRoutedOutput(wired)
+        ReflectionHelpers.getField<OutputRouteMonitor>(service, "routeMonitor").refreshRoute()
+        assertFalse(rawPlayer.playWhenReady)
+        assertEquals(0f, ClockedAudioTrack.volume, 0f)
+        val pending = service.outputSafety.value as OutputSafetyState.ConfirmationRequired
+        assertEquals(OutputConfirmation.ROUTE_CHANGED, pending.reason)
+        assertEquals(wired.id, pending.route?.portId)
+    }
+
+    @Test
+    @Config(shadows = [ClockedAudioTrack::class])
+    fun usbWithoutHardwareVolumeStaysSilentThroughPlayAndReconnection() {
+        val type = if (Build.VERSION.SDK_INT >= 26) AudioDeviceInfo.TYPE_USB_HEADSET
+            else AudioDeviceInfo.TYPE_USB_DEVICE
+        val usb = outputDevice(type, 2)
+        val audio = shadowOf(service.getSystemService(AudioManager::class.java))
+        audio.addOutputDevice(usb, true)
+        setRoutedOutput(usb)
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        startWav(controller)
+        advancePlaybackUntil { service.outputSafety.value is OutputSafetyState.ConfirmationRequired }
+        val pending = service.outputSafety.value as OutputSafetyState.ConfirmationRequired
+        assertEquals(OutputConfirmation.DAC_VOLUME_UNKNOWN, pending.reason)
+        assertEquals(0f, ClockedAudioTrack.volumeAtPlay, 0f)
+        controller.play()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(rawPlayer.playWhenReady)
+        assertEquals(0f, ClockedAudioTrack.volume, 0f)
+
+        audio.removeOutputDevice(usb, true)
+        audio.addOutputDevice(usb, true)
+        assertFalse(service.confirmOutput(pending.id, restoreDigitalVolume = false))
+        val disconnected = service.outputSafety.value as OutputSafetyState.ConfirmationRequired
+        assertTrue(service.retryOutputObservation(disconnected.id))
+        advancePlaybackUntil {
+            (service.outputSafety.value as? OutputSafetyState.ConfirmationRequired)?.reason ==
+                OutputConfirmation.DAC_VOLUME_UNKNOWN
+        }
+        assertFalse(rawPlayer.playWhenReady)
+        assertEquals(0f, ClockedAudioTrack.volume, 0f)
+    }
+
+    @Test
+    @Config(shadows = [ClockedAudioTrack::class])
+    fun unavailableRouteTimesOutSilentlyAndRequiresANewObservation() {
+        setRoutedOutput(null)
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        startWav(controller)
+        advancePlaybackUntil { service.outputSafety.value is OutputSafetyState.ConfirmationRequired }
+        val pending = service.outputSafety.value as OutputSafetyState.ConfirmationRequired
+        assertEquals(OutputConfirmation.ROUTE_UNKNOWN, pending.reason)
+        assertFalse(service.confirmOutput(pending.id, restoreDigitalVolume = false))
+        assertEquals(0f, ClockedAudioTrack.volumeAtPlay, 0f)
+        assertEquals(0f, ClockedAudioTrack.volume, 0f)
+        assertFalse(rawPlayer.playWhenReady)
+    }
+
+    @Test
+    @Config(shadows = [ClockedAudioTrack::class])
+    fun storedProfileAppliesItsDigitalCeilingWithoutRestoringItsHigherVolume() {
+        val controller = connect(service.onGetSession(ownApp)!!.token)
+        val preset = AudioPreset("Preset", initialVolume = VolumeSettings(digitalGainDb = 0.0),
+            safeVolume = VolumeSettings(digitalGainDb = -12.0))
+        val profile = DeviceProfile("Profile", 0, presets = listOf(preset))
+        runBlocking(Dispatchers.IO) {
+            DeviceProfileStore.open(service).use { it.saveProfile(profile) }
+        }
+        startWav(controller)
+        advancePlaybackUntil { service.outputSafety.value == OutputSafetyState.Ready }
+
+        val apply = CoroutineScope(Dispatchers.Main.immediate).async {
+            service.applyOutputProfile(profile.id, preset.id)
+        }
+        advancePlaybackUntil { apply.isCompleted }
+        assertEquals(ProfileApplication.CONFIRMATION_REQUIRED, runBlocking { apply.await() })
+        assertFalse(rawPlayer.playWhenReady)
+        assertEquals(0f, ClockedAudioTrack.volume, 0f)
+        val pending = service.outputSafety.value as OutputSafetyState.ConfirmationRequired
+        assertEquals(preset.initialVolume, pending.restore)
+        assertTrue(service.confirmOutput(pending.id, restoreDigitalVolume = false))
         assertFalse(rawPlayer.playWhenReady)
         controller.play()
-        advancePlaybackUntil { rawPlayer.playWhenReady }
+        advancePlaybackUntil { ClockedAudioTrack.volume > 0f }
+        assertEquals(0.25119f, ClockedAudioTrack.volume, 0.00001f)
     }
 
     @Test
@@ -581,10 +712,21 @@ class PlaybackServiceTest {
         assertEquals(SessionResult.RESULT_SUCCESS, result.resultCode)
     }
 
-    private fun usbOutput(): AudioDeviceInfo {
-        val device = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_USB_DEVICE).build()
+    private fun setRoutedOutput(device: AudioDeviceInfo?) {
+        ShadowAudioTrack.setRoutedDevice(device)
+        ClockedAudioTrack.routedOutput = device
+    }
+
+    private fun outputDevice(type: Int, id: Int): AudioDeviceInfo {
+        val device = AudioDeviceInfoBuilder.newBuilder().setType(type).build()
         val port = ReflectionHelpers.getField<Any>(device, "mPort")
+        ReflectionHelpers.setField(ReflectionHelpers.getField<Any>(port, "mHandle"), "mId", id)
         ReflectionHelpers.setField(port, "mRole", 2) // AudioPort.ROLE_SINK
+        ReflectionHelpers.setField(port, "mName", "Fixture")
+        ReflectionHelpers.setField(port, "mSamplingRates", intArrayOf(44_100))
+        ReflectionHelpers.setField(port, "mChannelMasks", intArrayOf(AudioFormat.CHANNEL_OUT_MONO))
+        ReflectionHelpers.setField(port, "mChannelIndexMasks", intArrayOf())
+        ReflectionHelpers.setField(port, "mFormats", intArrayOf(AudioFormat.ENCODING_PCM_16BIT))
         assertTrue(device.isSink)
         return device
     }
@@ -625,14 +767,46 @@ class PlaybackServiceTest {
     // The default shadow treats all written PCM as heard immediately, even for a four-second WAV.
     @Implements(AudioTrack::class)
     class ClockedAudioTrack : ShadowAudioTrack() {
+        companion object {
+            @Volatile var routedOutput: AudioDeviceInfo? = null
+            @Volatile var volumeAtPlay = 1f
+            @Volatile var volume = 1f
+        }
+
         @RealObject private lateinit var track: AudioTrack
         private var position = 0L
         private var sampledAt = 0L
 
         @Implementation
         override fun play() {
+            volumeAtPlay = volume
             sampledAt = SystemClock.elapsedRealtime()
             super.play()
+        }
+
+        @Implementation
+        fun setVolume(gain: Float): Int {
+            volume = gain
+            return AudioTrack.SUCCESS
+        }
+
+        @Implementation
+        override fun getRoutedDevice(): AudioDeviceInfo? = routedOutput
+
+        @Implementation(minSdk = 23, maxSdk = 28)
+        override fun native_write_native_bytes(
+            data: Any, offset: Int, size: Int, format: Int, blocking: Boolean,
+        ): Int = super.native_write_native_bytes(data, offset, writableBytes(size), format, blocking)
+
+        @Implementation(minSdk = 29)
+        override fun native_write_native_bytes(
+            data: ByteBuffer, offset: Int, size: Int, format: Int, blocking: Boolean,
+        ): Int = super.native_write_native_bytes(data, offset, writableBytes(size), format, blocking)
+
+        private fun writableBytes(size: Int): Int {
+            val queued = super.getPlaybackHeadPosition() - getPlaybackHeadPosition()
+            val capacity = track.sampleRate / 4
+            return minOf(size, (capacity - queued).coerceAtLeast(0) * Short.SIZE_BYTES)
         }
 
         @Implementation

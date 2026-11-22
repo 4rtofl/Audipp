@@ -8,7 +8,7 @@
 
 `PlaybackConnection.playLocal(controller, entryId, variant)`へ、選択版と重複曲を区別するエントリーIDを渡す。`SourceResolver`にLOCAL/DEVICEの具体アダプターだけを登録する。指定された版を別版へ置き換えず、現在のOS権限で`content://`文書を開閉して検査する。許可の取得・永続grantの保存は選択UI/ライブラリ側の責務で、URIの文字列だけでは許可とみなさない。file/HTTP、userinfo/fragment付きURI、不明なソース種別、利用不可の版は再生しない。実再生もContentDataSourceに限定し、ネットワークfallbackを設けない。
 
-音声フォーカスの要求とダッキングをExoPlayerに委ね、`becoming noisy`を有効にする。通常の一時フォーカス喪失からの自動再開はAPI31以降で使う。着信・通話や外部出力の取り外しで解除した再生要求は復元しない（Issue #37の節を参照）。video/textトラックを無効にし、Android標準の音声経路を使う。音量変更、DSP、Direct/USB出力、Bit-perfect検証は行わない。未知のduration/positionはnull、seek可否はPlayerの観測値で更新する。PCM取得能力は申告しない。
+音声フォーカスの要求とダッキングをExoPlayerに委ね、`becoming noisy`を有効にする。通常の一時フォーカス喪失からの自動再開はAPI31以降で使う。着信・通話や外部出力の取り外しで解除した再生要求は復元しない（Issue #37の節を参照）。video/textトラックを無効にし、Android標準の音声経路を使う。標準出力の安全音量は #70 の契約に従う。DSP、Direct/USB出力、Bit-perfect検証は各機能の実装で扱う。未知のduration/positionはnull、seek可否はPlayerの観測値で更新する。PCM取得能力は申告しない。
 
 ## 結果・取消・失敗
 
@@ -59,4 +59,4 @@ API23〜30では音声モードの変更を監視できず、着信に伴う一�
 
 `becoming noisy`ではMedia3が再生要求を解除する。着信・通話中は自動開始と明示的な再生操作を止める。`MODE_IN_COMMUNICATION`中は準備後の自動開始を止め、明示的な再生操作はMedia3に渡す。
 
-外部出力の取り外し通知で標準再生を一時停止する。Androidの接続機器一覧を使うため、未使用の外部出力を外した場合にも一時停止することがある。音源の解決中に出力の取り外しや着信・通話を検知した場合、選曲を保持して自動再生をせずに準備を続ける。着信・通話の終了後や出力の再接続後は、明示的な再生操作を待つ。確認したケースと検証コミットは[試験結果](../traceability/results.json)に記録する。
+使用中の出力の取り外し、実経路の変更や観測喪失では、#70 の安全音量契約に従い一時停止する。音源の解決中に該当する出力の取り外しや着信・通話を検知した場合、選曲を保持して自動再生をせずに準備を続ける。着信・通話の終了後や出力の再接続後は、明示的な再生操作を待つ。[経路変更と安全音量](output-route-v1.md#経路変更と安全音量issue-70) · [試験結果](../traceability/results.json)
