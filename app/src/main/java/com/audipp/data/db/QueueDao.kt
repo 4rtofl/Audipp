@@ -63,7 +63,12 @@ abstract class QueueDao {
         if (queue(checkpoint.queueId)?.revision != checkpoint.queueRevision) return false
         val entryId = checkpoint.entryId
         if (entryId != null && !containsEntry(checkpoint.queueId, entryId)) return false
-        upsertCheckpoint(checkpoint)
+        // An idle snapshot can omit the current entry after a stop or while switching items.
+        val previous = if (entryId == null) checkpoint()?.takeIf { it.queueId == checkpoint.queueId } else null
+        upsertCheckpoint(
+            if (previous == null) checkpoint
+            else checkpoint.copy(entryId = previous.entryId, positionMs = previous.positionMs),
+        )
         return true
     }
 

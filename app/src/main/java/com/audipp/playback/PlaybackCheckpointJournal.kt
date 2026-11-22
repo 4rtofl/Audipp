@@ -12,9 +12,11 @@ import com.audipp.domain.model.PlaybackPhase
 import com.audipp.domain.model.PlaybackSnapshot
 import com.audipp.domain.model.QueueEntry
 import com.audipp.playback.source.ResolutionContext
+import com.audipp.playback.source.ResolutionFailure
 import com.audipp.playback.source.ResolutionRequest
 import com.audipp.playback.source.SourceResolution
 import com.audipp.playback.source.SourceResolver
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -33,6 +35,7 @@ internal data class PlaybackCheckpointSample(
 internal enum class CheckpointWriteOutcome { SAVED, STALE_QUEUE, STORAGE_ERROR }
 
 internal data class CheckpointWriteResult(
+    // The submitted sample identifies the write even when the DAO retains an earlier resume point.
     val checkpoint: PlaybackCheckpointEntity,
     val outcome: CheckpointWriteOutcome,
 )
@@ -43,6 +46,7 @@ internal class PlaybackCheckpointJournal(
     private val queues: QueueDao,
     currentPlayback: () -> PlaybackCheckpointSample?,
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
+    writerDispatcher: CoroutineDispatcher = Dispatchers.IO,
     waitForSample: suspend (Long) -> Unit = { delay(it) },
 ) {
     // A slow write must not accumulate obsolete positions or delay playback commands.
@@ -51,7 +55,7 @@ internal class PlaybackCheckpointJournal(
     val lastWrite = mutableLastWrite.asStateFlow()
 
     init {
-        val writer = scope.launch(Dispatchers.IO) {
+        val writer = scope.launch(writerDispatcher) {
             for (checkpoint in writes) {
                 val outcome = try {
                     if (queues.saveCheckpoint(checkpoint)) CheckpointWriteOutcome.SAVED
@@ -74,7 +78,7 @@ internal class PlaybackCheckpointJournal(
         }
     }
 
-    /** For a committed queue/item change, completed seek, pause, or stop. */
+    /** On confirmed stop, use the sample captured just before stopping. */
     fun saveConfirmed(sample: PlaybackCheckpointSample) {
         writes.trySend(
             PlaybackCheckpointEntity(
@@ -89,13 +93,14 @@ internal data class RestoredPlaybackCheckpoint(
     val queue: StoredQueue,
     val entry: QueueEntry? = null,
     val positionMs: Long? = null,
+    val failure: ResolutionFailure? = null,
 )
 
 /** Read the latest commit and revalidate its selected variant without starting playback. */
 internal suspend fun restorePlaybackCheckpoint(
     database: LibraryDatabase,
     resolver: SourceResolver,
-    context: ResolutionContext,
+    currentContext: () -> ResolutionContext,
 ): RestoredPlaybackCheckpoint? {
     val queues = database.queueDao()
     val (checkpoint, restored, variant) = database.withTransaction {
@@ -107,18 +112,29 @@ internal suspend fun restorePlaybackCheckpoint(
         Triple(checkpoint, RestoredPlaybackCheckpoint(queue, entry), variant)
     } ?: return null
 
-    if (variant == null) return restored.copy(entry = null)
-    val result = resolver.resolve(ResolutionRequest(variant, context))
+    if (variant == null) return restored.copy(
+        entry = null,
+        failure = if (checkpoint.entryId != null) ResolutionFailure.SOURCE_MISSING else null,
+    )
+    var result = resolver.resolve(ResolutionRequest(variant, currentContext()))
+    when ((result as? SourceResolution.Unavailable)?.reason) {
+        ResolutionFailure.STALE_ROUTE, ResolutionFailure.STALE_TRANSITION ->
+            result = resolver.resolve(ResolutionRequest(variant, currentContext()))
+        else -> Unit
+    }
     // Resolution may suspend while the active queue or checkpoint is replaced.
     if (queues.checkpoint() != checkpoint) return null
-    if (result !is SourceResolution.Resolved) return restored.copy(entry = null)
-    val position = checkpoint.positionMs
-    val duration = variant.durationMs
-    return restored.copy(
-        positionMs = if (position != null && duration != null && result.plan.canObserveCheckpointPosition()) {
-            position.coerceAtMost(duration)
-        } else null,
-    )
+    val position = variant.durationMs?.let { checkpoint.positionMs?.coerceAtMost(it) }
+    return when (val resolution = result) {
+        is SourceResolution.Resolved ->
+            restored.copy(positionMs = position.takeIf { resolution.plan.canObserveCheckpointPosition() })
+        is SourceResolution.Unavailable -> when (resolution.reason) {
+            ResolutionFailure.SOURCE_MISSING, ResolutionFailure.PLAYBACK_UNSUPPORTED,
+            ResolutionFailure.POLICY_BLOCKED, ResolutionFailure.INVALID_DESCRIPTOR ->
+                restored.copy(entry = null, failure = resolution.reason)
+            else -> restored.copy(positionMs = position, failure = resolution.reason)
+        }
+    }
 }
 
 private fun PlaybackCheckpointSample.observedPositionMs(): Long? =

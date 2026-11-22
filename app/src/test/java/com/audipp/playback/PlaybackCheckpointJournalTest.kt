@@ -8,6 +8,8 @@ import com.audipp.data.db.SourceEntity
 import com.audipp.data.db.TrackEntity
 import com.audipp.data.db.VariantEntity
 import com.audipp.domain.model.Availability
+import com.audipp.domain.model.ExecutionPlan
+import com.audipp.domain.model.PermissionState
 import com.audipp.domain.model.PlaybackCapabilities
 import com.audipp.domain.model.PlaybackPhase
 import com.audipp.domain.model.PlaybackSnapshot
@@ -17,15 +19,24 @@ import com.audipp.domain.model.SourceKind
 import com.audipp.domain.model.TransitionId
 import com.audipp.domain.model.VariantId
 import com.audipp.playback.source.AdapterKey
+import com.audipp.playback.source.AdapterResolution
 import com.audipp.playback.source.LocalDocumentSourceAdapter
 import com.audipp.playback.source.PlaybackTarget
+import com.audipp.playback.source.PlaybackPermissionChecker
 import com.audipp.playback.source.ResolutionContext
+import com.audipp.playback.source.ResolutionFailure
+import com.audipp.playback.source.ResolutionRequest
+import com.audipp.playback.source.SourceAdapter
+import com.audipp.playback.source.SourceDescriptor
+import com.audipp.playback.source.SourceResolution
 import com.audipp.playback.source.SourceResolver
 import com.audipp.playback.source.TargetKind
+import java.util.concurrent.Executors
 import kotlin.time.Duration.Companion.nanoseconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.filterNotNull
@@ -57,14 +68,26 @@ class PlaybackCheckpointJournalTest {
     private val route = ResolutionContext(PlaybackTarget("local", TargetKind.DEVICE), 0, TransitionId("restore"))
     private var availability = Availability.PLAYABLE
     private var currentRoute = route
+    private var canReadPosition = true
+    private var onResolve: suspend () -> Unit = {}
     private val resolver = SourceResolver(
         mapOf(
-            AdapterKey(SourceKind.LOCAL, TargetKind.DEVICE) to
-                LocalDocumentSourceAdapter(PlaybackCapabilities(canPlay = true, canReadPosition = true)) {
-                    availability
-                },
+            AdapterKey(SourceKind.LOCAL, TargetKind.DEVICE) to SourceAdapter { request ->
+                onResolve()
+                LocalDocumentSourceAdapter(
+                    PlaybackCapabilities(canPlay = true, canReadPosition = canReadPosition),
+                ) { availability }.resolve(request)
+            },
+            AdapterKey(SourceKind.PROVIDER, TargetKind.EXTERNAL_APP, "provider") to SourceAdapter { request ->
+                AdapterResolution.Available(
+                    request.variant.variantId, request.variant.source.sourceId,
+                    SourceDescriptor.Handoff("https://example.invalid/item"),
+                    PlaybackCapabilities(canPlay = true, canReadPosition = true),
+                )
+            },
         ),
         { currentRoute },
+        PlaybackPermissionChecker { _, _ -> PermissionState.ALLOWED },
     )
 
     @Before
@@ -93,8 +116,7 @@ class PlaybackCheckpointJournalTest {
             assertEquals(CheckpointWriteOutcome.SAVED, write.outcome)
             assertEquals(5_000L, write.checkpoint.positionMs)
             assertEquals(5_000L, intervals.receive())
-            sample = frame(7_000)
-            println("checkpoint interval=5000ms, host tick-to-commit observation=${delayMs}ms, simulated rewind=2000ms")
+            println("checkpoint interval=5000ms, host tick-to-commit observation=${delayMs}ms")
         }
 
         db.close()
@@ -115,9 +137,14 @@ class PlaybackCheckpointJournalTest {
             journal.saveConfirmed(frame(30_500, PlaybackPhase.PAUSED))
             assertEquals(30_500L, awaitWrite(now).checkpoint.positionMs)
             now++
-            journal.saveConfirmed(frame(null, PlaybackPhase.IDLE, entryId = null))
-            assertNull(awaitWrite(now).checkpoint.entryId)
-            assertNull(restore()?.entry)
+            journal.saveConfirmed(frame(30_800, PlaybackPhase.PAUSED))
+            assertEquals(30_800L, awaitWrite(now).checkpoint.positionMs)
+            now++
+            journal.saveConfirmed(PlaybackCheckpointSample(queueId, 1, PlaybackSnapshot(0, PlaybackPhase.IDLE)))
+            assertEquals(CheckpointWriteOutcome.SAVED, awaitWrite(now).outcome)
+            val restored = requireNotNull(restore())
+            assertEquals(entry, restored.entry)
+            assertEquals(30_800L, restored.positionMs)
         }
     }
 
@@ -187,20 +214,144 @@ class PlaybackCheckpointJournalTest {
     }
 
     @Test
-    fun restoreClampsToTheSelectedVariantAndRevalidatesSourcePermissionsAndRoute() = runBlocking {
+    fun restoreClampsToTheSelectedVariantAndClassifiesResolutionFailures() = runBlocking {
         seed()
         withJournal {
             journal.saveConfirmed(frame(70_000))
             awaitWrite(now)
             assertEquals(60_000L, restore()?.positionMs)
             availability = Availability.AUTH_REQUIRED
-            assertQueueOnly()
+            val retryable = requireNotNull(restore())
+            assertEquals(entry, retryable.entry)
+            assertEquals(60_000L, retryable.positionMs)
+            assertEquals(ResolutionFailure.AUTH_REQUIRED, retryable.failure)
             availability = Availability.PLAYABLE
-            currentRoute = route.copy(routeRevision = 1)
-            assertQueueOnly()
+            currentRoute = route.copy(target = PlaybackTarget("external", TargetKind.EXTERNAL_APP))
+            assertQueueOnly(ResolutionFailure.PLAYBACK_UNSUPPORTED)
             currentRoute = route
             db.libraryDao().markSourceMissing("source", 4)
-            assertQueueOnly()
+            assertQueueOnly(ResolutionFailure.SOURCE_MISSING)
+        }
+    }
+
+    @Test
+    fun restoreRetriesStaleRouteOnceAndReturnsTheSecondFailure() = runBlocking {
+        seed()
+        withJournal {
+            journal.saveConfirmed(frame(12_000))
+            awaitWrite(now)
+            var attempts = 0
+            onResolve = {
+                attempts++
+                if (attempts == 1) currentRoute = route.copy(routeRevision = 1)
+            }
+            assertEquals(12_000L, restore()?.positionMs)
+            assertEquals(2, attempts)
+
+            attempts = 0
+            onResolve = {
+                attempts++
+                currentRoute = currentRoute.copy(transitionId = TransitionId("transition-$attempts"))
+            }
+            val restored = requireNotNull(restore())
+            assertEquals(2, attempts)
+            assertEquals(entry, restored.entry)
+            assertEquals(12_000L, restored.positionMs)
+            assertEquals(ResolutionFailure.STALE_TRANSITION, restored.failure)
+        }
+    }
+
+    @Test
+    fun saveDoesNotStorePositionForHandoffOrWithoutPositionCapability() = runBlocking {
+        seed()
+        canReadPosition = false
+        withJournal {
+            journal.saveConfirmed(frame(12_000, plan = resolvePlan()))
+            assertEquals(CheckpointWriteOutcome.SAVED, awaitWrite(now).outcome)
+            val checkpoint = requireNotNull(queues.checkpoint())
+            assertEquals(entry.entryId.value, checkpoint.entryId)
+            assertNull(checkpoint.positionMs)
+        }
+
+        seedProvider()
+        withJournal {
+            journal.saveConfirmed(frame(12_000, plan = resolvePlan()))
+            assertEquals(CheckpointWriteOutcome.SAVED, awaitWrite(now).outcome)
+            val checkpoint = requireNotNull(queues.checkpoint())
+            assertEquals(entry.entryId.value, checkpoint.entryId)
+            assertNull(checkpoint.positionMs)
+        }
+    }
+
+    @Test
+    fun restoreDoesNotReturnPositionForHandoffOrWithoutPositionCapability() = runBlocking {
+        seed()
+        withJournal {
+            journal.saveConfirmed(frame(12_000))
+            awaitWrite(now)
+            canReadPosition = false
+            assertRestoredWithoutPosition()
+
+            seedProvider()
+            assertRestoredWithoutPosition()
+        }
+    }
+
+    @Test
+    fun confirmedSavesReturnWhileWriterIsBlockedAndOnlyLatestCommits() = runBlocking {
+        seed()
+        withContext(Dispatchers.IO) {
+            db.openHelper.writableDatabase.execSQL(
+                "CREATE TABLE checkpoint_writes (position_ms INTEGER)",
+            )
+            db.openHelper.writableDatabase.execSQL(
+                "CREATE TRIGGER record_checkpoint AFTER INSERT ON playback_checkpoint " +
+                    "BEGIN INSERT INTO checkpoint_writes VALUES (NEW.position_ms); END",
+            )
+            db.openHelper.writableDatabase.execSQL(
+                "CREATE TRIGGER record_checkpoint_update AFTER UPDATE ON playback_checkpoint " +
+                    "BEGIN INSERT INTO checkpoint_writes VALUES (NEW.position_ms); END",
+            )
+        }
+        Executors.newSingleThreadExecutor().asCoroutineDispatcher().use { dispatcher ->
+            withTimeout(5_000) {
+                val writerScope = CoroutineScope(coroutineContext)
+                val journal = withContext(dispatcher) {
+                    // The writer cannot start until this block yields the only dispatcher thread.
+                    PlaybackCheckpointJournal(writerScope, queues, { null }, writerDispatcher = dispatcher).also {
+                        it.saveConfirmed(frame(10_000))
+                        it.saveConfirmed(frame(20_000))
+                        it.saveConfirmed(frame(30_000))
+                    }
+                }
+                val result = journal.lastWrite.filterNotNull().first()
+                writerScope.coroutineContext[Job]?.children?.forEach { it.cancelAndJoin() }
+                assertEquals(CheckpointWriteOutcome.SAVED, result.outcome)
+                withContext(Dispatchers.IO) {
+                    db.openHelper.writableDatabase.query("SELECT position_ms FROM checkpoint_writes").use {
+                        assertEquals(1, it.count)
+                        it.moveToFirst()
+                        assertEquals(30_000L, it.getLong(0))
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun restoreDiscardsAResultWhenCheckpointChangesDuringResolution() = runBlocking {
+        seed()
+        withJournal {
+            journal.saveConfirmed(frame(12_000))
+            awaitWrite(now)
+            onResolve = {
+                now++
+                journal.saveConfirmed(frame(20_000))
+                awaitWrite(now)
+            }
+            assertNull(restore())
+            onResolve = {}
+            assertEquals(20_000L, restore()?.positionMs)
         }
     }
 
@@ -215,14 +366,38 @@ class PlaybackCheckpointJournalTest {
         }
     }
 
-    private suspend fun assertQueueOnly() {
+    private suspend fun assertQueueOnly(failure: ResolutionFailure) {
         val restored = requireNotNull(restore())
         assertEquals(listOf(entry), restored.queue.entries)
         assertNull(restored.entry)
         assertNull(restored.positionMs)
+        assertEquals(failure, restored.failure)
     }
 
-    private suspend fun restore() = restorePlaybackCheckpoint(db, resolver, route)
+    private suspend fun assertRestoredWithoutPosition() {
+        val restored = requireNotNull(restore())
+        assertEquals(entry, restored.entry)
+        assertNull(restored.positionMs)
+        assertNull(restored.failure)
+    }
+
+    private suspend fun restore() = restorePlaybackCheckpoint(db, resolver) { currentRoute }
+
+    private suspend fun resolvePlan(): ExecutionPlan {
+        val variant = requireNotNull(db.libraryDao().trackVariant(entry.variantId))
+        return (resolver.resolve(ResolutionRequest(variant, currentRoute)) as SourceResolution.Resolved).plan
+    }
+
+    private suspend fun seedProvider() {
+        db.libraryDao().save(
+            LibraryBatch(
+                sources = listOf(SourceEntity("provider-source", SourceKind.PROVIDER, providerKey = "provider",
+                    providerItemId = "item", availability = Availability.PLAYABLE, updatedAt = 2)),
+                variants = listOf(VariantEntity(entry.variantId.value, "track", "provider-source", durationMs = 60_000)),
+            ),
+        )
+        currentRoute = route.copy(target = PlaybackTarget("external", TargetKind.EXTERNAL_APP))
+    }
 
     private suspend fun seed(durationMs: Long? = 60_000) {
         db.libraryDao().save(
@@ -242,8 +417,11 @@ class PlaybackCheckpointJournalTest {
     private fun frame(
         position: Long?,
         phase: PlaybackPhase = PlaybackPhase.PLAYING,
-        entryId: QueueEntryId? = entry.entryId,
-    ) = PlaybackCheckpointSample(queueId, 1, PlaybackSnapshot(1, phase, entryId, positionMs = position))
+        plan: ExecutionPlan? = null,
+    ) = PlaybackCheckpointSample(
+        queueId, 1, PlaybackSnapshot(1, phase, entry.entryId, positionMs = position,
+            effectiveSource = plan?.source, executionPlan = plan),
+    )
 
     private suspend fun CoroutineScope.withJournal(test: suspend JournalFixture.() -> Unit) {
         val job = Job()
