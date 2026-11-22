@@ -2405,6 +2405,129 @@
     "limitations": "AndroidTest の対象3ケースを一時的に Robolectric API 35（ネイティブ SQLite）で実行した。実際の DocumentsProvider、専用エミュレーターおよび実機での実行結果は未確認。"
   },
   {
+    "case_id": "E02-06-host-playback-checkpoint",
+    "requirement_ids": [
+      "FR-PLY-04",
+      "NFR-REL-03"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "5e6d605fe5b5a454caf45f629d4696460199e219",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "ホスト試験7件で定期・確定時保存、終了時保存なしのDB再オープン、競合・書込み失敗、消失・失効時の復元を確認した。5秒間隔、疑似停止時の2秒の巻戻り、ホスト1試行での保存観測まで11msを記録した。全ユニットテスト199件、前提PR #178を重ねた対象テスト45件が成功した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackCheckpointJournalTest.kt",
+      "docs/contracts/playback-checkpoint.md"
+    ],
+    "limitations": "DB再オープンとホストのタイミング試験に限定。実Serviceへの接続、端末のプロセス強制終了と端末での保存遅延は#83の検証範囲。"
+  },
+  {
+    "case_id": "E02-06-host-playback-checkpoint-review-fix",
+    "requirement_ids": [
+      "FR-PLY-04",
+      "NFR-REL-03"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "5e47c336d46e323e367a02998eac2ec5395aacff",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35のチェックポイント試験12件を含むホスト対象54件が成功した。明示停止後の再開点、DB再オープン、解決失敗の分類と再解決、位置未観測、書き込みの間引き、解決中のチェックポイント更新を確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackCheckpointJournalTest.kt",
+      "docs/contracts/playback-checkpoint.md"
+    ],
+    "limitations": "従来記録の巻戻り2,000 msはfixtureの位置差の例。11 msはホスト1試行でタイマーを進めてから保存結果を観測するまでの時間。端末での保存遅延、I/O負荷時・保存失敗時の巻戻り幅は #83 で測定する。"
+  },
+  {
+    "case_id": "E02-06-process-kill-restore",
+    "requirement_ids": [
+      "FR-PLY-04",
+      "NFR-REL-03"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "5e47c336d46e323e367a02998eac2ec5395aacff",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "終了コールバックなしでAndroidプロセスを強制終了し、最後の整合する項目と位置を復元する試験を未実施。",
+    "evidence": [
+      "docs/contracts/playback-checkpoint.md"
+    ],
+    "limitations": "定期保存・シーク後のkillと、一時停止の確定保存がSTALE_QUEUEで拒否されたときの再送は実Service接続後に #83 の受入条件として確認する。"
+  },
+  {
+    "case_id": "E02-06-instrumented-api23-36",
+    "requirement_ids": [
+      "FR-PLY-04",
+      "NFR-REL-03"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "5e47c336d46e323e367a02998eac2ec5395aacff",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23・36のinstrumented試験を未実施。",
+    "evidence": [
+      "docs/contracts/playback-checkpoint.md"
+    ],
+    "limitations": "両APIでのDB・Serviceの寿命、再生成、権限拒否に関わる復元は #83 の受入条件として確認する。"
+  },
+  {
+    "case_id": "E02-06-hardware-checkpoint",
+    "requirement_ids": [
+      "FR-PLY-04",
+      "NFR-REL-03"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "5e47c336d46e323e367a02998eac2ec5395aacff",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "Galaxy S25・FiiO M21および追加対象のS20での実機試験を未実施。",
+    "evidence": [
+      "docs/contracts/playback-checkpoint.md"
+    ],
+    "limitations": "実機の保存遅延と、I/O負荷時・保存失敗時の巻戻り幅は #83 の受入条件として測定する。"
+  },
+  {
+    "case_id": "E02-06-host-stop-resume-after-queue-revision",
+    "requirement_ids": [
+      "FR-PLY-04",
+      "NFR-REL-03"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "5100bbc88cd88283989d785fb7957391935d3005",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35のホスト試験で、停止サンプルが書き込み待ちの間に同じキューのリピート設定を変更した。停止直前の項目と位置30秒を最新revisionで送ると、変更前に保存済みの10秒から更新され、30秒を復元した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackCheckpointJournalTest.kt",
+      "docs/contracts/playback-checkpoint.md"
+    ],
+    "limitations": "呼び出し側が渡すサンプルとRoomへの書き込みをホスト上で検証した。停止直後のキュー変更を実Serviceで行う結合試験は #83 の受入条件。"
+  },
+  {
     "case_id": "E04-01-jni-x86_64-api23",
     "requirement_ids": [
       "FR-AUD-01",
