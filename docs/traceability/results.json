@@ -1649,5 +1649,26 @@
       "docs/contracts/playback-checkpoint.md"
     ],
     "limitations": "実機の保存遅延と、I/O負荷時・保存失敗時の巻戻り幅は #83 の受入条件として測定する。"
+  },
+  {
+    "case_id": "E02-06-host-stop-resume-after-queue-revision",
+    "requirement_ids": [
+      "FR-PLY-04",
+      "NFR-REL-03"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "5100bbc88cd88283989d785fb7957391935d3005",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 35のホスト試験で、停止サンプルが書き込み待ちの間に同じキューのリピート設定を変更した。停止直前の項目と位置30秒を最新revisionで送ると、変更前に保存済みの10秒から更新され、30秒を復元した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackCheckpointJournalTest.kt",
+      "docs/contracts/playback-checkpoint.md"
+    ],
+    "limitations": "呼び出し側が渡すサンプルとRoomへの書き込みをホスト上で検証した。停止直後のキュー変更を実Serviceで行う結合試験は #83 の受入条件。"
   }
 ]
