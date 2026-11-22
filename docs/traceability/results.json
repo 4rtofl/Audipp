@@ -2945,5 +2945,68 @@
       "docs/evidence/issue-28/README.md"
     ],
     "limitations": "実サービスの利用や外部送信の用途別許可は確認していない。再生履歴の永続化は現行の Android アプリに実装されていない。"
+  },
+  {
+    "case_id": "E09-01-listening-history-2026-11-22",
+    "requirement_ids": [
+      "FR-USE-01"
+    ],
+    "test_ids": [
+      "TEST-HIST-01"
+    ],
+    "commit": "d6260e058182ed04c98fbc2d06c6683f4ef3ccb4",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "JVM の区間・試行・回数判定試験5件、Robolectric API 35 の保存・移行試験2件と WAV の Service 結合試験1件が成功した。シーク、一時停止、バッファリング、時刻・速度・経路の変更、同一試行の再書き込み、リピート時の新ID、v5 からの移行とキュー項目削除後の履歴保持を確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackHistoryRecorderTest.kt",
+      "app/src/test/java/com/audipp/data/db/PlaybackHistoryDatabaseTest.kt",
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt",
+      "docs/contracts/history-v1.md"
+    ],
+    "limitations": "Service では模擬 AudioTrack を使用した。履歴そのものの削除と派生値への反映は #131 の範囲。"
+  },
+  {
+    "case_id": "E09-01-history-storage-permission-2026-11-22",
+    "requirement_ids": [
+      "NFR-PRIV-01"
+    ],
+    "test_ids": [
+      "TEST-SEC-01"
+    ],
+    "commit": "d6260e058182ed04c98fbc2d06c6683f4ef3ccb4",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric API 35 の履歴保存試験1件が成功した。再生許可のみ、明示拒否、スコープなし、別アカウント、期限切れの外部音源を拒否し、有効な HISTORY_STORAGE 許諾のある外部音源とローカル音源を保存した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/PlaybackHistoryDatabaseTest.kt",
+      "docs/contracts/history-v1.md"
+    ],
+    "limitations": "試験用の許諾と外部音源で、端末内の書き込み経路を確認した。"
+  },
+  {
+    "case_id": "E09-01-history-device-and-provider-2026-11-22",
+    "requirement_ids": [
+      "FR-USE-01",
+      "NFR-PRIV-01"
+    ],
+    "test_ids": [
+      "TEST-HIST-01",
+      "TEST-SEC-01"
+    ],
+    "commit": "d6260e058182ed04c98fbc2d06c6683f4ef3ccb4",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "Android API 23／36 の計装、実機の音声・経路・時計変更、実利用 DB の移行、プロセスの強制終了、実 Provider の再生およびプロファイル切替との結合は未実施。",
+    "evidence": [
+      "docs/contracts/history-v1.md"
+    ],
+    "limitations": "履歴の削除、集計、外部送信は後続 Issue の範囲。"
   }
 ]
