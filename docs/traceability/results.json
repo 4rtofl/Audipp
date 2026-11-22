@@ -3413,5 +3413,92 @@
       "app/src/androidTest/java/com/audipp/ui/navigation/NavigationOnboardingTest.kt"
     ],
     "limitations": "共有エミュレーターのアクセシビリティ設定は変更していない。"
+  },
+  {
+    "case_id": "E04-05-dsp-chain-jvm",
+    "requirement_ids": [
+      "FR-AUD-07",
+      "FR-AUD-09",
+      "NFR-AUD-04"
+    ],
+    "test_ids": [
+      "TEST-AUD-02"
+    ],
+    "commit": "cd44cdcaed143a77cadca7737d6195e8fcc447d9",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "JVM単体試験20件に成功。処理順、headroomの式と不足・過大の拒否、NaN/Infの拒否（入力は状態不変）と段出力の過負荷の拒否（出力に書かず、呼び出し元がchainを作り直す）、10 msの線形ゲイン平滑化（48/44.1 kHz）、Bit-perfect/Native/DoP経路にchainを作らないことを固定入力と独立計算した期待値で確認した。assembleDebug・単体試験全430件（スキップ1・失敗0）・lintDebugも成功。",
+    "evidence": [
+      "app/src/test/java/com/audipp/audio/dsp/DspChainTest.kt",
+      "app/src/test/java/com/audipp/audio/dsp/PcmQuantizerTest.kt",
+      "docs/contracts/dsp-chain-v1.md"
+    ],
+    "limitations": "Kotlin実装のJVM上の結果。ART（API 23/36）での実行、音声スレッドの競合試験、LocalPlaybackへの接続、実際のPEQ/IRなどの段との組合せは未実施。"
+  },
+  {
+    "case_id": "E04-05-clip-guard-quantizer-jvm",
+    "requirement_ids": [
+      "FR-AUD-07",
+      "NFR-AUD-04"
+    ],
+    "test_ids": [
+      "TEST-AUD-02",
+      "TEST-FORMAT-02"
+    ],
+    "commit": "cd44cdcaed143a77cadca7737d6195e8fcc447d9",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "JVM単体試験で、先読みが240フレーム（48 kHzで5 ms）、1/11/20 kHzの正弦波とインパルスで別実装（16倍sinc、Float64）のTrue Peakが-1 dBTP+0.2 dB以内、ch共通ゲイン、16/24-bitだけにTPDF dither（誤差電力1/4 LSB²）、32-bit整数・Float32・DSD変調器へはditherなしを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/audio/dsp/DspChainTest.kt",
+      "app/src/test/java/com/audipp/audio/dsp/PcmQuantizerTest.kt",
+      "docs/contracts/dsp-chain-v1.md"
+    ],
+    "limitations": "True Peak見積もりは下限で、Nyquist付近で最大約0.17 dB低い。許容0.2 dBは仕様のQLT-05の値で、QLT-13の独立測定ではない。5.1chの係数・LFE、384 kHzの処理時間は未検証。"
+  },
+  {
+    "case_id": "E04-05-dsp-chain-art-api23-36",
+    "requirement_ids": [
+      "FR-AUD-07",
+      "NFR-AUD-04"
+    ],
+    "test_ids": [
+      "TEST-AUD-02"
+    ],
+    "commit": "cd44cdcaed143a77cadca7737d6195e8fcc447d9",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "reason": "純Kotlinの実装でnativeは変更していないため、API 23/36のエミュレーターでの実行は行っていない。",
+    "evidence": [
+      "docs/contracts/dsp-chain-v1.md"
+    ],
+    "limitations": "ART上の数値一致は未確認。"
+  },
+  {
+    "case_id": "E04-05-dsp-chain-performance-and-hardware",
+    "requirement_ids": [
+      "FR-AUD-07",
+      "NFR-AUD-04"
+    ],
+    "test_ids": [
+      "TEST-AUD-02",
+      "TEST-FORMAT-02"
+    ],
+    "commit": "cd44cdcaed143a77cadca7737d6195e8fcc447d9",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "reason": "ブロック処理時間（QLT-11）、Galaxy S25・FiiO M21・S20、ZEN DAC V2などの実機・DAC出力とデジタル列の測定は行っていない。",
+    "evidence": [
+      "docs/contracts/dsp-chain-v1.md"
+    ],
+    "limitations": "内部処理の結果から外部出力の音質やBit-perfectを判定しない。"
   }
 ]
