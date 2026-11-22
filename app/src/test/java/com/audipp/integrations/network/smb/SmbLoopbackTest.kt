@@ -3,6 +3,7 @@ package com.audipp.integrations.network.smb
 import com.audipp.integrations.network.DirectoryRequest
 import com.audipp.integrations.network.NetworkCallPolicy
 import com.audipp.integrations.network.NetworkCalls
+import com.audipp.integrations.network.NetworkDirectory
 import com.audipp.integrations.network.NetworkEndpoint
 import com.audipp.integrations.network.NetworkFailure
 import com.audipp.integrations.network.NetworkProtocol
@@ -94,19 +95,33 @@ class SmbLoopbackTest {
     }
 
     @Test fun responsesNotSignedByTheAuthenticatedSessionFailWithoutRetrying() = runBlocking {
-        val forgeries = mapOf<String, (ByteArray, ByteArray) -> ByteArray>(
-            "unsigned without a session" to { request, _ -> reply(request, created(), tree = TREE) },
-            "unsigned for another session" to { request, _ -> reply(request, created(), session = SESSION + 1, tree = TREE) },
+        val forgeries = mapOf<String, (ByteArray, ByteArray) -> List<ByteArray>>(
+            "unsigned without a session" to { request, _ -> listOf(reply(request, created(), tree = TREE)) },
+            "unsigned for another session" to { request, _ ->
+                listOf(reply(request, created(), session = SESSION + 1, tree = TREE))
+            },
             "flagged as signed without a session" to { request, _ ->
-                reply(request, created(), tree = TREE).also { it[16] = (it[16].toInt() or SIGNED).toByte() }
+                listOf(reply(request, created(), tree = TREE).also { it[16] = (it[16].toInt() or SIGNED).toByte() })
             },
             "altered after signing" to { request, key ->
-                signed(reply(request, created(), session = SESSION, tree = TREE), key).also { it[72]++ }
+                listOf(signed(reply(request, created(), session = SESSION, tree = TREE), key).also { it[72]++ })
             },
         )
-        val outcomes = forgeries.mapValues { (_, forge) -> exchangeForgedCreate(forge) }
-        val rejected = ForgeryOutcome(NetworkResult.Failure(NetworkFailure.SIGNATURE_REJECTED), emptyList(), retried = false)
+        val outcomes = forgeries.mapValues { (_, answerCreate) -> exchange(answerCreate) }
+        val rejected = Exchange(NetworkResult.Failure(NetworkFailure.SIGNATURE_REJECTED), UNTIL_CREATE, retried = false)
         assertEquals(forgeries.mapValues { rejected }, outcomes)
+    }
+
+    @Test fun responsesSignedByTheAuthenticatedSessionCompleteTheListing() = runBlocking {
+        val listing = exchange { request, key ->
+            listOf(
+                reply(request, errorResponse(), STATUS_PENDING, SESSION).withAsyncId(),
+                signed(reply(request, created(), session = SESSION).withAsyncId(), key),
+            )
+        }
+        assertEquals(listOf("album"), success(listing.result).map { it.name })
+        assertEquals(UNTIL_CREATE + listOf(QUERY_INFO, QUERY_DIRECTORY, QUERY_DIRECTORY, CLOSE) to false,
+            listing.commands to listing.retried)
     }
 
     @Test fun sambaFixtureListsSeeksAndDistinguishesWrongPasswordFromShareDenial() = runBlocking {
@@ -155,14 +170,14 @@ class SmbLoopbackTest {
         }
     }
 
-    private suspend fun exchangeForgedCreate(forge: (ByteArray, ByteArray) -> ByteArray) = coroutineScope {
+    private suspend fun exchange(answerCreate: (ByteArray, ByteArray) -> List<ByteArray>) = coroutineScope {
         listener().use { server ->
             val endpoint = endpoint(server.localPort, "music")
             val store = credentials(temporary.newFolder())
             val calls = NetworkCalls(NetworkCallPolicy(operationTimeoutMs = 3_000, initialBackoffMs = 1, maxBackoffMs = 1))
             val library = SmbLibrary(endpoint, { true }, calls, store, store.authorize(endpoint, "fixture", password))
             val result = async { library.client.listDirectory(DirectoryRequest(library.rootDirectoryId)) }
-            val followUps = withContext(Dispatchers.IO) { server.accept().use { answerUntilForgedCreate(it, forge) } }
+            val commands = withContext(Dispatchers.IO) { server.accept().use { answer(it, answerCreate) } }
             val outcome = result.await()
             server.soTimeout = 100
             val retried = try {
@@ -171,49 +186,49 @@ class SmbLoopbackTest {
             } catch (_: SocketTimeoutException) {
                 false
             }
-            ForgeryOutcome(outcome, followUps, retried)
+            Exchange(outcome, commands, retried)
         }
     }
 
     /**
-     * Completes SMB 2.1 NTLM authentication and a TREE_CONNECT signed with the client's session key, then answers
-     * CREATE with [forge]. Returns the commands the client sent after accepting the forged answer.
+     * Completes SMB 2.1 NTLM authentication, answers CREATE with [answerCreate], and signs every other answer with the
+     * client's session key, listing one directory. Returns the commands the client sent.
      */
-    private fun answerUntilForgedCreate(peer: Socket, forge: (ByteArray, ByteArray) -> ByteArray): List<Int> {
+    private fun answer(peer: Socket, answerCreate: (ByteArray, ByteArray) -> List<ByteArray>): List<Int> {
         peer.soTimeout = 10_000
         val input = DataInputStream(peer.getInputStream())
         fun send(message: ByteArray) = peer.getOutputStream().write(ByteBuffer.allocate(4).putInt(message.size).array() + message)
         var key = ByteArray(0)
-        var forged = false
-        val followUps = mutableListOf<Int>()
+        val commands = mutableListOf<Int>()
         while (true) {
             val request = try {
                 ByteArray(input.readInt()).also(input::readFully)
             } catch (_: EOFException) {
-                return followUps
+                return commands
             } catch (_: SocketException) {
-                return followUps
+                return commands
             }
             val fields = ByteBuffer.wrap(request).order(LITTLE_ENDIAN)
             val command = fields.getShort(12).toInt()
-            if (forged) {
-                followUps += command
-                continue
-            }
+            commands += command
+            fun signedReply(body: ByteArray, status: Int = 0) = signed(reply(request, body, status, SESSION, TREE), key)
             when (command) {
-                0 -> send(reply(request, negotiated()))
-                1 -> if (fields.getLong(40) == 0L) {
+                NEGOTIATE -> send(reply(request, negotiated()))
+                SESSION_SETUP -> if (fields.getLong(40) == 0L) {
                     send(reply(request, sessionSetup(spnego(ntlmChallenge())), MORE_PROCESSING_REQUIRED, SESSION))
                 } else {
                     val token = request.copyOfRange(fields.getShort(76).toInt(), fields.getShort(76) + fields.getShort(78))
                     key = sessionKey(NegTokenTarg().read(token).responseToken)
                     send(signed(reply(request, sessionSetup(ByteArray(0)), session = SESSION), key))
                 }
-                3 -> send(signed(reply(request, treeConnected(), session = SESSION, tree = TREE), key))
-                5 -> {
-                    send(forge(request, key))
-                    forged = true
-                }
+                TREE_CONNECT -> send(signedReply(treeConnected()))
+                CREATE -> answerCreate(request, key).forEach(::send)
+                QUERY_INFO -> send(signedReply(basicInformation()))
+                QUERY_DIRECTORY -> send(
+                    if (QUERY_DIRECTORY in commands.dropLast(1)) signedReply(errorResponse(), NO_MORE_FILES)
+                    else signedReply(listed("album")),
+                )
+                CLOSE -> send(signedReply(closed()))
                 else -> error("Unexpected SMB2 command $command")
             }
         }
@@ -269,6 +284,29 @@ class SmbLoopbackTest {
         .putInt(0x10).putInt(0).putLong(1).putLong(1).putInt(0).putInt(0)
         .array()
 
+    private fun ByteArray.withAsyncId() = also {
+        ByteBuffer.wrap(it).order(LITTLE_ENDIAN).putInt(16, SERVER_TO_REDIR or ASYNC_COMMAND).putLong(32, 0x51)
+    }
+
+    private fun errorResponse() = ByteBuffer.allocate(9).order(LITTLE_ENDIAN).putShort(9).array()
+
+    private fun basicInformation() = ByteBuffer.allocate(48).order(LITTLE_ENDIAN)
+        .putShort(9).putShort(72).putInt(40).putLong(1).putLong(1).putLong(1).putLong(1).putInt(0x10).putInt(0)
+        .array()
+
+    /** A FILE_ID_BOTH_DIR_INFORMATION entry for one directory. */
+    private fun listed(name: String): ByteArray {
+        val fileName = name.toByteArray(Charsets.UTF_16LE)
+        return ByteBuffer.allocate(8 + 104 + fileName.size).order(LITTLE_ENDIAN)
+            .putShort(9).putShort(72).putInt(104 + fileName.size)
+            .putInt(0).putInt(0).putLong(1).putLong(1).putLong(1).putLong(1).putLong(0).putLong(0)
+            .putInt(0x10).putInt(fileName.size).putInt(0).put(0).put(0).put(ByteArray(24)).putShort(0).putLong(1)
+            .put(fileName)
+            .array()
+    }
+
+    private fun closed() = ByteBuffer.allocate(60).order(LITTLE_ENDIAN).putShort(60).array()
+
     private fun listener(host: String = "127.0.0.1") = ServerSocket(0, 1, InetAddress.getByName(host)).apply {
         soTimeout = SECONDS.toMillis(5).toInt()
     }
@@ -289,7 +327,18 @@ class SmbLoopbackTest {
 private const val SESSION = 0x0000_4000_0000_0011L
 private const val TREE = 7
 private const val SERVER_TO_REDIR = 0x1
+private const val ASYNC_COMMAND = 0x2
 private const val SIGNED = 0x8
 private const val MORE_PROCESSING_REQUIRED = 0xC0000016.toInt()
+private const val STATUS_PENDING = 0x103
+private const val NO_MORE_FILES = 0x80000006.toInt()
+private const val NEGOTIATE = 0
+private const val SESSION_SETUP = 1
+private const val TREE_CONNECT = 3
+private const val CREATE = 5
+private const val CLOSE = 6
+private const val QUERY_DIRECTORY = 14
+private const val QUERY_INFO = 16
+private val UNTIL_CREATE = listOf(NEGOTIATE, SESSION_SETUP, SESSION_SETUP, TREE_CONNECT, CREATE)
 
-private data class ForgeryOutcome(val result: NetworkResult<*>, val followUps: List<Int>, val retried: Boolean)
+private data class Exchange(val result: NetworkResult<List<NetworkDirectory>>, val commands: List<Int>, val retried: Boolean)
