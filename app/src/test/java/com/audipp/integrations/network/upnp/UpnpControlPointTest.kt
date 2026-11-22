@@ -224,6 +224,27 @@ class UpnpControlPointTest {
         assertTrue(adapter.label(unnamed).startsWith("192.168.10.20:8000"))
     }
 
+    @Test fun duplicateDiscoveryLabelsShowTheFullUdn() = runBlocking {
+        val ids = listOf(
+            "uuid:12345678-abcd-1234-8000-aabbccddeeff",
+            "uuid:87654321-abcd-1234-8000-aabbccddeeff",
+            "uuid:12345678-abcd-1234-8000-ffeeddccbbaa",
+        )
+        val network = FixtureNetwork()
+        network.adverts = ids.mapIndexed { index, udn ->
+            checkNotNull(advertisement(url = TEST_URL.replace("device.xml", "$index.xml"), udn = udn))
+        }
+        network.exchangeResponse = { uri, _ ->
+            val index = uri.path.substringAfterLast('/').substringBefore('.').toInt()
+            response(deviceXml(udn = ids[index]))
+        }
+        val adapter = UpnpRendererAdapter(UpnpControlPoint(network))
+        val devices = success(adapter.discover(ids.size)).associateBy { it.id }
+        assertEquals("Fixture & Renderer\n${ids[0]}", adapter.label(devices.getValue(ids[0])))
+        assertEquals("Fixture & Renderer\n${ids[1]}", adapter.label(devices.getValue(ids[1])))
+        assertEquals("Fixture & Renderer · ffeeddccbbaa", adapter.label(devices.getValue(ids[2])))
+    }
+
     @Test fun successfulDescriptionAndSoapExtendOnlyTheConnectedSession() = runBlocking {
         var time = System.currentTimeMillis()
         val network = FixtureNetwork()

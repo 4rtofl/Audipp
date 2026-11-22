@@ -30,7 +30,7 @@ private val rendererTypes = upnpSearchTargets - MEDIA_SERVER
 internal class UpnpRendererAdapter(private val point: UpnpControlPoint) : RendererAdapter {
     private val lock = Any()
     private var candidates = emptyMap<RendererDevice, UpnpCandidate>()
-    private var discoveryNames = emptyMap<RendererDevice, String>()
+    private var discoveryLabels = emptyMap<RendererDevice, String>()
     private var generation = 0L
     private var selected: RendererDevice? = null
     private var loaded: UpnpDevice? = null
@@ -41,7 +41,7 @@ internal class UpnpRendererAdapter(private val point: UpnpControlPoint) : Render
             is NetworkResult.Failure -> result
             is NetworkResult.Success -> {
                 val discovered = result.value.associateBy(::rendererDevice)
-                val names = mutableMapOf<RendererDevice, String>()
+                val names = discovered.keys.associateWith { URI(it.endpoint.uri).rawAuthority }.toMutableMap()
                 withTimeoutOrNull(DISCOVERY_NAMES_MS) {
                     for ((device, candidate) in discovered) {
                         val name = point.describe(candidate)
@@ -49,9 +49,14 @@ internal class UpnpRendererAdapter(private val point: UpnpControlPoint) : Render
                         if (name == NetworkResult.Failure(NetworkFailure.PERMISSION_REQUIRED)) break
                     }
                 }
+                val shortLabels = names.mapValues { (device, name) -> shortLabel(device, name) }
+                val labelCounts = shortLabels.values.groupingBy { it }.eachCount()
+                val labels = shortLabels.mapValues { (device, label) ->
+                    if (labelCounts.getValue(label) > 1) "${names.getValue(device)}\n${device.id}" else label
+                }
                 synchronized(lock) {
                     candidates = discovered
-                    discoveryNames = names
+                    discoveryLabels = labels
                     NetworkResult.Success(discovered.keys.toList())
                 }
             }
@@ -63,15 +68,19 @@ internal class UpnpRendererAdapter(private val point: UpnpControlPoint) : Render
             is NetworkResult.Success -> synchronized(lock) {
                 val device = rendererDevice(result.value)
                 candidates = mapOf(device to result.value)
-                discoveryNames = emptyMap()
+                discoveryLabels = emptyMap()
                 NetworkResult.Success(device)
             }
         }
 
     fun label(device: RendererDevice): String = synchronized(lock) {
-        val name = loaded?.name?.takeIf { selected === device } ?: discoveryNames[device] ?: candidates[device]?.name
+        val connectedName = loaded?.name?.takeIf { selected === device }
+        connectedName?.let { shortLabel(device, it) } ?: discoveryLabels[device] ?: shortLabel(device, candidates[device]?.name)
+    }
+
+    private fun shortLabel(device: RendererDevice, name: String?): String {
         val label = name ?: URI(device.endpoint.uri).rawAuthority
-        "$label · ${device.id.takeLast(12)}"
+        return "$label · ${device.id.takeLast(12)}"
     }
 
     fun openSession(
@@ -84,7 +93,7 @@ internal class UpnpRendererAdapter(private val point: UpnpControlPoint) : Render
         val sessionDevice = RendererDevice(device.id, device.endpoint, Long.MAX_VALUE)
         val connection = UpnpRendererAdapter(point).apply {
             candidates = mapOf(sessionDevice to candidate)
-            discoveryNames[device]?.let { discoveryNames = mapOf(sessionDevice to it) }
+            discoveryLabels[device]?.let { discoveryLabels = mapOf(sessionDevice to it) }
         }
         UpnpRendererSession(connection, sessionDevice, context, currentContext)
     }
