@@ -329,11 +329,16 @@ class PlaybackServiceTest {
     @Test
     fun becomingNoisyPausesWithCurrentSelectionRetained() {
         val controller = connect(service.onGetSession(ownApp)!!.token)
+        // Media3 registers the broadcast receiver asynchronously on the playback looper.
+        shadowOf(rawPlayer.playbackLooper).idle()
         startWav(controller)
-        assertTrue(rawPlayer.playWhenReady)
+        advancePlaybackUntil { rawPlayer.playWhenReady }
         service.sendBroadcast(Intent(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
-        advancePlaybackUntil { PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED }
-        assertFalse(rawPlayer.playWhenReady)
+        shadowOf(Looper.getMainLooper()).idle()
+        advancePlaybackUntil {
+            !rawPlayer.playWhenReady &&
+                PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED
+        }
         assertEquals(QueueEntryId("entry"), PlaybackConnection.snapshot(controller.sessionExtras)?.currentEntryId)
     }
 
@@ -395,23 +400,14 @@ class PlaybackServiceTest {
             await(PlaybackConnection.playLocal(controller, QueueEntryId("entry"), audio)).resultCode)
         session.player.pause()
 
-        val player = ReflectionHelpers.getField<ExoPlayer>(service, "player")
+        val player = rawPlayer
         val playbackLooper = shadowOf(player.playbackLooper)
         val mainLooper = shadowOf(Looper.getMainLooper())
-        fun awaitPausedPosition(positionMs: Long? = null) {
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
-            do {
-                playbackLooper.idleFor(20, TimeUnit.MILLISECONDS)
-                mainLooper.idleFor(20, TimeUnit.MILLISECONDS)
-                val snapshot = PlaybackConnection.snapshot(controller.sessionExtras)!!
-                if (snapshot.phase == PlaybackPhase.PAUSED &&
-                    (positionMs == null || snapshot.positionMs == positionMs)) return
-                Thread.sleep(5)
-            } while (System.nanoTime() < deadline)
-            fail("Expected a paused position of $positionMs, got ${PlaybackConnection.snapshot(controller.sessionExtras)}")
+        advancePlaybackUntil {
+            player.playbackState == Player.STATE_READY &&
+                controller.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM) &&
+                PlaybackConnection.snapshot(controller.sessionExtras)?.phase == PlaybackPhase.PAUSED
         }
-        awaitPausedPosition()
-        assertTrue(controller.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM))
 
         val targetMs = 3_000L
         playbackLooper.pause()
@@ -428,7 +424,11 @@ class PlaybackServiceTest {
             playbackLooper.unPause()
         }
 
-        awaitPausedPosition(targetMs)
+        advancePlaybackUntil {
+            val snapshot = PlaybackConnection.snapshot(controller.sessionExtras)
+            player.playbackState == Player.STATE_READY &&
+                snapshot?.phase == PlaybackPhase.PAUSED && snapshot.positionMs == targetMs
+        }
         assertEquals(
             PlaybackSchedule.RemainingDurationOnly(RemainingPlaybackTime(1_000, emptyMap(), 1_000)),
             PlaybackConnection.schedule(controller.sessionExtras),
