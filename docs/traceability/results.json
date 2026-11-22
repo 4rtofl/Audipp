@@ -2753,5 +2753,71 @@
       "docs/contracts/local-audio-formats.md"
     ],
     "limitations": "機種別デコーダ、連続再生、物理出力の確認は別途必要。DSD 専用経路の確認は #54〜#59 に引き継ぐ。"
+  },
+  {
+    "case_id": "E01-03-pr192-room-v5-migrations-2026-11-22",
+    "requirement_ids": [
+      "FR-SRC-05"
+    ],
+    "test_ids": [
+      "TEST-LIB-02"
+    ],
+    "commit": "884abf59a5fffb42d238c7df5b01456536a04d85",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "作業開始時の HEAD にレビュー修正を適用した作業ツリーで検証した。API 23／36 の x86_64 エミュレーターで Room v1 → v5・v4 → v5 の移行試験が各2件成功した。JDK 17 と Robolectric API 35 の移行試験2件では、v1 移行後の既存 ID と走査開始、v4 移行後のプレイリスト・キュー・走査状態・既存ビット深度の保持を確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/data/db/LibraryDatabaseTest.kt",
+      "app/src/test/java/com/audipp/data/db/SafScanMigrationTest.kt",
+      "docs/contracts/local-audio-formats.md"
+    ],
+    "limitations": "エクスポート済みスキーマから作成した DB で確認した。実利用 DB の移行は未実施。"
+  },
+  {
+    "case_id": "E01-03-pr192-saf-scan-2026-11-22",
+    "requirement_ids": [
+      "FR-SRC-04",
+      "FR-SRC-05"
+    ],
+    "test_ids": [
+      "TEST-FORMAT-01",
+      "TEST-LIB-02"
+    ],
+    "commit": "884abf59a5fffb42d238c7df5b01456536a04d85",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "作業開始時の HEAD にレビュー修正を適用した作業ツリーで検証した。API 23／36 の x86_64 エミュレーターで SAF 走査試験が各12件成功した。曲単位エラー後の走査継続、再走査時の既存 Variant ID 保持、タグの置換と別版からの補完防止、アクセス喪失・タイムアウト・取消・再試行を確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/data/local/SafLibraryTest.kt",
+      "docs/contracts/local-audio-formats.md"
+    ],
+    "limitations": "走査の入出力に試験用 SAF 実装を使用した。実利用の文書プロバイダーと大規模ライブラリは未検証。"
+  },
+  {
+    "case_id": "E01-03-pr192-format-regressions-2026-11-22",
+    "requirement_ids": [
+      "FR-SRC-04",
+      "FR-AUD-01"
+    ],
+    "test_ids": [
+      "TEST-FORMAT-01",
+      "TEST-AUD-01"
+    ],
+    "commit": "884abf59a5fffb42d238c7df5b01456536a04d85",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "作業開始時の HEAD にレビュー修正を適用した作業ツリーで検証した。JDK 17 の形式判定試験13件と API 23／36 の x86_64 エミュレーターでの読み取り試験各6件が成功した。FLAC の不正ブロックサイズ、A-law WAV の抽出と非対応符号化、AVIF と動画トラック付き MP4 の除外、moov 欠損、DST の宣言とフレームの照合を検証した。PCM の整数精度と格納幅、float の区別も確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/local/AudioContainerTest.kt",
+      "app/src/androidTest/java/com/audipp/data/local/LocalAudioReaderTest.kt",
+      "docs/contracts/local-audio-formats.md"
+    ],
+    "limitations": "合成音源・画像による検証。DFF／DST は構造検査、A-law は Android の抽出まで。物理機器でのデコード・出力は未実施。"
   }
 ]
