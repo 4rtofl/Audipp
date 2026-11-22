@@ -121,11 +121,11 @@ internal class OutputRouteMonitor(
         val inventoryChanged = inventory != previous.connectedOutputs.value
         if (!routeChanged && !inventoryChanged && outputs == previous.observedOutputs.value) return
         val revision = previous.route.routeRevision + if (routeChanged || inventoryChanged) 1 else 0
-        if (revision != previous.route.routeRevision) onRouteRevisionChanged(revision)
         val connected = if (inventoryChanged) inventoryEvidence(inventory) else previous.connectedOutputs
         val observed = if (outputs != previous.observedOutputs.value) routeEvidence(outputs)
             else previous.observedOutputs
         mutableSnapshot.value = state(connected, observed, revision)
+        if (revision != previous.route.routeRevision) onRouteRevisionChanged(revision)
     }
 
     private fun readInventory(): List<OutputCapabilities>? = try {

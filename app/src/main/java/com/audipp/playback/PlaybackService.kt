@@ -1,7 +1,10 @@
 package com.audipp.playback
 
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -9,7 +12,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Process
+import android.os.SystemClock
 import androidx.annotation.RequiresApi
+import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingSimpleBasePlayer
@@ -34,6 +39,8 @@ import com.audipp.MainActivity
 import com.audipp.R
 import com.audipp.audio.route.ObservedAudioOutputProvider
 import com.audipp.audio.route.OutputRouteMonitor
+import com.audipp.data.db.LibraryDatabase
+import com.audipp.data.preferences.providerPolicyStore
 import com.audipp.domain.model.ErrorDomain
 import com.audipp.domain.model.ModelJson
 import com.audipp.domain.model.PlaybackError
@@ -42,6 +49,7 @@ import com.audipp.domain.model.QueueEntryId
 import com.audipp.domain.model.TrackVariant
 import com.audipp.domain.model.TransitionId
 import com.audipp.domain.model.UserAction
+import com.audipp.integrations.streaming.ProviderAccessGate
 import com.audipp.playback.source.AndroidDocumentAccess
 import com.audipp.playback.source.SourceDescriptor
 import com.google.common.collect.ImmutableList
@@ -66,10 +74,14 @@ class PlaybackService : MediaLibraryService() {
     private var mediaSession: MediaLibrarySession? = null
     private lateinit var player: ExoPlayer
     private lateinit var playback: LocalPlayback
+    private lateinit var historyJournal: PlaybackHistoryJournal
     private lateinit var audioManager: AudioManager
     private var preparation: Job? = null
     private var playWhenPrepared = true
     private var unregisterModeListener: (() -> Unit)? = null
+    private val clockReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = updateEngineSnapshot(clockChanged = true)
+    }
     private val outputCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
             if (removedDevices.any { it.isExternalOutput() }) pauseForInterruption()
@@ -88,6 +100,7 @@ class PlaybackService : MediaLibraryService() {
         }
         routeMonitor = OutputRouteMonitor(this) {
             playback.onRouteRevisionChanged(it)
+            updateEngineSnapshot()
         }
         player = ExoPlayer.Builder(this)
             .setLooper(mainLooper)
@@ -101,6 +114,7 @@ class PlaybackService : MediaLibraryService() {
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .setAudioOutputProvider(ObservedAudioOutputProvider(this, routeMonitor))
             .build()
+        historyJournal = PlaybackHistoryJournal(LibraryDatabase.open(this), ProviderAccessGate(providerPolicyStore))
         playback = LocalPlayback(object : LocalPlaybackEngine {
             override fun prepare(entryId: QueueEntryId, transitionId: TransitionId,
                 document: SourceDescriptor.LocalDocument) {
@@ -120,7 +134,8 @@ class PlaybackService : MediaLibraryService() {
                 player.stop()
                 player.clearMediaItems()
             }
-        }, AndroidDocumentAccess(contentResolver)::check)
+        }, AndroidDocumentAccess(contentResolver)::check,
+            history = PlaybackHistoryRecorder(SystemClock::elapsedRealtime, write = historyJournal::enqueue))
         player.addListener(object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) {
                 if (player.playWhenReady && when (player.playbackSuppressionReason) {
@@ -136,7 +151,15 @@ class PlaybackService : MediaLibraryService() {
                 oldPosition: Player.PositionInfo,
                 newPosition: Player.PositionInfo,
                 reason: Int,
-            ) = playback.invalidatePcm()
+            ) {
+                playback.invalidatePcm()
+                val attemptEnded = reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION ||
+                    reason == Player.DISCONTINUITY_REASON_REMOVE || reason == Player.DISCONTINUITY_REASON_SKIP
+                playback.onHistoryDiscontinuity(
+                    oldPosition.mediaItem?.localConfiguration?.tag as? TransitionId,
+                    oldPosition.positionMs.takeUnless { it == C.TIME_UNSET }, attemptEnded,
+                )
+            }
         })
         val sessionPlayer = object : ForwardingSimpleBasePlayer(player) {
             override fun getState(): State {
@@ -182,6 +205,10 @@ class PlaybackService : MediaLibraryService() {
             .build()
         val handler = Handler(player.applicationLooper)
         audioManager.registerAudioDeviceCallback(outputCallback, handler)
+        // Both actions are protected broadcasts sent by Android.
+        ContextCompat.registerReceiver(this, clockReceiver, IntentFilter(Intent.ACTION_TIME_CHANGED).apply {
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        }, ContextCompat.RECEIVER_EXPORTED)
         if (Build.VERSION.SDK_INT >= 31) unregisterModeListener = watchCallMode(handler)
         scope.launch {
             playback.snapshot.collect {
@@ -207,21 +234,27 @@ class PlaybackService : MediaLibraryService() {
         if (controllerInfo.uid == Process.myUid() || controllerInfo.isTrusted) mediaSession else null
 
     override fun onDestroy() {
+        if (::historyJournal.isInitialized) {
+            unregisterReceiver(clockReceiver)
+            stopPlayback()
+            historyJournal.close()
+        }
         if (::routeMonitor.isInitialized) routeMonitor.close()
         scope.cancel()
         unregisterModeListener?.invoke()
         if (::audioManager.isInitialized) audioManager.unregisterAudioDeviceCallback(outputCallback)
         mediaSession?.release()
         mediaSession = null
-        if (::playback.isInitialized) playback.stop()
         if (::player.isInitialized) player.release()
         super.onDestroy()
     }
 
-    private fun updateEngineSnapshot() {
+    private fun updateEngineSnapshot(clockChanged: Boolean = false) {
         val transition = currentTransition() ?: return
         if (!playback.isCurrentTransition(transition)) return
         player.playerError?.let {
+            playback.onHistoryDiscontinuity(transition, player.currentPosition.takeUnless { it == C.TIME_UNSET },
+                attemptEnded = false)
             playback.fail(it.toCommonError())
             return
         }
@@ -234,7 +267,8 @@ class PlaybackService : MediaLibraryService() {
         playback.onEngineState(transition, phase, player.playWhenReady, player.isPlaying,
             player.currentPosition.takeUnless { it == C.TIME_UNSET },
             player.duration.takeUnless { it == C.TIME_UNSET }, seekableDuration() != null,
-            player.playbackParameters.speed.toDouble(), System.currentTimeMillis())
+            player.playbackParameters.speed.toDouble(), System.currentTimeMillis(),
+            routeMonitor.snapshot.value.route.routeId, clockChanged)
     }
 
     private fun currentTransition() = player.currentMediaItem?.localConfiguration?.tag as? TransitionId
@@ -254,6 +288,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun stopPlayback() {
+        updateEngineSnapshot()
         playback.stop()
         preparation?.cancel()
     }
@@ -309,6 +344,7 @@ class PlaybackService : MediaLibraryService() {
             val future = SettableFuture.create<SessionResult>()
             preparation = scope.launch {
                 try {
+                    updateEngineSnapshot()
                     val error = playback.start(request.first, request.second)
                     future.set(if (error == null) SessionResult(SessionResult.RESULT_SUCCESS) else errorResult(error))
                 } catch (_: CancellationException) {
