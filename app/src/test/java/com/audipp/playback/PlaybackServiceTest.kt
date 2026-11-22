@@ -82,6 +82,8 @@ class PlaybackServiceTest {
         assertTrue(second.isConnected)
         assertEquals(PlaybackPhase.IDLE, PlaybackConnection.snapshot(second.sessionExtras)!!.phase)
         assertEquals(PlaybackSchedule.Unknown, PlaybackConnection.schedule(second.sessionExtras))
+        assertEquals(EvidenceLevel.OS_REPORTED, service.outputRoute.value.connectedOutputs.level)
+        assertEquals(EvidenceLevel.UNKNOWN, service.outputRoute.value.observedOutputs.level)
     }
 
     @Test

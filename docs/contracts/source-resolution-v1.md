@@ -24,7 +24,7 @@ ProviderとNETWORKの製品アダプターは未実装であり、未登録な�
 
 表にない組合せは拒否する。`Auxiliary`は直接再生達成として扱わない。`Playback`も再生計画の解決成功であり、開始ACK・実再生・音声出力の確認を意味しない。NETWORK_REMOTE/REMOTE/HANDOFFがAudipp内PCM取得を申告した場合は拒否する。端末側のPCM処理・解析は既存の`ExecutionPlan.rejectionFor`と現在の`PcmPermissions`でも検査する。
 
-`Unavailable`は認証要求、権限要求、消失、未許諾、未実装、到達不可、期限切れ、IO、timeout等の分類を返す。元例外の本文・cause・URLは含めない。代替候補は呼出側が提示可能と判定して渡した同一TrackのPLAYABLEな別版IDを重複排除して返すだけで、解決・再生しない。候補の許諾・到達性・backend可否は利用者が選び直した時点で再検査する。古い経路/遷移では候補も返さない。
+`Unavailable`は認証要求、権限要求、消失、未許諾、未実装、到達不可、期限切れ、IO、timeout、要求制限、一覧の取り直し要求等の分類を返す。元例外の本文・cause・URLは含めない。代替候補は呼出側が提示可能と判定して渡した同一TrackのPLAYABLEな別版IDを重複排除して返すだけで、解決・再生しない。候補の許諾・到達性・backend可否は利用者が選び直した時点で再検査する。古い経路/遷移では候補も返さない。
 
 ## 許諾と失効
 

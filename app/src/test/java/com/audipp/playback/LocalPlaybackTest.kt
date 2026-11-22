@@ -127,6 +127,97 @@ class LocalPlaybackTest {
     }
 
     @Test
+    fun routeRevisionInvalidatesPlanWithoutInterruptingActiveStandardPlayback() = runBlocking {
+        val engine = Engine()
+        val playback = LocalPlayback(engine, { Availability.PLAYABLE })
+        assertNull(playback.start(entry, variant))
+        val oldPlan = playback.snapshot.value.executionPlan!!
+        playback.onEngineState(engine.transition, LocalEnginePhase.READY, false, false, 0, 500, true, 1.0, 0)
+
+        playback.onRouteRevisionChanged(1)
+        assertEquals(PlanRejection.STALE_ROUTE, oldPlan.rejectionFor(1, oldPlan.transitionId))
+        assertNull(playback.snapshot.value.executionPlan)
+        assertTrue(engine.active)
+        assertTrue(playback.isCurrentTransition(engine.transition))
+        assertEquals(
+            PlaybackSchedule.RemainingDurationOnly(RemainingPlaybackTime(500, emptyMap(), 500)),
+            playback.schedule.value,
+        )
+
+        playback.onSeekRequested()
+        playback.onEngineState(engine.transition, LocalEnginePhase.BUFFERING, false, false, 50, 500, true, 1.0, 0)
+        assertNull(playback.snapshot.value.positionMs)
+        assertEquals(PlaybackSchedule.Unknown, playback.schedule.value)
+
+        playback.onEngineState(engine.transition, LocalEnginePhase.READY, false, false, 50, 500, true, 1.0, 0)
+        assertEquals(50L, playback.snapshot.value.positionMs)
+        assertNull(playback.snapshot.value.executionPlan)
+        assertEquals(
+            PlaybackSchedule.RemainingDurationOnly(RemainingPlaybackTime(450, emptyMap(), 450)),
+            playback.schedule.value,
+        )
+
+        assertNull(playback.start(entry, variant))
+        assertEquals(1L, playback.snapshot.value.executionPlan!!.routeRevision)
+    }
+
+    @Test
+    fun routeRevisionResolvesAgainAndReturnsSuccessForTheSameRequest() = runBlocking {
+        val opened = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val engine = Engine()
+        val playback = LocalPlayback(engine, {
+            if (opened.complete(Unit)) {
+                finish.await()
+                Availability.MISSING
+            } else {
+                Availability.PLAYABLE
+            }
+        })
+
+        val pending = async { playback.start(entry, variant) }
+        withTimeout(2_000) { opened.await() }
+        playback.onRouteRevisionChanged(1)
+        finish.complete(Unit)
+        assertNull(withTimeout(2_000) { pending.await() })
+        assertEquals(PlaybackPhase.BUFFERING, playback.snapshot.value.phase)
+        assertTrue(engine.active)
+        assertEquals(1L, playback.snapshot.value.executionPlan!!.routeRevision)
+        assertEquals(entry, playback.snapshot.value.currentEntryId)
+        assertEquals(listOf(entry), engine.prepared)
+    }
+
+    @Test
+    fun routeRevisionChangingAgainReturnsRetryableRouteError() = runBlocking {
+        val opened = List(2) { CompletableDeferred<Unit>() }
+        val finish = List(2) { CompletableDeferred<Unit>() }
+        val engine = Engine()
+        var attempts = 0
+        val playback = LocalPlayback(engine, {
+            val attempt = attempts++
+            opened[attempt].complete(Unit)
+            finish[attempt].await()
+            Availability.PLAYABLE
+        })
+
+        val pending = async { playback.start(entry, variant) }
+        for (attempt in opened.indices) {
+            withTimeout(2_000) { opened[attempt].await() }
+            playback.onRouteRevisionChanged(attempt + 1L)
+            finish[attempt].complete(Unit)
+        }
+
+        val error = requireNotNull(withTimeout(2_000) { pending.await() })
+        assertEquals(ErrorDomain.AUDIO_ROUTE, error.domain)
+        assertEquals("ROUTE_CHANGED_DURING_RESOLUTION", error.code)
+        assertTrue(error.retryable)
+        assertEquals(UserAction.RETRY, error.userAction)
+        assertEquals(PlaybackPhase.ERROR, playback.snapshot.value.phase)
+        assertEquals(error, playback.snapshot.value.error)
+        assertTrue(engine.prepared.isEmpty())
+    }
+
+    @Test
     fun missingAndIoFailuresAreCommonErrorsAndNeverPrepare() = runBlocking {
         for (access in listOf<suspend (String) -> Availability>(
             { Availability.MISSING }, { throw IOException("content://private") })) {

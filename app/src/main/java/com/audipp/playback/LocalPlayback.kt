@@ -62,33 +62,38 @@ internal class LocalPlayback(
 
     suspend fun start(entryId: QueueEntryId, variant: TrackVariant): PlaybackError? {
         stop()
-        val attempt = context
+        val transitionId = context.transitionId
         publish(PlaybackSnapshot(0, PlaybackPhase.RESOLVING, currentEntryId = entryId))
         try {
-            val result = resolver.resolve(ResolutionRequest(variant, attempt))
-            currentCoroutineContext().ensureActive()
-            if (context != attempt) throw CancellationException("Superseded playback")
-            if (result is SourceResolution.Unavailable) return fail(result.reason.toPlaybackError())
-            result as SourceResolution.Resolved.Playback
-            val rejection = resolver.rejectionFor(result)
-            currentCoroutineContext().ensureActive()
-            if (context != attempt) throw CancellationException("Superseded playback")
-            rejection?.let { return fail(it.toPlaybackError()) }
-            val descriptor = result.descriptor as? SourceDescriptor.LocalDocument
-                ?: return fail(ResolutionFailure.INVALID_DESCRIPTOR.toPlaybackError())
-            // The grant may have been revoked after resolution; the engine also opens under OS checks.
-            if (context != attempt) throw CancellationException("Superseded playback")
-            selectedVariant = variant
-            publish(snapshot.value.copy(phase = PlaybackPhase.BUFFERING,
-                effectiveSource = result.plan.source, executionPlan = result.plan))
-            engine.prepare(entryId, attempt.transitionId, descriptor)
-            return null
+            repeat(2) {
+                val attempt = context
+                val result = resolver.resolve(ResolutionRequest(variant, attempt))
+                val rejection = when (result) {
+                    is SourceResolution.Unavailable -> result.reason
+                    is SourceResolution.Resolved -> resolver.rejectionFor(result)
+                }
+                currentCoroutineContext().ensureActive()
+                if (context.transitionId != transitionId) throw CancellationException("Superseded playback")
+                if (context.routeRevision != attempt.routeRevision) return@repeat
+                rejection?.let { return fail(it.toPlaybackError()) }
+                result as SourceResolution.Resolved.Playback
+                val descriptor = result.descriptor as? SourceDescriptor.LocalDocument
+                    ?: return fail(ResolutionFailure.INVALID_DESCRIPTOR.toPlaybackError())
+                // The grant may have been revoked after resolution; the engine also opens under OS checks.
+                selectedVariant = variant
+                publish(snapshot.value.copy(phase = PlaybackPhase.BUFFERING,
+                    effectiveSource = result.plan.source, executionPlan = result.plan))
+                engine.prepare(entryId, attempt.transitionId, descriptor)
+                return null
+            }
+            return fail(playbackError(ErrorDomain.AUDIO_ROUTE, "ROUTE_CHANGED_DURING_RESOLUTION",
+                true, UserAction.RETRY))
         } catch (cancelled: CancellationException) {
-            if (context == attempt) stop()
+            if (context.transitionId == transitionId) stop()
             throw cancelled
         } catch (failure: Exception) {
             currentCoroutineContext().ensureActive()
-            if (context != attempt) throw CancellationException("Superseded playback")
+            if (context.transitionId != transitionId) throw CancellationException("Superseded playback")
             return fail(when (failure) {
                 is SecurityException -> ResolutionFailure.PERMISSION_REQUIRED.toPlaybackError()
                 is IOException -> ResolutionFailure.SOURCE_IO.toPlaybackError()
@@ -117,13 +122,21 @@ internal class LocalPlayback(
     }
 
     fun onSeekRequested() {
-        if (snapshot.value.executionPlan == null) return
+        if (snapshot.value.effectiveSource == null) return
         seekPending = true
         publish(snapshot.value.copy(positionMs = null))
     }
 
+    fun onRouteRevisionChanged(revision: Long) {
+        if (revision <= context.routeRevision) return
+        context = context.copy(routeRevision = revision)
+        val previous = snapshot.value
+        if (previous.executionPlan != null) publish(previous.copy(executionPlan = null), schedule.value)
+    }
+
+    // A route change retires the plan while the prepared media item keeps playing under this transition.
     fun isCurrentTransition(transitionId: TransitionId?): Boolean =
-        transitionId != null && snapshot.value.executionPlan?.transitionId == transitionId
+        transitionId == context.transitionId && snapshot.value.effectiveSource != null
 
     fun onEngineState(
         transitionId: TransitionId,
@@ -136,9 +149,9 @@ internal class LocalPlayback(
         speed: Double,
         observedAtEpochMs: Long,
     ) {
+        if (!isCurrentTransition(transitionId)) return
         val previous = snapshot.value
-        val plan = previous.executionPlan ?: return
-        if (plan.transitionId != transitionId) return
+        val plan = previous.executionPlan
         val phase = when (enginePhase) {
             LocalEnginePhase.BUFFERING -> if (playRequested) PlaybackPhase.BUFFERING else PlaybackPhase.PAUSED
             LocalEnginePhase.READY -> if (isPlaying) PlaybackPhase.PLAYING else PlaybackPhase.PAUSED
@@ -152,7 +165,7 @@ internal class LocalPlayback(
             if (duration == null) it else it.coerceAtMost(duration)
         }
         val observed = previous.copy(phase = phase, positionMs = position, durationMs = duration,
-            executionPlan = plan.copy(capabilities = plan.capabilities.copy(canSeek = canSeek && duration != null)))
+            executionPlan = plan?.copy(capabilities = plan.capabilities.copy(canSeek = canSeek && duration != null)))
         val variant = selectedVariant
         val entryId = observed.currentEntryId
         val schedule = if (variant != null && entryId != null && phase != PlaybackPhase.ADVANCING) {
@@ -191,8 +204,9 @@ internal fun ResolutionFailure.toPlaybackError(): PlaybackError = when (this) {
     ResolutionFailure.ADAPTER_UNAVAILABLE -> playbackError(ErrorDomain.FORMAT_UNSUPPORTED,
         name, false, UserAction.RESELECT_SOURCE)
     ResolutionFailure.SOURCE_IO, ResolutionFailure.SOURCE_MISSING,
-    ResolutionFailure.SOURCE_UNAVAILABLE, ResolutionFailure.TIMEOUT ->
+    ResolutionFailure.SOURCE_UNAVAILABLE, ResolutionFailure.TIMEOUT, ResolutionFailure.REFRESH_REQUIRED ->
         playbackError(ErrorDomain.SOURCE_IO, name, true, UserAction.RESELECT_SOURCE)
+    ResolutionFailure.RATE_LIMITED -> playbackError(ErrorDomain.SOURCE_IO, name, true, UserAction.RETRY)
     else -> playbackError(ErrorDomain.PLAYBACK_ENGINE, name, false)
 }
 
