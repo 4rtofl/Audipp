@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.audipp.research.usbfd">
+    <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="36" />
+    <application android:extractNativeLibs="true" />
+    <instrumentation
+        android:name=".UsbFdProbe"
+        android:targetPackage="com.audipp.research.usbfd" />
+</manifest>

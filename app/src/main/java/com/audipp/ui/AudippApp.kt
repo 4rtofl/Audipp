@@ -27,11 +27,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.audipp.R
 import com.audipp.domain.model.ThemeMode
+import com.audipp.ui.audio.UpnpScreen
 import com.audipp.ui.settings.ThemeSettingsScreen
 import com.audipp.ui.settings.ThemeSettingsState
 import com.audipp.ui.theme.AudippSpacing
 
-private enum class Screen { WELCOME, SETTINGS, APPEARANCE }
+private enum class Screen { WELCOME, SETTINGS, APPEARANCE, UPNP }
 
 @Composable
 fun AudippApp(
@@ -42,7 +43,12 @@ fun AudippApp(
 ) {
     var screen by rememberSaveable { mutableStateOf(Screen.WELCOME) }
     val screenState = rememberSaveableStateHolder()
-    val back = { screen = if (screen == Screen.APPEARANCE) Screen.SETTINGS else Screen.WELCOME }
+    val back = {
+        screen = when (screen) {
+            Screen.APPEARANCE, Screen.UPNP -> Screen.SETTINGS
+            else -> Screen.WELCOME
+        }
+    }
     BackHandler(enabled = screen != Screen.WELCOME, onBack = back)
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         screenState.SaveableStateProvider(screen) {
@@ -55,6 +61,13 @@ fun AudippApp(
                         TextButton(onClick = { screen = Screen.APPEARANCE }) {
                             Text(stringResource(R.string.appearance))
                         }
+                        TextButton(onClick = { screen = Screen.UPNP }) {
+                            Text(stringResource(R.string.upnp_output))
+                        }
+                    }
+                    Screen.UPNP -> {
+                        TextButton(onClick = back) { Text(stringResource(R.string.back)) }
+                        UpnpScreen()
                     }
                     Screen.APPEARANCE -> {
                         TextButton(onClick = back) { Text(stringResource(R.string.back)) }
