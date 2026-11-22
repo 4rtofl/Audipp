@@ -78,7 +78,11 @@ internal class PlaybackCheckpointJournal(
         }
     }
 
-    /** On confirmed stop, use the sample captured just before stopping. */
+    /**
+     * On confirmed stop, use the sample captured just before stopping. On a queue change within
+     * the same stopped state, submit that sample with the committed revision if its entry remains.
+     * A queued stop sample can be replaced before the writer reports any outcome.
+     */
     fun saveConfirmed(sample: PlaybackCheckpointSample) {
         writes.trySend(
             PlaybackCheckpointEntity(

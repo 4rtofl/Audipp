@@ -4,6 +4,7 @@ import androidx.room.Room
 import com.audipp.data.db.LibraryBatch
 import com.audipp.data.db.LibraryDatabase
 import com.audipp.data.db.QueueEditResult
+import com.audipp.data.db.QueueRepeatMode
 import com.audipp.data.db.SourceEntity
 import com.audipp.data.db.TrackEntity
 import com.audipp.data.db.VariantEntity
@@ -31,8 +32,10 @@ import com.audipp.playback.source.SourceDescriptor
 import com.audipp.playback.source.SourceResolution
 import com.audipp.playback.source.SourceResolver
 import com.audipp.playback.source.TargetKind
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlin.time.Duration.Companion.nanoseconds
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -145,6 +148,44 @@ class PlaybackCheckpointJournalTest {
             val restored = requireNotNull(restore())
             assertEquals(entry, restored.entry)
             assertEquals(30_800L, restored.positionMs)
+        }
+    }
+
+    @Test
+    fun repeatChangeBeforeStopWritePreservesTheLatestResumePoint() = runBlocking {
+        seed()
+        withJournal {
+            journal.saveConfirmed(frame(10_000))
+            assertEquals(CheckpointWriteOutcome.SAVED, awaitWrite(now).outcome)
+        }
+
+        val unblockWriter = CountDownLatch(1)
+        val executor = Executors.newSingleThreadExecutor()
+        executor.asCoroutineDispatcher().use { dispatcher ->
+            executor.execute { unblockWriter.await() }
+            withJournal(writerDispatcher = dispatcher) {
+                val revision = try {
+                    val stopped = frame(30_000)
+                    journal.saveConfirmed(stopped)
+                    val edit = queues.setPlaybackOrder(
+                        queueId, stopped.queueRevision, shuffleEnabled = false,
+                        repeatMode = QueueRepeatMode.ALL, updatedAt = now,
+                    ) as QueueEditResult.Updated
+                    assertEquals(2L, edit.revision)
+                    assertEquals(10_000L, queues.checkpoint()?.positionMs)
+
+                    now++
+                    journal.saveConfirmed(stopped.copy(queueRevision = edit.revision))
+                    edit.revision
+                } finally {
+                    unblockWriter.countDown()
+                }
+                assertEquals(CheckpointWriteOutcome.SAVED, awaitWrite(now).outcome)
+                val restored = requireNotNull(restore())
+                assertEquals(revision, restored.queue.queue.revision)
+                assertEquals(entry, restored.entry)
+                assertEquals(30_000L, restored.positionMs)
+            }
         }
     }
 
@@ -423,21 +464,24 @@ class PlaybackCheckpointJournalTest {
             effectiveSource = plan?.source, executionPlan = plan),
     )
 
-    private suspend fun CoroutineScope.withJournal(test: suspend JournalFixture.() -> Unit) {
+    private suspend fun CoroutineScope.withJournal(
+        writerDispatcher: CoroutineDispatcher = Dispatchers.IO,
+        test: suspend JournalFixture.() -> Unit,
+    ) {
         val job = Job()
         try {
-            withTimeout(5_000) { JournalFixture(CoroutineScope(coroutineContext + job)).test() }
+            withTimeout(5_000) { JournalFixture(CoroutineScope(coroutineContext + job), writerDispatcher).test() }
         } finally {
             job.cancelAndJoin()
         }
     }
 
-    private inner class JournalFixture(scope: CoroutineScope) {
+    private inner class JournalFixture(scope: CoroutineScope, writerDispatcher: CoroutineDispatcher) {
         var now = 1_000L
         var sample: PlaybackCheckpointSample? = null
         val intervals = Channel<Long>()
         val ticks = Channel<Unit>()
-        val journal = PlaybackCheckpointJournal(scope, queues, { sample }, { now }) { interval ->
+        val journal = PlaybackCheckpointJournal(scope, queues, { sample }, { now }, writerDispatcher) { interval ->
             intervals.send(interval)
             ticks.receive()
         }
