@@ -2904,5 +2904,46 @@
       "docs/evidence/issue-31/README.md"
     ],
     "limitations": "API 23 での実 ContentResolver 経由の解決は未確認。"
+  },
+  {
+    "case_id": "E00-06-secrets-device-2026-11-22",
+    "requirement_ids": [
+      "NFR-SEC-02",
+      "NFR-PRIV-01"
+    ],
+    "test_ids": [
+      "TEST-SEC-01"
+    ],
+    "commit": "7fa63eb43fadddda95fa6dcc41269e38929c0f9a",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23 と API 36 のエミュレーターで Android Keystore を使い、通常試験各8件と再起動試験各2段階が成功した。暗号文の差し替え・タグ改変・鍵削除と置換を拒否し、アカウント単位の削除、ライブラリ DB と設定ファイルの保持、鍵認証なしの復号、失効とログアウトによる取消を確認した。書き込みを省くと再起動後の読み込み試験は両 API で想定どおり失敗した。",
+    "evidence": [
+      "docs/evidence/issue-28/README.md",
+      "app/src/androidTest/java/com/audipp/data/secrets/SecretStoreDeviceTest.kt"
+    ],
+    "limitations": "試験用アカウント、ライブラリ DB、設定 DataStore を使用。復元後の鍵欠落は、暗号文を残したまま鍵を削除または置換して再現した。"
+  },
+  {
+    "case_id": "E00-06-secrets-device-not-run-2026-11-22",
+    "requirement_ids": [
+      "NFR-SEC-02",
+      "NFR-PRIV-01"
+    ],
+    "test_ids": [
+      "TEST-SEC-01"
+    ],
+    "commit": "7fa63eb43fadddda95fa6dcc41269e38929c0f9a",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "物理端末、実際の OS バックアップと復元、OS による鍵の無効化、StrongBox とハードウェアによる鍵保護、再生履歴の保持、再認証画面、実サービスの期限監視とログアウトは未実施。",
+    "evidence": [
+      "docs/evidence/issue-28/README.md"
+    ],
+    "limitations": "実サービスの利用や外部送信の用途別許可は確認していない。再生履歴の永続化は現行の Android アプリに実装されていない。"
   }
 ]
