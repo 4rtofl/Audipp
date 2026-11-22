@@ -211,7 +211,7 @@ class LibraryDatabaseTest {
     fun migratesExportedVersionOneWithoutChangingExistingIds() = verifyMigration(1)
 
     @Test
-    fun migratesExportedVersionTwoWithoutChangingExistingIds() = verifyMigration(2)
+    fun migratesExportedVersionFourWithoutChangingExistingIds() = verifyMigration(4)
 
     private fun verifyMigration(version: Int) = runBlocking {
         db.close()
@@ -235,6 +235,10 @@ class LibraryDatabaseTest {
             raw.execSQL("INSERT INTO sources (source_id, kind, availability, updated_at) VALUES ('old-source', 'LOCAL', 'MISSING', 1)")
             raw.execSQL("INSERT INTO tracks (track_id, title) VALUES ('old-track', 'Existing')")
             raw.execSQL("INSERT INTO track_variants (variant_id, track_id, source_id) VALUES ('old-variant', 'old-track', 'old-source')")
+            if (version == 4) {
+                raw.execSQL("INSERT INTO playlists (playlist_id, name, created_at, updated_at, revision) VALUES ('list', 'List', 1, 1, 1)")
+                raw.execSQL("INSERT INTO playlist_items (entry_id, playlist_id, ordinal, variant_id) VALUES ('entry', 'list', 0, 'old-variant')")
+            }
             raw.version = version
         }
         db = LibraryDatabase.open(context, "library-test.db")
@@ -243,15 +247,17 @@ class LibraryDatabaseTest {
         assertEquals(TrackId("old-track"), variant.trackId)
         assertEquals(Availability.MISSING, variant.source.availability)
         assertEquals("Existing", dao.track("old-track")?.title)
-        assertTrue(db.safScanDao().roots().isEmpty())
-        assertEquals(3, db.openHelper.writableDatabase.version)
+        val entries = if (version == 4) listOf(PlaylistEntry("entry", VariantId("old-variant"))) else null
+        assertEquals(entries, db.playlistDao().read("list")?.entries)
         assertNull(dao.variant("old-variant")?.localMetadata)
+        assertTrue(db.safScanDao().roots().isEmpty())
+        assertEquals(5, db.openHelper.writableDatabase.version)
     }
 
     @Test
     fun unsupportedDatabaseVersionFailsWithoutDestroyingRows() = runBlocking {
         dao.save(LibraryBatch(tracks = listOf(TrackEntity("retained"))))
-        db.openHelper.writableDatabase.version = 4
+        db.openHelper.writableDatabase.version = 6
         db.close()
         db = LibraryDatabase.open(context, "library-test.db")
         try {
@@ -263,7 +269,7 @@ class LibraryDatabaseTest {
         db.close()
         val raw = context.openOrCreateDatabase("library-test.db", 0, null)
         raw.use {
-            assertEquals(4, it.version)
+            assertEquals(6, it.version)
             it.rawQuery("SELECT track_id FROM tracks", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals("retained", cursor.getString(0))

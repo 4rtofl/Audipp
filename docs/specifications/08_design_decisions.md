@@ -5,7 +5,7 @@
 | レビュー状態 | **Complete**（2026-10-28、利用者による全レビュー完了・正式版承認） |
 | 文書版・日付 | 1.0.0 / 2026-10-28 |
 | 状態 | 利用者から委任された技術判断を反映。実装・実機検証・外部契約の完了とは別 |
-| 対応 | [基本設計](02_basic_design.md)のADR-001〜008、[判断記録](06_decisions.md)のR-01〜07 |
+| 対応 | [基本設計](02_basic_design.md)のADR-001〜009、[判断記録](06_decisions.md)のR-01〜07 |
 
 2026-10-28の最新指示により個人間版とPUBLICを分ける。現在の採用先・数値・メールなし認証/保持条件は[順次レビュー](09_private_completion_review.md)で更新した。本書では、公開資料と設計上の整合性から決められる処理を確定する。根拠不足のライブラリやアルゴリズムを「採用済み」「検証済み」にしない。
 
@@ -52,6 +52,8 @@ Audipp専用のDocker Composeプロジェクトを使い、認証・API・DBを�
 | shared_profiles / reports | 所有者、公開revision、根拠区分、通報状態。撤回で共有キャッシュを失効 |
 
 `POST /v1/sync/batches`は最大100イベント、本文上限1 MiBとする。DBトランザクション内でバッチ全体を検査し、失敗時に部分適用しない。200は結果確定、400は入力/schema不正、401は再認証、403は権限/用途不許可、409はrevision/削除世代の競合、410はcursor失効、413はサイズ超過、429は待機、503は一時障害として扱う。バッチ全体の検査では重複IDの内容も比較し、既処理IDの異内容再利用やバッチ内の競合を409として全新規変更をロールバックする。サーバーへ届いたか不明な再送でもevent_idを変えない。削除世代競合では削除済み履歴を新規event_idへ作り直さない。
+
+pushの物理スキーマ、入力、復旧手順とTEST-SYNC-01の実施範囲は[同期push v1](../contracts/sync-push-v1.md)に記録する。
 
 `GET /v1/sync`はuser_idとsnapshot上限revisionに束縛した不透明cursorを返す。各ページは最大100イベントとし、ページはローカルの一時領域へ蓄積し、最後のページまで検査してから、受信変更とcursorを同一トランザクションで正本へ反映する。完全同期中も未送信outboxを別保持し、受信snapshotで上書きせず再検査する。途中失敗は正本と確定cursorを変えない。並行更新は次の同期へ回す。cursor失効時はtombstone/削除世代を含む完全同期を先に行い、未送信データは保持したまま再検査する。並べ替え競合は両コピーを提示して選択させる。
 
@@ -104,6 +106,12 @@ Java UsbRequestだけでisochronous転送ができるとはしない。USBはlib
 Preferred Mixerの要求成功と、DACへ届くビット列の一致は別判定。Bit-perfectの証拠は端末・OS/build・DAC・形式・音量・DSP・転送方式・試験IDへ束縛し、条件変更で失効させる。利用者回答でDACはiFi ZEN DAC V2、Galaxy S25はAndroid 16と判明した。FiiO M21のOS版は未確認のままとする。機種情報だけでNative/DoP/384 kHzの実動作を保証しない。[AOSP](https://source.android.com/docs/core/audio/preferred-mixer-attr)。
 
 **未完了として残すもの：** 選定した方式のNDK導入・libsox接続、個別DAC対応、数値精度・電力・遅延・音量の実測。この不足は初回機能の削減ではなく、該当詳細設計と公開判定の未完了である。
+
+## ADR-009：WebDAV の HTTP クライアント
+
+2026-11-21、PR #184 のレビューで利用者が OkHttp 5.4.0 の採用を承認した。[順次レビュー](09_private_completion_review.md) の④が想定していた Android 標準の HTTP クライアントでは `HttpURLConnection` で PROPFIND を送れない。OkHttp は PROPFIND を送信でき、`Call.cancel()` で本文読込中のソケットを取り消せる。XML の解析と TLS の証明書検証には Android の実装を使う。
+
+5.4.0 は compileSdk 36 に適合する。OkHttp と試験専用の MockWebServer は Apache-2.0。アプリの実行時依存では Okio が 3.9.1 から 3.17.0、AndroidX Annotation が 1.9.1 から 1.10.0、Startup Runtime が 1.1.1 から 1.2.0 へ上がる。解決した版は [依存ロック](../../app/gradle.lockfile) に記録する。
 
 ## レビューの完了条件と未解決分類
 

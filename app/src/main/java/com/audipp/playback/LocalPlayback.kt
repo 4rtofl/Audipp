@@ -1,11 +1,17 @@
 package com.audipp.playback
 
+import com.audipp.audio.pcm.NativePcmProcessor
+import com.audipp.audio.pcm.PcmFormat
+import com.audipp.audio.pcm.PcmOpenResult
+import com.audipp.audio.pcm.PcmTransform
+import com.audipp.data.db.QueueRepeatMode
 import com.audipp.domain.model.Availability
 import com.audipp.domain.model.ErrorDomain
 import com.audipp.domain.model.PlaybackCapabilities
 import com.audipp.domain.model.PlaybackError
 import com.audipp.domain.model.PlaybackPhase
 import com.audipp.domain.model.PlaybackSnapshot
+import com.audipp.domain.model.QueueEntry
 import com.audipp.domain.model.QueueEntryId
 import com.audipp.domain.model.SourceKind
 import com.audipp.domain.model.TrackVariant
@@ -24,16 +30,20 @@ import com.audipp.playback.source.TargetKind
 import java.io.IOException
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
 
 internal interface LocalPlaybackEngine {
-    fun prepare(entryId: QueueEntryId, document: SourceDescriptor.LocalDocument)
+    fun prepare(entryId: QueueEntryId, transitionId: TransitionId, document: SourceDescriptor.LocalDocument)
     fun reset()
 }
+
+internal enum class LocalEnginePhase { BUFFERING, READY, ENDED }
 
 // The service's application looper serializes commands and engine events, including Stop during IO.
 internal class LocalPlayback(
@@ -46,6 +56,12 @@ internal class LocalPlayback(
     )
     private val mutableSnapshot = MutableStateFlow(PlaybackSnapshot(0, PlaybackPhase.IDLE))
     val snapshot: StateFlow<PlaybackSnapshot> = mutableSnapshot.asStateFlow()
+    private val mutableSchedule = MutableStateFlow<PlaybackSchedule>(PlaybackSchedule.Unknown)
+    val schedule: StateFlow<PlaybackSchedule> = mutableSchedule.asStateFlow()
+    private var selectedVariant: TrackVariant? = null
+    private var seekPending = false
+    private var pcmProcessor: NativePcmProcessor? = null
+    private var pcmSetup: Any? = null
     private val resolver = SourceResolver(
         mapOf(AdapterKey(SourceKind.LOCAL, TargetKind.DEVICE) to LocalDocumentSourceAdapter(
             PlaybackCapabilities(canPlay = true, canPause = true, canReadPosition = true), access,
@@ -54,32 +70,38 @@ internal class LocalPlayback(
 
     suspend fun start(entryId: QueueEntryId, variant: TrackVariant): PlaybackError? {
         stop()
-        val attempt = context
+        val transitionId = context.transitionId
         publish(PlaybackSnapshot(0, PlaybackPhase.RESOLVING, currentEntryId = entryId))
         try {
-            val result = resolver.resolve(ResolutionRequest(variant, attempt))
-            currentCoroutineContext().ensureActive()
-            if (context != attempt) throw CancellationException("Superseded playback")
-            if (result is SourceResolution.Unavailable) return fail(result.reason.toPlaybackError())
-            result as SourceResolution.Resolved.Playback
-            val rejection = resolver.rejectionFor(result)
-            currentCoroutineContext().ensureActive()
-            if (context != attempt) throw CancellationException("Superseded playback")
-            rejection?.let { return fail(it.toPlaybackError()) }
-            val descriptor = result.descriptor as? SourceDescriptor.LocalDocument
-                ?: return fail(ResolutionFailure.INVALID_DESCRIPTOR.toPlaybackError())
-            // The grant may have been revoked after resolution; the engine also opens under OS checks.
-            if (context != attempt) throw CancellationException("Superseded playback")
-            publish(snapshot.value.copy(phase = PlaybackPhase.BUFFERING,
-                effectiveSource = result.plan.source, executionPlan = result.plan))
-            engine.prepare(entryId, descriptor)
-            return null
+            repeat(2) {
+                val attempt = context
+                val result = resolver.resolve(ResolutionRequest(variant, attempt))
+                val rejection = when (result) {
+                    is SourceResolution.Unavailable -> result.reason
+                    is SourceResolution.Resolved -> resolver.rejectionFor(result)
+                }
+                currentCoroutineContext().ensureActive()
+                if (context.transitionId != transitionId) throw CancellationException("Superseded playback")
+                if (context.routeRevision != attempt.routeRevision) return@repeat
+                rejection?.let { return fail(it.toPlaybackError()) }
+                result as SourceResolution.Resolved.Playback
+                val descriptor = result.descriptor as? SourceDescriptor.LocalDocument
+                    ?: return fail(ResolutionFailure.INVALID_DESCRIPTOR.toPlaybackError())
+                // The grant may have been revoked after resolution; the engine also opens under OS checks.
+                selectedVariant = variant
+                publish(snapshot.value.copy(phase = PlaybackPhase.BUFFERING,
+                    effectiveSource = result.plan.source, executionPlan = result.plan))
+                engine.prepare(entryId, attempt.transitionId, descriptor)
+                return null
+            }
+            return fail(playbackError(ErrorDomain.AUDIO_ROUTE, "ROUTE_CHANGED_DURING_RESOLUTION",
+                true, UserAction.RETRY))
         } catch (cancelled: CancellationException) {
-            if (context == attempt) stop()
+            if (context.transitionId == transitionId) stop()
             throw cancelled
         } catch (failure: Exception) {
             currentCoroutineContext().ensureActive()
-            if (context != attempt) throw CancellationException("Superseded playback")
+            if (context.transitionId != transitionId) throw CancellationException("Superseded playback")
             return fail(when (failure) {
                 is SecurityException -> ResolutionFailure.PERMISSION_REQUIRED.toPlaybackError()
                 is IOException -> ResolutionFailure.SOURCE_IO.toPlaybackError()
@@ -90,33 +112,139 @@ internal class LocalPlayback(
     }
 
     fun stop() {
+        invalidatePcm()
         context = context.copy(transitionId = newTransition())
+        selectedVariant = null
+        seekPending = false
         publish(PlaybackSnapshot(0, PlaybackPhase.IDLE))
         engine.reset()
     }
 
     fun fail(error: PlaybackError): PlaybackError {
+        invalidatePcm()
         context = context.copy(transitionId = newTransition())
+        selectedVariant = null
+        seekPending = false
         publish(snapshot.value.copy(phase = PlaybackPhase.ERROR, executionPlan = null,
             effectiveSource = null, positionMs = null, durationMs = null, error = error))
         engine.reset()
         return error
     }
 
-    fun onEngineState(phase: PlaybackPhase, positionMs: Long?, durationMs: Long?, canSeek: Boolean) {
-        val previous = snapshot.value
-        val plan = previous.executionPlan ?: return
-        if (previous.phase == PlaybackPhase.ERROR) return
-        val duration = durationMs?.takeIf { it >= 0 }
-        val position = positionMs?.takeIf { it >= 0 }?.let {
-            if (duration == null) it else it.coerceAtMost(duration)
-        }
-        publish(previous.copy(phase = phase, positionMs = position, durationMs = duration,
-            executionPlan = plan.copy(capabilities = plan.capabilities.copy(canSeek = canSeek))))
+    fun onSeekRequested() {
+        if (snapshot.value.effectiveSource == null) return
+        seekPending = true
+        publish(snapshot.value.copy(positionMs = null))
     }
 
-    private fun publish(value: PlaybackSnapshot) {
-        mutableSnapshot.value = value.copy(revision = snapshot.value.revision + 1)
+    fun onRouteRevisionChanged(revision: Long) {
+        if (revision <= context.routeRevision) return
+        invalidatePcm()
+        context = context.copy(routeRevision = revision)
+        val previous = snapshot.value
+        if (previous.executionPlan != null) publish(previous.copy(executionPlan = null), schedule.value)
+    }
+
+    // A route change retires the plan while the prepared media item keeps playing under this transition.
+    fun isCurrentTransition(transitionId: TransitionId?): Boolean =
+        transitionId == context.transitionId && snapshot.value.effectiveSource != null
+
+    fun onEngineState(
+        transitionId: TransitionId,
+        enginePhase: LocalEnginePhase,
+        playRequested: Boolean,
+        isPlaying: Boolean,
+        positionMs: Long?,
+        durationMs: Long?,
+        canSeek: Boolean,
+        speed: Double,
+        observedAtEpochMs: Long,
+    ) {
+        if (!isCurrentTransition(transitionId)) return
+        val previous = snapshot.value
+        val plan = previous.executionPlan
+        val phase = when (enginePhase) {
+            LocalEnginePhase.BUFFERING -> if (playRequested) PlaybackPhase.BUFFERING else PlaybackPhase.PAUSED
+            LocalEnginePhase.READY -> if (isPlaying) PlaybackPhase.PLAYING else PlaybackPhase.PAUSED
+            LocalEnginePhase.ENDED -> {
+                invalidatePcm()
+                PlaybackPhase.ADVANCING
+            }
+        }
+        val duration = durationMs?.takeIf { it >= 0 }
+        val observedPosition = positionMs?.takeIf { it >= 0 }
+        // ExoPlayer reports the requested position before applying the seek, with a masked BUFFERING state.
+        if (enginePhase != LocalEnginePhase.BUFFERING && observedPosition != null) seekPending = false
+        val position = observedPosition.takeUnless { seekPending }?.let {
+            if (duration == null) it else it.coerceAtMost(duration)
+        }
+        val observed = previous.copy(phase = phase, positionMs = position, durationMs = duration,
+            executionPlan = plan?.copy(capabilities = plan.capabilities.copy(canSeek = canSeek && duration != null)))
+        val variant = selectedVariant
+        val entryId = observed.currentEntryId
+        val schedule = if (variant != null && entryId != null && phase != PlaybackPhase.ADVANCING) {
+            calculatePlaybackSchedule(
+                observed,
+                listOf(QueueEntry(entryId, variant.variantId)),
+                mapOf(variant.variantId to variant.copy(durationMs = duration ?: variant.durationMs)),
+                speed,
+                QueueRepeatMode.OFF,
+                observedAtEpochMs,
+            )
+        } else {
+            PlaybackSchedule.Unknown
+        }
+        publish(observed, schedule)
+    }
+
+    suspend fun openPcmProcessor(
+        transitionId: TransitionId,
+        routeRevision: Long,
+        format: PcmFormat,
+        transform: PcmTransform,
+        bufferMs: Int = 80,
+    ): PcmOpenResult {
+        if (transitionId != context.transitionId || routeRevision != context.routeRevision) {
+            return PcmOpenResult.Rejected.STALE_PLAYBACK
+        }
+        val current = snapshot.value
+        if (current.executionPlan == null || current.phase == PlaybackPhase.ADVANCING) {
+            return PcmOpenResult.Rejected.NO_LOCAL_PLAYBACK
+        }
+        // The local-only resolver authorizes the document. The caller must decode that same
+        // document under its OS grant; a standard Media3 plan does not attest to PCM capture.
+        val attempt = Any()
+        pcmSetup = attempt
+        try {
+            val result = withContext(Dispatchers.IO) {
+                NativePcmProcessor.open(format, transform, bufferMs)
+            }
+            if (pcmSetup !== attempt) {
+                if (result is PcmOpenResult.Ready) result.processor.close()
+                return PcmOpenResult.Rejected.STALE_PLAYBACK
+            }
+            if (result is PcmOpenResult.Ready) {
+                pcmProcessor?.close()
+                pcmProcessor = result.processor
+            }
+            return result
+        } finally {
+            if (pcmSetup === attempt) pcmSetup = null
+        }
+    }
+
+    fun invalidatePcm() {
+        pcmSetup = null
+        pcmProcessor?.close()
+        pcmProcessor = null
+    }
+
+    private fun publish(value: PlaybackSnapshot, schedule: PlaybackSchedule = PlaybackSchedule.Unknown) {
+        val previous = snapshot.value
+        if (value.copy(revision = previous.revision) != previous || schedule != mutableSchedule.value) {
+            mutableSchedule.value = schedule
+            mutableSnapshot.value = value.copy(revision = previous.revision + 1)
+        }
     }
 }
 
@@ -132,8 +260,9 @@ internal fun ResolutionFailure.toPlaybackError(): PlaybackError = when (this) {
     ResolutionFailure.ADAPTER_UNAVAILABLE -> playbackError(ErrorDomain.FORMAT_UNSUPPORTED,
         name, false, UserAction.RESELECT_SOURCE)
     ResolutionFailure.SOURCE_IO, ResolutionFailure.SOURCE_MISSING,
-    ResolutionFailure.SOURCE_UNAVAILABLE, ResolutionFailure.TIMEOUT ->
+    ResolutionFailure.SOURCE_UNAVAILABLE, ResolutionFailure.TIMEOUT, ResolutionFailure.REFRESH_REQUIRED ->
         playbackError(ErrorDomain.SOURCE_IO, name, true, UserAction.RESELECT_SOURCE)
+    ResolutionFailure.RATE_LIMITED -> playbackError(ErrorDomain.SOURCE_IO, name, true, UserAction.RETRY)
     else -> playbackError(ErrorDomain.PLAYBACK_ENGINE, name, false)
 }
 

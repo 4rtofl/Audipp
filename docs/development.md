@@ -4,6 +4,7 @@
 
 - JDK 17
 - Android SDK Platform 36、Build Tools 35.0.0、Platform Tools
+- Android NDK 28.2.13676358、CMake 3.22.1
 - Android Studio、またはAndroid SDK Command-line Tools
 
 GradleはリポジトリのWrapperを使います。AGP・Kotlin・Composeなどの版は [`gradle/libs.versions.toml`](../gradle/libs.versions.toml)、SDKとJavaの設定は [`app/build.gradle.kts`](../app/build.gradle.kts) を参照してください。minSdkは23（Android 6.0）です。
@@ -12,7 +13,7 @@ GradleはリポジトリのWrapperを使います。AGP・Kotlin・Composeなど
 
 1. [Android Studio](https://developer.android.com/studio)とJDK 17を用意します。
 2. **Open** からリポジトリのルートを開きます。
-3. **SDK Manager** で必要なSDKパッケージを導入します。Build Toolsは **Show Package Details** から35.0.0を選びます。
+3. **SDK Manager** で必要なSDKパッケージを導入します。**Show Package Details** からBuild Tools、NDK (Side by side)、CMakeの指定版を選びます。
 4. 設定の **Build, Execution, Deployment > Build Tools > Gradle > Gradle JDK** にJDK 17を指定し、Gradle Syncを実行します。Android Studio自身の実行JDKを変更する必要はありません。[JDK設定の公式資料](https://developer.android.com/build/jdks)
 5. **Device Manager** で仮想端末を作成するか、USBデバッグを有効にした実機を選び、`app` を **Run** します。システムイメージは開発PCのCPUに合うABIを選びます。
 
@@ -62,7 +63,7 @@ Debug APKは `app/build/outputs/apk/debug/app-debug.apk`、テスト結果は `a
 AndroidのCIで実行するコマンドは次のとおりです。
 
 ```sh
-./gradlew --no-daemon --console=plain :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
+./gradlew --no-daemon --console=plain :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
 ```
 
 Gradle設定・カタログ・Wrapper・lockfileを変更した場合だけ、CIでも `--write-locks` を追加し、再生成したlockfileとコミット済みの内容が一致することを検査します。依存変更時は同じコマンドに `--write-locks` を付けてローカル検証し、生成差分をコミットしてください。解決結果が変わらなければlockfileの差分は不要です。CIの通常実行でlockfileを更新することはありません。
@@ -100,6 +101,12 @@ Source・Variant・再生Snapshot・Evidenceの公開型、版付きJSON、後�
 
 Issue #17の生成音源・Float64独立比較・版付き測定結果の使い方、要求/試験との対応と未検証範囲は [音声試験基盤 v1](../tests/audio/README.md) を参照してください。Python標準ライブラリのホスト検査をCIでも実行します。音声処理や実機測定の成功とは区別します。
 
+## PCMのnative処理
+
+Issue #41のPCMバッファ契約、世代の取消、ABIと検証の追跡は [PCM処理 v1](contracts/native-pcm-v1.md) を参照してください。
+
+CIではJNI試験のAPKをビルドし、試験の実行は起動済みのエミュレーターをADBシリアルで指定して手動で行います（`ANDROID_SERIAL=SERIAL ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.audipp.audio.pcm.NativePcmProcessorTest` の `SERIAL` を対象のシリアルに置き換えます）。
+
 ## 小規模設定と同意の保存
 
 Issue #27のDataStore、用途別の同意版、読取/保存エラーと再試行、保存範囲と検証の追跡は [設定保存 v1](contracts/preferences-v1.md) を参照してください。画面との接続は担当UI Issueで行います。
@@ -115,6 +122,10 @@ Issue #31のアダプター登録、出力先ごとのPlan、許諾・経路・�
 ## Provider用途別許諾
 
 Issue #33の用途別台帳、証跡・scope・期限と技術能力の分離、処理入口での再検査、403・失効・保存失敗と後続接続の責務は [Provider用途別許諾 v1](contracts/provider-policy-v1.md) を参照してください。
+
+## YouTube系の音声中継調査
+
+Issue #24 の再現手順、FR-SRC-11/12 と TEST-YTDLP-01/RESEARCH-01/SAVE-01 の部分結果、実サービスの利用資格・用途別許諾の確認状況は [音声中継・保存条件の調査](evidence/issue-24/README.md) を参照してください。
 
 ## USB機器の取得
 
@@ -143,6 +154,8 @@ adb -s SERIAL logcat -b crash -d
 ## 業務APIと所有権の検証
 
 Issue #34の独立した`server/`ビルド、HTTPS/JSON・本人所有権、SQL/migration、起動条件と試験範囲は[業務API v1](contracts/backend-v1.md)を参照してください。`./gradlew -p server test installDist distTar`はSDK・Docker・実配備を使わず、一時PostgreSQLで拒否動作と復旧を検証します。Androidの引き渡し検証は従来どおり必要です。
+
+Issue #51 の招待・復旧・Google 結合の設定とローカル試験は[招待制の認証と復旧](contracts/keycloak-invitation.md)を参照してください。
 
 ## Linux x86_64向けの補助手順
 

@@ -50,7 +50,8 @@ internal fun readSafAudio(
                 analyzeIdentified(descriptor, probe, tagged?.first ?: AudioTags(), probe.artwork ?: tagged?.second, signal)
             }
             is AudioProbeResult.Rejected -> when (probe.problem) {
-                AudioProbeProblem.UNRECOGNIZED -> platformStream(descriptor)?.let { readTags(descriptor, it) }
+                AudioProbeProblem.UNRECOGNIZED -> (platformStream(descriptor) as? PlatformStream.Audio)
+                    ?.let { readTags(descriptor, it.metadata) }
                 AudioProbeProblem.UNSUPPORTED -> throw SafAudioRejected(LibraryScanIssue.UNSUPPORTED_AUDIO)
                 AudioProbeProblem.EMPTY -> throw SafAudioRejected(LibraryScanIssue.EMPTY_AUDIO)
                 AudioProbeProblem.MALFORMED -> throw SafAudioRejected(LibraryScanIssue.CORRUPT_AUDIO)
@@ -71,11 +72,13 @@ private fun analyzeIdentified(
     tags: AudioTags,
     artwork: EmbeddedArtwork?,
     signal: CancellationSignal,
-): SafAudio {
+): SafAudio? {
     val source = header.format
     val dsd = header.container == AudioContainer.DSF || header.container == AudioContainer.DFF
-    val platform = if (dsd) null else platformStream(descriptor)
+    val stream = if (dsd) null else platformStream(descriptor)
     signal.throwIfCanceled()
+    if (stream == PlatformStream.Video) return null
+    val platform = (stream as? PlatformStream.Audio)?.metadata
     val codec = when (header.container) {
         AudioContainer.MP3 -> platform?.codec?.takeIf { it == "audio/mpeg" }
         AudioContainer.ADTS -> platform?.codec?.takeIf { it == "audio/mp4a-latm" }
@@ -105,22 +108,28 @@ private fun analyzeIdentified(
     return if (platform == null) audio else readTags(descriptor, audio)
 }
 
-private fun platformStream(descriptor: AssetFileDescriptor): SafAudio? = try {
-    audioStream(descriptor)
-} catch (_: IOException) {
-    null
+private sealed interface PlatformStream {
+    data class Audio(val metadata: SafAudio) : PlatformStream
+    data object Video : PlatformStream
 }
 
-private fun audioStream(descriptor: AssetFileDescriptor): SafAudio? {
+private fun platformStream(descriptor: AssetFileDescriptor): PlatformStream? {
     val extractor = MediaExtractor()
     try {
-        if (descriptor.declaredLength < 0 && descriptor.startOffset == 0L) {
-            extractor.setDataSource(descriptor.fileDescriptor)
-        } else {
-            extractor.setDataSource(descriptor.fileDescriptor, descriptor.startOffset, descriptor.length)
+        try {
+            if (descriptor.declaredLength < 0 && descriptor.startOffset == 0L) {
+                extractor.setDataSource(descriptor.fileDescriptor)
+            } else {
+                extractor.setDataSource(descriptor.fileDescriptor, descriptor.startOffset, descriptor.length)
+            }
+        } catch (_: IOException) {
+            return null
         }
-        for (index in 0 until extractor.trackCount) {
-            val format = extractor.getTrackFormat(index)
+        val formats = List(extractor.trackCount, extractor::getTrackFormat)
+        if (formats.any { it.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true }) {
+            return PlatformStream.Video
+        }
+        for ((index, format) in formats.withIndex()) {
             val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
             if (mime.startsWith("audio/")) {
                 extractor.selectTrack(index)
@@ -128,14 +137,14 @@ private fun audioStream(descriptor: AssetFileDescriptor): SafAudio? {
                     extractor.unselectTrack(index)
                     continue
                 }
-                return SafAudio(
+                return PlatformStream.Audio(SafAudio(
                     codec = mime,
                     sampleRate = format.positiveInt(MediaFormat.KEY_SAMPLE_RATE),
                     channels = format.positiveInt(MediaFormat.KEY_CHANNEL_COUNT),
                     durationMs = if (format.containsKey(MediaFormat.KEY_DURATION)) {
                         format.getLong(MediaFormat.KEY_DURATION).takeIf { it >= 0 }?.div(1000)
                     } else null,
-                )
+                ))
             }
         }
         return null

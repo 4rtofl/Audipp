@@ -11,6 +11,7 @@ android {
     namespace = "com.audipp"
     compileSdk = 36
     buildToolsVersion = "35.0.0"
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.audipp"
@@ -19,6 +20,23 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        externalNativeBuild.cmake.arguments += "-DANDROID_STL=none"
+    }
+
+    buildTypes {
+        debug {
+            ndk.abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+        release {
+            ndk.abiFilters += setOf("arm64-v8a", "armeabi-v7a")
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     buildFeatures {
@@ -32,6 +50,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -50,6 +69,7 @@ dependencyLocking {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.material3)
@@ -60,8 +80,11 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.session)
+    implementation(libs.okhttp)
+    testImplementation(libs.mockwebserver)
     testImplementation(libs.robolectric)
     implementation(libs.androidx.room.runtime)
+    implementation(libs.smbj)
     ksp(libs.androidx.room.compiler)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.junit)

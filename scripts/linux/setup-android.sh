@@ -46,5 +46,6 @@ if [[ "${1:-}" == '--accept-licenses' ]]; then
 else
     "$sdkmanager" --sdk_root="$ANDROID_HOME" --licenses
 fi
-"$sdkmanager" --sdk_root="$ANDROID_HOME" 'platforms;android-36' 'build-tools;35.0.0'
+"$sdkmanager" --sdk_root="$ANDROID_HOME" 'platforms;android-36' 'build-tools;35.0.0' \
+    'ndk;28.2.13676358' 'cmake;3.22.1'
 printf '\nReady. Run: source scripts/linux/android-env.sh && ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug\n'

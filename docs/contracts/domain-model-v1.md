@@ -6,7 +6,7 @@
 
 - `TrackId`は楽曲、`VariantId`は音源版、`SourceId`は所在、`QueueEntryId`は追加ごとの項目を識別する。IDの採番・保存は各データ所有者の責務で、型は空白IDを拒否する。
 - `TrackVariant`は選択版自身の曲長・形式を持つ。同じTrackの5分版と7分版は別Variantであり、不明な曲長を他の版から補わない。`QueueEntry`はVariantを参照し、重複追加でも項目IDを分ける。
-- `SourceRef`は出力先を固定しない。Provider識別子の組は楽曲・マスター一致の証拠にしない。URIは所在属性でありIDの代用にしない。資格情報・署名URLの格納には使わない。
+- `SourceRef`は出力先を固定しない。Provider識別子の組は楽曲・マスター一致の証拠にしない。URIは所在属性でありIDの代用にしない。資格情報・署名URLの格納には使わない。NETWORKの`providerItemId`は、接続先URL・資格を含まない接続先ルートからの相対パスを置く所在属性で、`providerKey`を持たない。
 
 ## 再生計画と消費者
 
