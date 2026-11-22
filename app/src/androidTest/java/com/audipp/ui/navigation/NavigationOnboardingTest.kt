@@ -6,17 +6,37 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.graphics.Rect
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.activity.compose.setContent
 import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.audipp.MainActivity
 import com.audipp.R
+import com.audipp.audio.route.OutputConfirmation
+import com.audipp.domain.device.VolumeSettings
+import com.audipp.domain.model.PlaybackPhase
+import com.audipp.playback.OutputConfirmationRequest
+import com.audipp.ui.theme.AudippTheme
+import java.util.Locale
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -89,6 +109,74 @@ class NavigationOnboardingTest {
             waitUntil("Home back leaves the activity") {
                 instrumentation.uiAutomation.rootInActiveWindow?.packageName != context.packageName
             }
+        }
+    }
+
+    @Test
+    fun japaneseOutputConfirmationAt320DpAnd200PercentFont() = verifyOutputConfirmation(Locale.JAPANESE)
+
+    @Test
+    fun englishOutputConfirmationAt320DpAnd200PercentFont() = verifyOutputConfirmation(Locale.ENGLISH)
+
+    private fun verifyOutputConfirmation(locale: Locale) {
+        val configuration = Configuration(context.resources.configuration).apply {
+            setLocale(locale)
+            fontScale = 2f
+        }
+        val localized = context.createConfigurationContext(configuration)
+        val requests = LinkedBlockingQueue<OutputConfirmationRequest>()
+        val initial = OutputConfirmationRequest("changed", OutputConfirmation.ROUTE_CHANGED, null, null, null)
+        val displayed = mutableStateOf(initial)
+        val cases = listOf(
+            Triple(initial, R.string.playback_output_changed, R.string.playback_output_play),
+            Triple(initial.copy(id = "dac", reason = OutputConfirmation.DAC_VOLUME_UNKNOWN),
+                R.string.playback_output_dac, R.string.playback_output_checked),
+            Triple(initial.copy(id = "unknown", reason = OutputConfirmation.ROUTE_UNKNOWN),
+                R.string.playback_output_unknown, R.string.playback_output_retry),
+            Triple(initial.copy(id = "profile", reason = OutputConfirmation.PROFILE_VOLUME,
+                limit = VolumeSettings(digitalGainDb = -12.0), physicalGainNote = "LOW"),
+                R.string.playback_output_profile, R.string.playback_output_checked),
+        )
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                activity.setContent {
+                    val density = LocalDensity.current.density
+                    CompositionLocalProvider(
+                        LocalConfiguration provides configuration,
+                        LocalContext provides localized,
+                        LocalDensity provides Density(density, fontScale = 2f),
+                    ) {
+                        AudippTheme {
+                            Box(Modifier.width(320.dp)) {
+                                NavigationPlaybackBar(
+                                    NavigationPlaybackState.Current(PlaybackPhase.PAUSED, null, null, null,
+                                        outputConfirmation = displayed.value),
+                                    onTogglePlayback = { error("Ordinary playback must stay blocked") },
+                                    onConfirmOutput = { requests.add(it) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            for ((request, message, action) in cases) {
+                scenario.onActivity { displayed.value = request }
+                val messageNode = awaitNode(localized.getString(message))
+                val actionLabel = localized.getString(action)
+                val actionNode = awaitNode { it.text?.toString() == actionLabel && clickable(it) != null }
+                val messageBounds = Rect().also(messageNode::getBoundsInScreen)
+                val actionBounds = Rect().also(requireNotNull(clickable(actionNode))::getBoundsInScreen)
+                assertTrue("Confirmation text and action overlap", messageBounds.bottom <= actionBounds.top)
+                click(actionLabel)
+                assertEquals(request, requests.poll(5, TimeUnit.SECONDS))
+            }
+            val note = localized.getString(R.string.playback_output_physical_gain, "LOW")
+            if (find(note) == null) {
+                val scroll = awaitNode { it.isScrollable }
+                assertTrue(scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD))
+            }
+            awaitNode(note)
+            assertTrue(find(localized.getString(R.string.playback_output_checked)) != null)
         }
     }
 

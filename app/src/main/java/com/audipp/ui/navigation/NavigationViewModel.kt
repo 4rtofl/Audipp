@@ -12,6 +12,7 @@ import com.audipp.data.local.LibraryScan
 import com.audipp.data.local.LibraryScanStatus
 import com.audipp.data.local.LocalTreeRegistration
 import com.audipp.data.local.SafLibrary
+import com.audipp.playback.OutputConfirmationRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -127,6 +128,8 @@ internal class NavigationViewModel(
     fun retryPlayback() = playbackAttempt.update { it + 1 }
 
     fun togglePlayback(control: PlaybackControl) = playbackConnection.toggle(control)
+
+    fun confirmOutput(request: OutputConfirmationRequest) = playbackConnection.confirmOutput(request)
 
     fun openPicker(): Boolean {
         if (folderState.value.busy) return false

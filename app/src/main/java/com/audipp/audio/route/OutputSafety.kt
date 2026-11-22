@@ -8,10 +8,13 @@ import com.audipp.domain.device.OutputBackend
 import com.audipp.domain.device.OutputMode
 import com.audipp.domain.device.OutputTarget
 import com.audipp.domain.device.VolumeSettings
+import java.util.UUID
 import kotlin.math.pow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.Serializable
 
+@Serializable
 internal enum class OutputConfirmation { ROUTE_CHANGED, ROUTE_UNKNOWN, DAC_VOLUME_UNKNOWN, PROFILE_VOLUME }
 
 internal sealed interface OutputSafetyState {
@@ -19,7 +22,7 @@ internal sealed interface OutputSafetyState {
     data object Ready : OutputSafetyState
 
     data class ConfirmationRequired(
-        val id: Long,
+        val id: String,
         val reason: OutputConfirmation,
         val route: OutputEndpoint?,
         val restore: VolumeSettings? = null,
@@ -40,6 +43,8 @@ internal class OutputSafety(
     var revision = 0L
         private set
     private var approved: OutputEndpoint? = null
+    private var hasIdentifiedRoute = false
+    private var retrying = false
     private var digitalGainDb = 0.0
     private var muted = false
     private var limit: VolumeSettings? = null
@@ -50,7 +55,10 @@ internal class OutputSafety(
         this.setGain = setGain
         val route = outputs?.singleOrNull()?.takeUnless { it.type == AudioDeviceInfo.TYPE_UNKNOWN }
         val pending = state.value as? OutputSafetyState.ConfirmationRequired
-        if (pending != null) {
+        val silentRecovery = retrying && !hasIdentifiedRoute && route != null && !route.isUsb()
+        retrying = false
+        if (route != null) hasIdentifiedRoute = true
+        if (pending != null && !silentRecovery) {
             if (!sameRoute(pending.route, route)) {
                 requireRouteConfirmation(route)
             } else {
@@ -65,7 +73,10 @@ internal class OutputSafety(
             if (approved == null) revision++
             approved = route
             mutableState.value = OutputSafetyState.Ready
-            if (canPlay()) {
+            if (silentRecovery) {
+                setGain(0f)
+                pause()
+            } else if (canPlay()) {
                 confirmedRestore?.let { restore ->
                     restore.digitalGainDb?.let { digitalGainDb = it.coerceAtMost(limit?.digitalGainDb ?: 0.0) }
                     restore.muted?.let { muted = it }
@@ -102,7 +113,7 @@ internal class OutputSafety(
 
     // The caller obtained an explicit confirmation for this state, including any manual DAC check.
     // Playback still has to probe again at zero gain before opening the gate.
-    fun confirm(id: Long, restoreDigitalVolume: Boolean): Boolean {
+    fun confirm(id: String, restoreDigitalVolume: Boolean): Boolean {
         val pending = state.value as? OutputSafetyState.ConfirmationRequired ?: return false
         if (pending.id != id || pending.route == null ||
             pending.limit?.androidVolumeStep?.let { androidVolumeStep() > it } == true
@@ -115,9 +126,11 @@ internal class OutputSafety(
     }
 
     // Unknown observations can only trigger another silent probe; Play by itself cannot confirm them.
-    fun canRetryObservation(id: Long): Boolean {
+    fun retryObservation(id: String): Boolean {
         val pending = state.value as? OutputSafetyState.ConfirmationRequired ?: return false
-        return pending.id == id && pending.route == null
+        if (pending.id != id || pending.route != null) return false
+        retrying = true
+        return true
     }
 
     fun applyProfile(
@@ -173,7 +186,8 @@ internal class OutputSafety(
         limit: VolumeSettings? = null,
         physicalGainNote: String? = null,
     ) {
-        mutableState.value = OutputSafetyState.ConfirmationRequired(++revision, reason, route,
+        revision++
+        mutableState.value = OutputSafetyState.ConfirmationRequired(UUID.randomUUID().toString(), reason, route,
             restore, limit, physicalGainNote)
     }
 }

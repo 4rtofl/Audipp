@@ -8,23 +8,44 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
+import com.audipp.audio.route.OutputConfirmation
+import com.audipp.domain.device.VolumeSettings
 import com.audipp.domain.model.ModelJson
 import com.audipp.domain.model.PlaybackError
 import com.audipp.domain.model.PlaybackSnapshot
 import com.audipp.domain.model.QueueEntryId
 import com.audipp.domain.model.TrackVariant
+import com.audipp.domain.model.TransitionId
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.serialization.Serializable
+
+@Serializable
+internal data class OutputConfirmationRequest(
+    val id: String,
+    val reason: OutputConfirmation,
+    val outputType: Int?,
+    val limit: VolumeSettings?,
+    val physicalGainNote: String?,
+)
 
 /** Connect on the main looper; release the future with MediaController.releaseFuture on UI teardown. */
 @androidx.annotation.OptIn(UnstableApi::class)
 object PlaybackConnection {
     internal const val PLAY_LOCAL = "com.audipp.playback.PLAY_LOCAL"
+    internal const val CONFIRM_OUTPUT = "com.audipp.playback.CONFIRM_OUTPUT"
+    internal const val RETRY_OUTPUT_OBSERVATION = "com.audipp.playback.RETRY_OUTPUT_OBSERVATION"
+    internal const val CONFIRMATION_ID = "confirmationId"
+    internal const val RESTORE_DIGITAL_VOLUME = "restoreDigitalVolume"
     internal const val VARIANT = "variant"
     internal const val ENTRY_ID = "entryId"
     internal const val SNAPSHOT = "playbackSnapshot"
     internal const val SCHEDULE = "playbackSchedule"
     internal const val ERROR = "playbackError"
+    internal const val OUTPUT_CONFIRMATION = "outputConfirmation"
+    internal const val PREPARED_TRANSITION = "preparedTransition"
     internal val playLocalCommand = SessionCommand(PLAY_LOCAL, Bundle.EMPTY)
+    internal val confirmOutputCommand = SessionCommand(CONFIRM_OUTPUT, Bundle.EMPTY)
+    internal val retryOutputObservationCommand = SessionCommand(RETRY_OUTPUT_OBSERVATION, Bundle.EMPTY)
 
     fun connect(context: Context, listener: MediaController.Listener): ListenableFuture<MediaController> =
         MediaController.Builder(context.applicationContext,
@@ -43,6 +64,23 @@ object PlaybackConnection {
     fun snapshot(extras: Bundle): PlaybackSnapshot? = extras.getString(SNAPSHOT)?.let {
         ModelJson.decode<PlaybackSnapshot>(it)
     }
+
+    internal fun outputConfirmation(extras: Bundle): OutputConfirmationRequest? =
+        extras.getString(OUTPUT_CONFIRMATION)?.let { ModelJson.decode<OutputConfirmationRequest>(it) }
+
+    internal fun preparedTransition(extras: Bundle): TransitionId? =
+        extras.getString(PREPARED_TRANSITION)?.let(::TransitionId)
+
+    internal fun confirmOutput(controller: MediaController, id: String, restoreDigitalVolume: Boolean = false) =
+        controller.sendCustomCommand(confirmOutputCommand, Bundle().apply {
+            putString(CONFIRMATION_ID, id)
+            putBoolean(RESTORE_DIGITAL_VOLUME, restoreDigitalVolume)
+        })
+
+    internal fun retryOutputObservation(controller: MediaController, id: String) =
+        controller.sendCustomCommand(retryOutputObservationCommand, Bundle().apply {
+            putString(CONFIRMATION_ID, id)
+        })
 
     fun schedule(extras: Bundle): PlaybackSchedule? = extras.getString(SCHEDULE)?.let {
         ModelJson.decode<PlaybackSchedule>(it)

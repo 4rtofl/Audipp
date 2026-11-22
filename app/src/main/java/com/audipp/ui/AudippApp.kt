@@ -51,6 +51,7 @@ import com.audipp.ui.home.HomeScreen
 import com.audipp.ui.home.LocalMusic
 import com.audipp.ui.navigation.FolderRegistration
 import com.audipp.ui.navigation.HomeSources
+import com.audipp.playback.OutputConfirmationRequest
 import com.audipp.ui.navigation.NavigationPlaybackBar
 import com.audipp.ui.navigation.NavigationPlaybackState
 import com.audipp.ui.navigation.PlaybackControl
@@ -100,6 +101,7 @@ internal fun AudippApp(
     onRetrySources: () -> Unit,
     onRetryPlayback: () -> Unit,
     onTogglePlayback: (PlaybackControl) -> Unit,
+    onConfirmOutput: (OutputConfirmationRequest) -> Unit,
 ) {
     var tab by rememberSaveable { mutableStateOf(NavigationTab.HOME) }
     var page by rememberSaveable { mutableStateOf<NavigationPage?>(null) }
@@ -212,7 +214,7 @@ internal fun AudippApp(
                     }
                 }
                 if (playback is NavigationPlaybackState.Current) {
-                    NavigationPlaybackBar(playback, onTogglePlayback)
+                    NavigationPlaybackBar(playback, onTogglePlayback, onConfirmOutput)
                 }
                 if (!useRail) {
                     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {

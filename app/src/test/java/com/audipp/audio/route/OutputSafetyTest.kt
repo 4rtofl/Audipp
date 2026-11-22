@@ -52,12 +52,31 @@ class OutputSafetyTest {
         assertNull(ambiguous.route)
         assertEquals(0f, gains.last(), 0f)
         assertFalse(safety.confirm(ambiguous.id, restoreDigitalVolume = false))
-        assertTrue(safety.canRetryObservation(ambiguous.id))
+        assertTrue(safety.retryObservation(ambiguous.id))
         observe(OutputEndpoint(4, AudioDeviceInfo.TYPE_UNKNOWN, null))
         assertEquals(ambiguous.id, pending.id)
         observe()
         assertFalse(safety.canPlay())
         assertEquals(0f, gains.last(), 0f)
+    }
+
+    @Test
+    fun firstRetryFindingUsbStillRequiresManualVolumeConfirmation() {
+        observe()
+        assertTrue(safety.retryObservation(pending.id))
+        observe(OutputEndpoint(4, AudioDeviceInfo.TYPE_USB_DEVICE, "USB"))
+        assertEquals(OutputConfirmation.DAC_VOLUME_UNKNOWN, pending.reason)
+        assertEquals(0f, gains.last(), 0f)
+        assertFalse(safety.canPlay())
+    }
+
+    @Test
+    fun aRecreatedSafetyStateDoesNotAcceptItsPredecessorsConfirmation() {
+        observe()
+        val oldId = pending.id
+        val recreated = OutputSafety({ androidStep }) {}
+        recreated.onObservation(null) {}
+        assertFalse(recreated.retryObservation(oldId))
     }
 
     @Test

@@ -38,6 +38,7 @@ import com.audipp.R
 import com.audipp.audio.route.ObservedAudioOutputProvider
 import com.audipp.audio.route.OutputRouteMonitor
 import com.audipp.audio.route.OutputSafety
+import com.audipp.audio.route.OutputSafetyState
 import com.audipp.audio.route.ProfileApplication
 import com.audipp.data.db.libraryDatabase
 import com.audipp.data.device.DeviceProfileStore
@@ -65,6 +66,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -211,7 +213,7 @@ class PlaybackService : MediaLibraryService() {
         }, ContextCompat.RECEIVER_EXPORTED)
         if (Build.VERSION.SDK_INT >= 31) unregisterModeListener = watchCallMode(handler)
         scope.launch {
-            playback.snapshot.collect {
+            combine(playback.snapshot, safety.state) { _, _ -> Unit }.collect {
                 mediaSession?.let { session ->
                     session.connectedControllers.filter { it.uid == Process.myUid() }.forEach {
                         session.setSessionExtras(it, snapshotExtras())
@@ -280,11 +282,8 @@ class PlaybackService : MediaLibraryService() {
     private fun canRequestPlay() =
         playback.isCurrentTransition(currentTransition()) && !audioManager.mode.isPhoneCallMode()
 
-    internal fun confirmOutput(id: Long, restoreDigitalVolume: Boolean): Boolean =
-        safety.confirm(id, restoreDigitalVolume)
-
-    internal fun retryOutputObservation(id: Long): Boolean {
-        if (!canRequestPlay() || !safety.canRetryObservation(id)) return false
+    private fun retryOutputObservation(id: String): Boolean {
+        if (!canRequestPlay() || !safety.retryObservation(id)) return false
         player.play()
         return true
     }
@@ -329,6 +328,16 @@ class PlaybackService : MediaLibraryService() {
         putString(PlaybackConnection.SNAPSHOT,
             ModelJson.encode(playback.snapshot.value.withoutDocumentUri()))
         putString(PlaybackConnection.SCHEDULE, ModelJson.encode(playback.schedule.value))
+        currentTransition()?.takeIf(playback::isCurrentTransition)?.let {
+            putString(PlaybackConnection.PREPARED_TRANSITION, it.value)
+        }
+        val pending = safety.state.value as? OutputSafetyState.ConfirmationRequired
+        if (pending != null) {
+            putString(PlaybackConnection.OUTPUT_CONFIRMATION, ModelJson.encode(
+                OutputConfirmationRequest(pending.id, pending.reason, pending.route?.type, pending.limit,
+                    pending.physicalGainNote),
+            ))
+        }
     }
 
     internal inner class SessionCallback : MediaLibrarySession.Callback {
@@ -339,7 +348,11 @@ class PlaybackService : MediaLibraryService() {
             val commands = SessionCommands.Builder()
                 .add(SessionCommand.COMMAND_CODE_LIBRARY_GET_LIBRARY_ROOT)
                 .add(SessionCommand.COMMAND_CODE_LIBRARY_GET_CHILDREN)
-            if (ownApp) commands.add(PlaybackConnection.playLocalCommand)
+            if (ownApp) {
+                commands.add(PlaybackConnection.playLocalCommand)
+                commands.add(PlaybackConnection.confirmOutputCommand)
+                commands.add(PlaybackConnection.retryOutputObservationCommand)
+            }
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
                 .setAvailableSessionCommands(commands.build())
                 .setSessionExtras(if (ownApp) snapshotExtras() else Bundle.EMPTY)
@@ -351,9 +364,27 @@ class PlaybackService : MediaLibraryService() {
 
         override fun onCustomCommand(session: MediaSession, controller: MediaSession.ControllerInfo,
             customCommand: SessionCommand, args: Bundle): ListenableFuture<SessionResult> {
-            if (controller.uid != Process.myUid() ||
-                customCommand.customAction != PlaybackConnection.PLAY_LOCAL
-            ) return Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
+            if (controller.uid != Process.myUid()) {
+                return Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
+            }
+            val action = customCommand.customAction
+            if (action == PlaybackConnection.CONFIRM_OUTPUT || action == PlaybackConnection.RETRY_OUTPUT_OBSERVATION) {
+                val id = args.getString(PlaybackConnection.CONFIRMATION_ID)
+                val result = when {
+                    id.isNullOrBlank() -> SessionError.ERROR_BAD_VALUE
+                    action == PlaybackConnection.RETRY_OUTPUT_OBSERVATION ->
+                        if (retryOutputObservation(id)) SessionResult.RESULT_SUCCESS else SessionError.ERROR_INVALID_STATE
+                    canRequestPlay() && safety.confirm(id, args.getBoolean(PlaybackConnection.RESTORE_DIGITAL_VOLUME)) -> {
+                        player.play()
+                        SessionResult.RESULT_SUCCESS
+                    }
+                    else -> SessionError.ERROR_INVALID_STATE
+                }
+                return Futures.immediateFuture(SessionResult(result))
+            }
+            if (action != PlaybackConnection.PLAY_LOCAL) {
+                return Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
+            }
             val request = try {
                 val entryId = requireNotNull(args.getString(PlaybackConnection.ENTRY_ID))
                 val document = requireNotNull(args.getString(PlaybackConnection.VARIANT))

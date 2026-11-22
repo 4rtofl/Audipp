@@ -118,10 +118,14 @@ class PlaybackServiceTest {
         val permissions = callback.onConnect(session, trusted)
         assertTrue(permissions.isAccepted)
         assertFalse(permissions.availableSessionCommands.contains(PlaybackConnection.playLocalCommand))
+        assertFalse(permissions.availableSessionCommands.contains(PlaybackConnection.confirmOutputCommand))
+        assertFalse(permissions.availableSessionCommands.contains(PlaybackConnection.retryOutputObservationCommand))
         assertFalse(permissions.availablePlayerCommands.contains(Player.COMMAND_CHANGE_MEDIA_ITEMS))
         assertFalse(permissions.availablePlayerCommands.contains(Player.COMMAND_GET_TIMELINE))
         assertEquals(SessionError.ERROR_PERMISSION_DENIED, callback.onCustomCommand(session,
             trusted, PlaybackConnection.playLocalCommand, Bundle.EMPTY).get().resultCode)
+        assertEquals(SessionError.ERROR_PERMISSION_DENIED, callback.onCustomCommand(session,
+            trusted, PlaybackConnection.confirmOutputCommand, Bundle.EMPTY).get().resultCode)
         val root = callback.onGetLibraryRoot(session, ownApp, null).get().value!!
         assertNull(root.localConfiguration)
         assertTrue(root.mediaMetadata.isBrowsable!!)
@@ -264,7 +268,8 @@ class PlaybackServiceTest {
         assertEquals(QueueEntryId("entry"), PlaybackConnection.snapshot(controller.sessionExtras)?.currentEntryId)
 
         val disconnected = service.outputSafety.value as OutputSafetyState.ConfirmationRequired
-        assertTrue(service.retryOutputObservation(disconnected.id))
+        assertEquals(SessionResult.RESULT_SUCCESS,
+            await(PlaybackConnection.retryOutputObservation(controller, disconnected.id)).resultCode)
         advancePlaybackUntil {
             (service.outputSafety.value as? OutputSafetyState.ConfirmationRequired)?.reason ==
                 OutputConfirmation.ROUTE_CHANGED
@@ -325,6 +330,21 @@ class PlaybackServiceTest {
         val pending = service.outputSafety.value as OutputSafetyState.ConfirmationRequired
         assertEquals(OutputConfirmation.ROUTE_CHANGED, pending.reason)
         assertEquals(wired.id, pending.route?.portId)
+        advancePlaybackUntil { PlaybackConnection.outputConfirmation(controller.sessionExtras)?.id == pending.id }
+        assertEquals(wired.type, PlaybackConnection.outputConfirmation(controller.sessionExtras)?.outputType)
+        controller.play()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(rawPlayer.playWhenReady)
+        assertEquals(SessionError.ERROR_INVALID_STATE,
+            await(PlaybackConnection.confirmOutput(controller, "stale-confirmation")).resultCode)
+        assertEquals(0f, ClockedAudioTrack.volume, 0f)
+        assertEquals(SessionResult.RESULT_SUCCESS,
+            await(PlaybackConnection.confirmOutput(controller, pending.id)).resultCode)
+        advancePlaybackUntil {
+            PlaybackConnection.outputConfirmation(controller.sessionExtras) == null && ClockedAudioTrack.volume > 0f
+        }
+        assertTrue(rawPlayer.playWhenReady)
+        assertEquals(0f, ClockedAudioTrack.volumeAtPlay, 0f)
     }
 
     @Test
@@ -349,15 +369,22 @@ class PlaybackServiceTest {
 
         audio.removeOutputDevice(usb, true)
         audio.addOutputDevice(usb, true)
-        assertFalse(service.confirmOutput(pending.id, restoreDigitalVolume = false))
+        assertEquals(SessionError.ERROR_INVALID_STATE,
+            await(PlaybackConnection.confirmOutput(controller, pending.id)).resultCode)
         val disconnected = service.outputSafety.value as OutputSafetyState.ConfirmationRequired
-        assertTrue(service.retryOutputObservation(disconnected.id))
+        assertEquals(SessionResult.RESULT_SUCCESS,
+            await(PlaybackConnection.retryOutputObservation(controller, disconnected.id)).resultCode)
         advancePlaybackUntil {
             (service.outputSafety.value as? OutputSafetyState.ConfirmationRequired)?.reason ==
                 OutputConfirmation.DAC_VOLUME_UNKNOWN
         }
         assertFalse(rawPlayer.playWhenReady)
         assertEquals(0f, ClockedAudioTrack.volume, 0f)
+        val reconnected = service.outputSafety.value as OutputSafetyState.ConfirmationRequired
+        assertEquals(SessionResult.RESULT_SUCCESS,
+            await(PlaybackConnection.confirmOutput(controller, reconnected.id)).resultCode)
+        advancePlaybackUntil { ClockedAudioTrack.volume > 0f }
+        assertTrue(rawPlayer.playWhenReady)
     }
 
     @Test
@@ -369,10 +396,26 @@ class PlaybackServiceTest {
         advancePlaybackUntil { service.outputSafety.value is OutputSafetyState.ConfirmationRequired }
         val pending = service.outputSafety.value as OutputSafetyState.ConfirmationRequired
         assertEquals(OutputConfirmation.ROUTE_UNKNOWN, pending.reason)
-        assertFalse(service.confirmOutput(pending.id, restoreDigitalVolume = false))
+        assertEquals(SessionError.ERROR_INVALID_STATE,
+            await(PlaybackConnection.confirmOutput(controller, pending.id)).resultCode)
         assertEquals(0f, ClockedAudioTrack.volumeAtPlay, 0f)
         assertEquals(0f, ClockedAudioTrack.volume, 0f)
         assertFalse(rawPlayer.playWhenReady)
+        val wired = outputDevice(AudioDeviceInfo.TYPE_WIRED_HEADPHONES, 2)
+        shadowOf(service.getSystemService(AudioManager::class.java)).addOutputDevice(wired, true)
+        setRoutedOutput(wired)
+        assertEquals(SessionResult.RESULT_SUCCESS,
+            await(PlaybackConnection.retryOutputObservation(controller, pending.id)).resultCode)
+        advancePlaybackUntil {
+            service.outputSafety.value == OutputSafetyState.Ready &&
+                PlaybackConnection.outputConfirmation(controller.sessionExtras) == null
+        }
+        assertFalse(rawPlayer.playWhenReady)
+        assertEquals(0f, ClockedAudioTrack.volume, 0f)
+        assertNull(PlaybackConnection.snapshot(controller.sessionExtras)?.executionPlan)
+        assertNotNull(PlaybackConnection.preparedTransition(controller.sessionExtras))
+        controller.play()
+        advancePlaybackUntil { ClockedAudioTrack.volume > 0f }
     }
 
     @Test
@@ -380,7 +423,7 @@ class PlaybackServiceTest {
     fun storedProfileAppliesItsDigitalCeilingWithoutRestoringItsHigherVolume() {
         val controller = connect(service.onGetSession(ownApp)!!.token)
         val preset = AudioPreset("Preset", initialVolume = VolumeSettings(digitalGainDb = 0.0),
-            safeVolume = VolumeSettings(digitalGainDb = -12.0))
+            safeVolume = VolumeSettings(digitalGainDb = -12.0), physicalGainNote = "Fixture gain note")
         val profile = DeviceProfile("Profile", 0, presets = listOf(preset))
         runBlocking(Dispatchers.IO) {
             DeviceProfileStore.open(service).use { it.saveProfile(profile) }
@@ -397,9 +440,12 @@ class PlaybackServiceTest {
         assertEquals(0f, ClockedAudioTrack.volume, 0f)
         val pending = service.outputSafety.value as OutputSafetyState.ConfirmationRequired
         assertEquals(preset.initialVolume, pending.restore)
-        assertTrue(service.confirmOutput(pending.id, restoreDigitalVolume = false))
-        assertFalse(rawPlayer.playWhenReady)
-        controller.play()
+        advancePlaybackUntil { PlaybackConnection.outputConfirmation(controller.sessionExtras)?.id == pending.id }
+        val request = requireNotNull(PlaybackConnection.outputConfirmation(controller.sessionExtras))
+        assertEquals(preset.safeVolume, request.limit)
+        assertEquals(preset.physicalGainNote, request.physicalGainNote)
+        assertEquals(SessionResult.RESULT_SUCCESS,
+            await(PlaybackConnection.confirmOutput(controller, request.id)).resultCode)
         advancePlaybackUntil { ClockedAudioTrack.volume > 0f }
         assertEquals(0.25119f, ClockedAudioTrack.volume, 0.00001f)
     }

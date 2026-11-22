@@ -93,6 +93,7 @@ class MainActivity : ComponentActivity() {
                     onRetrySources = navigation::retrySources,
                     onRetryPlayback = navigation::retryPlayback,
                     onTogglePlayback = navigation::togglePlayback,
+                    onConfirmOutput = navigation::confirmOutput,
                 )
             }
         }
