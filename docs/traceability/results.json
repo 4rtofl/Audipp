@@ -3318,5 +3318,100 @@
       "docs/contracts/device-profiles-v1.md"
     ],
     "limitations": "実機で切替前後の出力レベル、スピーカーへの過渡的な出力、DAC のハードウェア音量、高感度イヤホンでの急増を測定する。DSP 実行時の QLT-13 の True Peak も未測定。"
+  },
+  {
+    "case_id": "E05-08-review-session-confirmation",
+    "requirement_ids": [
+      "FR-PLY-03",
+      "FR-DEV-05",
+      "FR-AUD-08"
+    ],
+    "test_ids": [
+      "TEST-PLY-02",
+      "TEST-DEVICE-01",
+      "TEST-AUD-03"
+    ],
+    "commit": "23bb231f0c0bc5c1d8fc755e1c79c7616296c8f2",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "JVM の安全制御7件・再生コントロール4件と、Robolectric API 23・35 の Service 試験39件を実行。通常再生の拒否、確認コマンド後の復帰、古い ID の拒否、無音の再観測で初回の非 USB 経路が Ready に戻ること、USB DAC が確認前に無音であることを確認した。引き渡し3タスクに成功し、単体409件が成功した。既存 SMB 試験1件はスキップ。変更ファイルの Lint 警告は0件。",
+    "evidence": [
+      "app/src/test/java/com/audipp/audio/route/OutputSafetyTest.kt",
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt",
+      "app/src/test/java/com/audipp/ui/navigation/NavigationPlaybackTest.kt"
+    ],
+    "limitations": "Robolectric の経路・ゲインは fixture。実際の出力レベルと DAC 音量は未測定。"
+  },
+  {
+    "case_id": "E05-08-review-confirmation-ui-api23",
+    "requirement_ids": [
+      "FR-UI-02",
+      "FR-UI-03",
+      "FR-UI-06",
+      "FR-DEV-05"
+    ],
+    "test_ids": [
+      "TEST-UI-01",
+      "TEST-DEVICE-01"
+    ],
+    "commit": "23bb231f0c0bc5c1d8fc755e1c79c7616296c8f2",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "emulator-5580 で3件成功。320 dp・文字200%で日英の理由表示とボタンのアクセシビリティノード、クリックで渡る確認要求、物理ゲインのメモを確認した。標準出力の無音観測・一時停止・再開も確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/ui/navigation/NavigationOnboardingTest.kt",
+      "app/src/androidTest/java/com/audipp/audio/route/OutputRouteInstrumentedTest.kt"
+    ],
+    "limitations": "表示試験は確認状態の fixture を使う。実際の TalkBack 読み上げと物理機器の切替は未実施。"
+  },
+  {
+    "case_id": "E05-08-review-confirmation-ui-api36",
+    "requirement_ids": [
+      "FR-UI-02",
+      "FR-UI-03",
+      "FR-UI-06",
+      "FR-DEV-05",
+      "FR-PLY-03"
+    ],
+    "test_ids": [
+      "TEST-UI-01",
+      "TEST-DEVICE-01",
+      "TEST-PLY-02"
+    ],
+    "commit": "23bb231f0c0bc5c1d8fc755e1c79c7616296c8f2",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "emulator-5582 で5件成功。320 dp・文字200%の日英の確認表示2件、標準出力と複数出力 API の境界2件、Activity 再生成を挟んだ Service 項目の一時停止・再開1件を確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/ui/navigation/NavigationOnboardingTest.kt",
+      "app/src/androidTest/java/com/audipp/audio/route/OutputRouteInstrumentedTest.kt",
+      "app/src/androidTest/java/com/audipp/ui/navigation/NavigationPlaybackIntegrationTest.kt"
+    ],
+    "limitations": "確認表示と複数出力 API は fixture を使う。物理 BT・USB DAC の経路切替と音量は測定していない。"
+  },
+  {
+    "case_id": "E05-08-review-talkback-spoken-output",
+    "requirement_ids": [
+      "FR-UI-03"
+    ],
+    "test_ids": [
+      "TEST-UI-01"
+    ],
+    "commit": "23bb231f0c0bc5c1d8fc755e1c79c7616296c8f2",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "ボタンの名称と操作はアクセシビリティノードで確認した。TalkBack 自体を有効にした読み上げと探索順序の確認は行っていない。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/ui/navigation/NavigationOnboardingTest.kt"
+    ],
+    "limitations": "共有エミュレーターのアクセシビリティ設定は変更していない。"
   }
 ]
