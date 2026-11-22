@@ -2819,5 +2819,28 @@
       "docs/contracts/local-audio-formats.md"
     ],
     "limitations": "合成音源・画像による検証。DFF／DST は構造検査、A-law は Android の抽出まで。物理機器でのデコード・出力は未実施。"
+  },
+  {
+    "case_id": "E00-03-preferences-process-restart-2026-11-22",
+    "requirement_ids": [
+      "FR-UI-03",
+      "NFR-PRIV-01"
+    ],
+    "test_ids": [
+      "TEST-UI-01",
+      "TEST-SEC-01"
+    ],
+    "commit": "9fa8a9319e666f2899b9192a99fd7347dd4b9677",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23 と API 36 の x86_64 エミュレーターで PreferenceStoreRestartTest の6段階を、各段階の前に am force-stop でアプリを終了して別プロセスで実行し、全段階が成功した。初回値（System・Visualizer 無効 30fps・PRIVATE・同意なし）と全用途の外部送信無効が再起動後も同じであること、保存したテーマ・Visualizer・公開範囲・同意の版と撤回が再起動後に読めること、壊れた設定ファイルで読取と書込がどちらも CORRUPT になり、ファイルが置き換えたときのまま残ることを確かめた。順序を崩した実行では試験が失敗することも確かめた。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/data/preferences/PreferenceStoreRestartTest.kt",
+      "docs/evidence/issue-27/README.md",
+      "docs/contracts/preferences-v1.md"
+    ],
+    "limitations": "エミュレーターのみで、物理端末・書込中の電源断・ストレージ満杯は未実施。書込失敗は JVM の障害注入試験だけで確かめている。画面からの設定変更と保存失敗の表示は #40 の記録で扱う。外部送信・Visualizer 処理への接続は未確認。"
   }
 ]
