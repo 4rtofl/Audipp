@@ -3424,12 +3424,12 @@
     "test_ids": [
       "TEST-AUD-02"
     ],
-    "commit": "f19d9c5274fa02054418f65c24b6ada61abb87ba",
+    "commit": "cd44cdcaed143a77cadca7737d6195e8fcc447d9",
     "stage": "CURRENT",
     "permission": "NOT_REQUIRED",
     "outcome": "PASS",
     "execution": "EXECUTED",
-    "reason": "JVM単体試験20件に成功。処理順、headroomの式と不足・過大の拒否、NaN/Infと段出力の過負荷の拒否（状態不変）、10 msの線形ゲイン平滑化（48/44.1 kHz）、Bit-perfect/Native/DoP経路にchainを作らないことを固定入力と独立計算した期待値で確認した。assembleDebug・単体試験全430件（スキップ1・失敗0）・lintDebugも成功。",
+    "reason": "JVM単体試験20件に成功。処理順、headroomの式と不足・過大の拒否、NaN/Infの拒否（入力は状態不変）と段出力の過負荷の拒否（出力に書かず、呼び出し元がchainを作り直す）、10 msの線形ゲイン平滑化（48/44.1 kHz）、Bit-perfect/Native/DoP経路にchainを作らないことを固定入力と独立計算した期待値で確認した。assembleDebug・単体試験全430件（スキップ1・失敗0）・lintDebugも成功。",
     "evidence": [
       "app/src/test/java/com/audipp/audio/dsp/DspChainTest.kt",
       "app/src/test/java/com/audipp/audio/dsp/PcmQuantizerTest.kt",
@@ -3447,7 +3447,7 @@
       "TEST-AUD-02",
       "TEST-FORMAT-02"
     ],
-    "commit": "f19d9c5274fa02054418f65c24b6ada61abb87ba",
+    "commit": "cd44cdcaed143a77cadca7737d6195e8fcc447d9",
     "stage": "CURRENT",
     "permission": "NOT_REQUIRED",
     "outcome": "PASS",
@@ -3469,7 +3469,7 @@
     "test_ids": [
       "TEST-AUD-02"
     ],
-    "commit": "f19d9c5274fa02054418f65c24b6ada61abb87ba",
+    "commit": "cd44cdcaed143a77cadca7737d6195e8fcc447d9",
     "stage": "CURRENT",
     "permission": "NOT_REQUIRED",
     "outcome": "NOT_RUN",
@@ -3490,7 +3490,7 @@
       "TEST-AUD-02",
       "TEST-FORMAT-02"
     ],
-    "commit": "f19d9c5274fa02054418f65c24b6ada61abb87ba",
+    "commit": "cd44cdcaed143a77cadca7737d6195e8fcc447d9",
     "stage": "CURRENT",
     "permission": "NOT_REQUIRED",
     "outcome": "NOT_RUN",
