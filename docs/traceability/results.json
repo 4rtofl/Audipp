@@ -2657,6 +2657,26 @@
     "limitations": "PCM の取得・認可と取得位置の証跡は #76 以降で扱う。EQ 前後の比較も後続で検証する。"
   },
   {
+    "case_id": "E04-01-host-pcm-route-discard",
+    "requirement_ids": [
+      "FR-OBS-07"
+    ],
+    "test_ids": [
+      "TEST-TAP-01"
+    ],
+    "commit": "f9a461401df93369689f4b95d0aaceb9a45840db",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "作業開始時の commit に追加試験を適用した作業ツリーで、API 35 のホスト試験を2件実行した。経路 revision の増加で使用中の PCM 処理器を閉じ、準備中だった初回または置き換え用の open は処理器を閉じて STALE_PLAYBACK を返すことを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/LocalPlaybackTest.kt",
+      "docs/contracts/native-pcm-v1.md"
+    ],
+    "limitations": "ホスト試験では PCM の open を差し替えた。Android JNI の実行、実機の経路変更、外部出力の測定は未実施。"
+  },
+  {
     "case_id": "E01-03-local-formats-emulators-2026-11-20",
     "requirement_ids": [
       "FR-SRC-04"
