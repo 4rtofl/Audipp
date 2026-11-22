@@ -245,6 +245,138 @@
     "limitations": "ループバック上の候補契約に限る部分ケース。実Qobuzの利用許可、認証交換、実音源のフル直接再生、Player/UI登録、SessionBased、実機/DAC試験、各TESTファミリー全体の合格ではない。"
   },
   {
+    "case_id": "E07-04-upnp-jvm-contract-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-02",
+      "NFR-SEC-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01",
+      "TEST-SEC-01"
+    ],
+    "commit": "1a07f58f7f86e65c5f21c3b1d424324febcec4f8",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "固定SSDP・XML・SOAPデータとループバックHTTPを用いたUPnP単体試験16件で、送信元・同一オリジン・選択LANの照合、境界値、権限失効・取消・timeout・明示再試行、操作後と接続中の状態再取得を確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpControlPointTest.kt",
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpProtocolTest.kt",
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpHttpTest.kt",
+      "docs/evidence/issue-75/README.md"
+    ],
+    "limitations": "固定データとホストのループバック通信。実LANの到達性、機器の相互運用性、実音声出力は対象外。"
+  },
+  {
+    "case_id": "E07-04-upnp-review-jvm-2026-11-22",
+    "requirement_ids": [
+      "FR-NET-02",
+      "NFR-SEC-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01",
+      "TEST-SEC-01"
+    ],
+    "commit": "24efbb512eeef5279948bd71044360785926f949",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "UPnPのホスト単体試験25件が合格。固定データでUDA 1.1拡張ヘッダー、上位版と埋め込みレンダラー、機器名、接続期限の更新、制御URLのクエリを確認し、RobolectricでEPERM/EACCESの変換と探索取消後のマルチキャストロック解放を確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpProtocolTest.kt",
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpControlPointTest.kt",
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpHttpTest.kt",
+      "app/src/test/java/com/audipp/integrations/network/upnp/AndroidUpnpNetworkTest.kt"
+    ],
+    "limitations": "固定データ、ホストのループバック通信、Robolectricの模擬環境で確認。実LANでの送信元フィルタ、Android 16の権限画面、実機レンダラーの相互運用、音声出力は未確認。"
+  },
+  {
+    "case_id": "E07-04-upnp-android-boundary-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-02",
+      "NFR-SEC-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01",
+      "TEST-SEC-01"
+    ],
+    "commit": "1a07f58f7f86e65c5f21c3b1d424324febcec4f8",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "GRANTED",
+    "reason": "試験用エミュレーターAPI 23・36でinstrumented各2件を実施した。API 36ではLAN制限を有効化し、未許可のSSDP拒否とTCP timeout、画面からの権限再要求、試験用HTTP機器への接続と状態表示、切断・背景移行後のpoll停止を確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/integrations/network/upnp/UpnpAndroidTest.kt",
+      "docs/evidence/issue-75/README.md",
+      "docs/evidence/issue-75/permission-denied-dark.png",
+      "docs/evidence/issue-75/connected-light.png"
+    ],
+    "limitations": "許可は試験環境の用途に限る。実機上の端末メーカー固有の権限挙動、実機レンダラーのSSDP応答、有線LAN、実音声は未検証。"
+  },
+  {
+    "case_id": "E07-04-upnp-discovery-labels-2026-11-22",
+    "requirement_ids": [
+      "FR-NET-02"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "adfc0b00455643f48a3fd714fc68ab6c30dd7cbc",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "同名で同一ホスト・ポートの候補を固定データで探索し、UDNの末尾12文字が一致する2件はUDN全体で区別でき、重複しない候補は短い表示になることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/integrations/network/upnp/UpnpControlPointTest.kt"
+    ],
+    "limitations": "ホスト単体試験で一覧のラベル文字列を確認した。Android画面での描画や実LANでの探索は今回未確認。"
+  },
+  {
+    "case_id": "E07-04-upnp-android-permission-decision-27-2026-11-22",
+    "requirement_ids": [
+      "NFR-SEC-01"
+    ],
+    "test_ids": [
+      "TEST-SEC-01"
+    ],
+    "commit": "adfc0b00455643f48a3fd714fc68ab6c30dd7cbc",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "今回の検証はホスト試験と文書確認。決定27反映後のAndroid 16の権限画面は実機・エミュレーターで未実施。",
+    "evidence": [
+      "docs/evidence/issue-75/README.md",
+      "docs/contracts/upnp-v1.md"
+    ],
+    "limitations": "E07-04-upnp-android-boundary-2026-11-20は決定27より前の版の実行記録。現行版でEPERM/EACCES時だけ権限を再要求できることは端末上で未確認。"
+  },
+  {
+    "case_id": "E07-04-upnp-real-devices-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-02",
+      "NFR-SEC-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01",
+      "TEST-SEC-01"
+    ],
+    "commit": "1a07f58f7f86e65c5f21c3b1d424324febcec4f8",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "指定の物理端末、実機レンダラー、有線LANが未用意のため、実LANでの機器発見と相互運用、物理端末固有のマルチキャスト・権限制約、音声出力を試験していない。",
+    "evidence": [
+      "docs/evidence/issue-75/README.md"
+    ],
+    "limitations": "Galaxy S25、S20、FiiO M21、BubbleUPnP / upmpdcliおよび音声出力は未確認。fixtureやエミュレーターの合格で代用しない。"
+  },
+  {
     "case_id": "E06-02-qobuz-live-2026-11-10",
     "requirement_ids": [
       "FR-SRC-08",
