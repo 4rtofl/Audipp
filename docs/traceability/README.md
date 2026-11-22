@@ -36,7 +36,7 @@ python3 -m unittest discover -s scripts/traceability -p 'test_*.py'
 |---|---|---|
 | T18-01 旧件数・一般公開条件 | HISTORY。[現在地](../specifications/00_review_status.md)の233/231/229件、89/90要求、41/43試験は変更時点が異なる。現行は1.0.1の90/229/43。旧レビューの公開条件はPUBLICへの分離で置換 | 範囲変更時は利用者承認を記録。#153の完成レビューで旧条件の混入を確認 |
 | T18-02 廃止設計への残存参照 | 解消。FR-SRC-09から廃止済みのDD-PROV-06への参照を削除。 | [DD-TRACE](../specifications/03_detailed_design.md) |
-| T18-03 最終ナビゲーション | OPEN。[UI設計§4.1](../design.md)はPoCのLibrary中心、基本設計はHome中心の案。原文で最終構成は未確定 | #19/#64/#149で差分・理由を記録。#18で最終案を選ばない |
+| T18-03 最終ナビゲーション | 決定。2026-11-22 に Home中心・4項目の構成を採用した（[UIレビュー案 §9](../specifications/12_navigation_proposal.md#9-採否の記録)）。[UI設計§4.1](../design.md)の本文はPoC案のまま残す | 実装と計測は #64/#149 で記録する |
 | T18-04 履歴の計測表現 | OPEN。DD-HIST-01は音声ポジションと状態に基づく推定と記述し、参照先[技術判断](../specifications/08_design_decisions.md)は単調時計の聴取区間と音源区間を分離。シーク・Pause・時計変更を加算しない点は共通 | #78/#111/#139の具体ケースで差を確認。新しい計算式を#18で採用しない |
 | T18-05 私用配備 | BLOCKED_INPUT。P-02/P-03のDebian/Docker版・接続URL/HTTPS終端・既存構成・バックアップ先は未確認。保持方針の決定と実配備成功は別 | #53/#144。構成案作成後、実配備前に対象と承認を確認。秘密・私用URLを公開台帳へ記入しない |
 | T18-06 実機・用途許可 | NOT_VERIFIED。P-04のADB serial・M21 OS/firmware・DAC能力・測定設備、R-06の用途別許可等は未確認 | #26/#150/#152/#153と各provider Issue。NDK/ABI・実機音声・私用復旧をホスト検査の成功で埋めない |
