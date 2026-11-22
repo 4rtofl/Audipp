@@ -26,6 +26,7 @@ import java.util.UUID
 )
 abstract class LibraryDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
+    abstract fun libraryQueryDao(): LibraryQueryDao
     abstract fun queueDao(): QueueDao
     abstract fun playlistDao(): PlaylistDao
     internal abstract fun safScanDao(): SafScanDao
