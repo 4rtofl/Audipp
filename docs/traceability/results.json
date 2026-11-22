@@ -1617,5 +1617,44 @@
       "app/src/test/java/com/audipp/playback/PlaybackScheduleTest.kt"
     ],
     "limitations": "LocalPlayback と偽の再生エンジンを使った接続試験。実機でのシークと外部経路は未検証。"
+  },
+  {
+    "case_id": "E02-07-service-seek-ready-2026-11-22-rerun-65c3da8",
+    "requirement_ids": [
+      "FR-PLY-06"
+    ],
+    "test_ids": [
+      "TEST-SCHEDULE-01"
+    ],
+    "commit": "9836d6984e102f6f8d8b25654d237435434bab5b",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "4秒の WAV を一時停止し、Player の READY とコントローラのシーク可否を待って3,000 msへシークした。バッファリング中は位置と予定が未知で、READY 復帰後に位置3,000 msと残り1,000 msが公開されることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "Robolectric API 23・35 のホスト試験。実機と外部経路は未検証。"
+  },
+  {
+    "case_id": "E02-02-host-becoming-noisy-2026-11-22-rerun-65c3da8",
+    "requirement_ids": [
+      "FR-PLY-03",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
+    "commit": "9836d6984e102f6f8d8b25654d237435434bab5b",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "出力切断通知のレシーバー登録を処理し、WAV の再生要求を確認してから ACTION_AUDIO_BECOMING_NOISY を送った。再生要求が解除され、選曲を保持したまま PAUSED が公開されることを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackServiceTest.kt"
+    ],
+    "limitations": "Robolectric API 23・35 で通知を模擬したホスト試験。実機の出力切断と音声は未検証。"
   }
 ]
