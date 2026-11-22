@@ -22,6 +22,7 @@ object PlaybackConnection {
     internal const val VARIANT = "variant"
     internal const val ENTRY_ID = "entryId"
     internal const val SNAPSHOT = "playbackSnapshot"
+    internal const val SCHEDULE = "playbackSchedule"
     internal const val ERROR = "playbackError"
     internal val playLocalCommand = SessionCommand(PLAY_LOCAL, Bundle.EMPTY)
 
@@ -41,6 +42,10 @@ object PlaybackConnection {
 
     fun snapshot(extras: Bundle): PlaybackSnapshot? = extras.getString(SNAPSHOT)?.let {
         ModelJson.decode<PlaybackSnapshot>(it)
+    }
+
+    fun schedule(extras: Bundle): PlaybackSchedule? = extras.getString(SCHEDULE)?.let {
+        ModelJson.decode<PlaybackSchedule>(it)
     }
 
     fun error(result: SessionResult): PlaybackError? = result.extras.getString(ERROR)?.let {

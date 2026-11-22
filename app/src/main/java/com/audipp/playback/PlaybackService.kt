@@ -163,8 +163,10 @@ class PlaybackService : MediaLibraryService() {
                     return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
                 }
                 val duration = seekableDuration()
-                if (mediaItemIndex == player.currentMediaItemIndex && duration != null && positionMs in 0..duration
-                ) player.seekTo(positionMs)
+                if (mediaItemIndex == player.currentMediaItemIndex && duration != null && positionMs in 0..duration) {
+                    playback.onSeekRequested()
+                    player.seekTo(positionMs)
+                }
                 return Futures.immediateVoidFuture()
             }
         }
@@ -225,7 +227,8 @@ class PlaybackService : MediaLibraryService() {
         }
         playback.onEngineState(transition, phase, player.playWhenReady, player.isPlaying,
             player.currentPosition.takeUnless { it == C.TIME_UNSET },
-            player.duration.takeUnless { it == C.TIME_UNSET }, seekableDuration() != null)
+            player.duration.takeUnless { it == C.TIME_UNSET }, seekableDuration() != null,
+            player.playbackParameters.speed.toDouble(), System.currentTimeMillis())
     }
 
     private fun currentTransition() = player.currentMediaItem?.localConfiguration?.tag as? TransitionId
@@ -261,6 +264,7 @@ class PlaybackService : MediaLibraryService() {
     private fun snapshotExtras() = Bundle().apply {
         putString(PlaybackConnection.SNAPSHOT,
             ModelJson.encode(playback.snapshot.value.withoutDocumentUri()))
+        putString(PlaybackConnection.SCHEDULE, ModelJson.encode(playback.schedule.value))
     }
 
     internal inner class SessionCallback : MediaLibrarySession.Callback {
