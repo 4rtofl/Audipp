@@ -203,5 +203,26 @@
       "docs/evidence/issue-20/kotlin-local.txt"
     ],
     "limitations": "加入契約は確認済みで、アプリ資格とは別に保持する。実サービス試験の前提不足をQobuz必須要件の削除やKotlin実装全体の停止理由にはしない。資格取得後に実応答・報告受理・失効を検証し、Playerへ接続する。"
+  },
+  {
+    "case_id": "E07-02-forged-smb-response-loopback-2026-11-22",
+    "requirement_ids": [
+      "FR-NET-01",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "545e2287aed4697b4556993f7ddd92a9d526ab8a",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "署名必須のSMB 2.1でNTLM認証と署名付きTREE_CONNECTを返すループバック偽サーバーを使った。CREATEへの偽応答4種（未署名でSessionId 0、未署名で別セッション、署名フラグのみでSessionId 0、署名後の改ざん）は、いずれもバイトを返さずSIGNATURE_REJECTEDになり、後続要求と再試行もなかった。修正前は4種ともタイムアウトから再試行に至り、前3種では偽応答が受理されていた。",
+    "evidence": [
+      "docs/contracts/smb-v1.md",
+      "app/src/test/java/com/audipp/integrations/network/smb/SmbLoopbackTest.kt"
+    ],
+    "limitations": "検証はSMB 2.1のHMAC-SHA256に限定。SMB 3.x（AES-CMAC）、暗号化セッション、Samba・実NASとの再確認は未実施。上流SMBJの修正は未マージで、依存側の欠陥はアプリ側の受信前検査で回避している。"
   }
 ]
