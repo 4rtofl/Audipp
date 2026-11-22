@@ -11,7 +11,7 @@
 - 入力は interleaved の Float32 を `FloatArray` で受け取り、その場で処理する。出力は呼び出し元の `ByteBuffer` の position からリトルエンディアンで書く。`PROCESSED` 以外では何も書かない。
 - 形式は mono / stereo / 5.1 の 1・2・6 ch、1〜384000 Hz。`DspChain.open` が設定を1回だけ検査し、失敗した設定は `Rejected` を返して chain を作らない。`process` は検査済みの値だけを扱う。
 - `process` は音声スレッドで動き、確保・ロック・I/O を行わない（段は配列と添字で回し、Iterator を作らない）。実行中のゲイン変更は `@Volatile` の目標値だけで渡し、次のブロックの先頭で読む。
-- フィルター係数や段の差し替えは、バックグラウンドで新しい `DspChain` を作ってから呼び出し元が差し替える。差し替えの手順と crossfade は各段の Issue で扱う。
+- フィルター係数や段の差し替えは、バックグラウンドで新しい `DspChain` を作ってから呼び出し元が差し替える。差し替えの手順と crossfade は各段の Issue で扱う。PEQ の段は [peq-v1](peq-v1.md)。
 
 ## headroom
 
