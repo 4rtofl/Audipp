@@ -13,6 +13,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 import com.audipp.domain.model.SourceKind
+import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "play_events")
 internal data class PlayEventEntity(
@@ -55,6 +56,8 @@ internal data class PlaySegmentEntity(
     @ColumnInfo(name = "profile_id") val profileId: String?,
 )
 
+internal data class RecentPlay(val title: String?, val startUtcMs: Long)
+
 @Dao
 internal abstract class PlaybackHistoryDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -74,6 +77,14 @@ internal abstract class PlaybackHistoryDao {
 
     @Query("SELECT * FROM play_segments WHERE play_event_id = :eventId ORDER BY rowid")
     abstract suspend fun segments(eventId: String): List<PlaySegmentEntity>
+
+    @Query("""
+        SELECT tracks.title, play_events.start_utc_ms AS startUtcMs
+        FROM play_events LEFT JOIN tracks ON tracks.track_id = play_events.track_id
+        WHERE play_events.played_ms > 0
+        ORDER BY play_events.start_utc_ms DESC, play_events.play_event_id DESC LIMIT 5
+    """)
+    abstract fun observeRecentPlays(): Flow<List<RecentPlay>>
 
     @Transaction
     open suspend fun save(event: PlayEventEntity, segment: PlaySegmentEntity?) {

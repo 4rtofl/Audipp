@@ -6,6 +6,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.withTransaction
+import com.audipp.AudippApplication
 import com.audipp.domain.model.QueueEntry
 import com.audipp.domain.model.QueueEntryId
 import java.util.UUID
@@ -56,3 +57,6 @@ abstract class LibraryDatabase : RoomDatabase() {
         ).build()
     }
 }
+
+internal val Context.libraryDatabase: LibraryDatabase
+    get() = (applicationContext as AudippApplication).libraryDatabase

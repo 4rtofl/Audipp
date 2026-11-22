@@ -39,7 +39,7 @@ import com.audipp.MainActivity
 import com.audipp.R
 import com.audipp.audio.route.ObservedAudioOutputProvider
 import com.audipp.audio.route.OutputRouteMonitor
-import com.audipp.data.db.LibraryDatabase
+import com.audipp.data.db.libraryDatabase
 import com.audipp.data.preferences.providerPolicyStore
 import com.audipp.domain.model.ErrorDomain
 import com.audipp.domain.model.ModelJson
@@ -114,7 +114,7 @@ class PlaybackService : MediaLibraryService() {
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .setAudioOutputProvider(ObservedAudioOutputProvider(this, routeMonitor))
             .build()
-        historyJournal = PlaybackHistoryJournal(LibraryDatabase.open(this), ProviderAccessGate(providerPolicyStore))
+        historyJournal = PlaybackHistoryJournal(libraryDatabase, ProviderAccessGate(providerPolicyStore))
         playback = LocalPlayback(object : LocalPlaybackEngine {
             override fun prepare(entryId: QueueEntryId, transitionId: TransitionId,
                 document: SourceDescriptor.LocalDocument) {

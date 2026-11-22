@@ -3008,5 +3008,174 @@
       "docs/contracts/history-v1.md"
     ],
     "limitations": "履歴の削除、集計、外部送信は後続 Issue の範囲。"
+  },
+  {
+    "case_id": "E03-03-home-shell-api23-api36-2026-11-20",
+    "requirement_ids": [
+      "FR-UI-01",
+      "FR-UI-02"
+    ],
+    "test_ids": [
+      "TEST-UI-01"
+    ],
+    "commit": "3f9e780d99d03683b7ab073cae1b465592a6f3d2",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "API 23 と 36 のエミュレーターで起動、空状態、設定・外観、戻る操作、Room のローカル音源集計を確認。API 36 で DB エラーと再試行、画面回転、日英、両配色、320 dp 幅での文字 200% を確認した。",
+    "evidence": [
+      "docs/evidence/issue-64/ui-verification.md",
+      "app/src/androidTest/java/com/audipp/data/db/LibraryDatabaseTest.kt"
+    ],
+    "limitations": "提供済みの画面入口とローカル音源の状態表示に限る。SAF 登録・走査、認証障害の実サービス試験、実機、TalkBack は未実施。"
+  },
+  {
+    "case_id": "E03-03-shared-playback-control-api36-2026-11-20",
+    "requirement_ids": [
+      "FR-UI-06"
+    ],
+    "test_ids": [
+      "TEST-UI-01"
+    ],
+    "commit": "3f9e780d99d03683b7ab073cae1b465592a6f3d2",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "API 36 で音源消失エラーの受信と再試行、既存セッションの一時停止、Activity 再生成後の同じ項目の再開を確認。単体試験で未対応操作と古い再生要求の抑止を確認した。",
+    "evidence": [
+      "docs/evidence/issue-64/ui-verification.md",
+      "app/src/androidTest/java/com/audipp/ui/navigation/NavigationPlaybackIntegrationTest.kt",
+      "app/src/test/java/com/audipp/ui/navigation/NavigationPlaybackTest.kt"
+    ],
+    "limitations": "試験用音源での状態と操作の確認に限る。アートワーク、フルプレイヤー・通知との表示一致、実機音声出力は未実施。"
+  },
+  {
+    "case_id": "E03-03-final-navigation-and-onboarding-2026-11-20",
+    "requirement_ids": [
+      "FR-UI-01",
+      "FR-UI-02",
+      "FR-UI-06"
+    ],
+    "test_ids": [
+      "TEST-UI-01"
+    ],
+    "commit": "3f9e780d99d03683b7ab073cae1b465592a6f3d2",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "BLOCKED",
+    "execution": "NOT_RUN",
+    "reason": "最終ナビゲーションは #19 の承認待ち。SAF 登録・走査は #35 の統合待ち、最近の再生は #78 の履歴記録待ち。フルプレイヤーへの遷移は #85 で接続する。",
+    "evidence": [
+      "docs/evidence/issue-64/ui-verification.md",
+      "docs/specifications/12_navigation_proposal.md"
+    ],
+    "limitations": "ホームではローカル音源の記録と既存サービスの再生状態を使用。最終構成・登録・最近の再生・関連画面の受入検証はそれぞれの前提が揃ってから実施する。"
+  },
+  {
+    "case_id": "E03-03-navigation-saf-api23-api36-2026-11-22",
+    "requirement_ids": [
+      "FR-UI-01",
+      "FR-UI-02"
+    ],
+    "test_ids": [
+      "TEST-UI-01"
+    ],
+    "commit": "8d4ce4f04a13bafe80e2d824b5b16e0d45738188",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "API 23・36 で SAF の取消・権限拒否、検索語の保持、回転、戻る操作、Room の音源集計を確認。Robolectric では登録、走査失敗と再試行、権限失効後の選び直しも確認した。",
+    "evidence": [
+      "docs/evidence/issue-64/ui-verification.md",
+      "app/src/androidTest/java/com/audipp/ui/navigation/NavigationOnboardingTest.kt",
+      "app/src/test/java/com/audipp/ui/navigation/FolderRegistrationTest.kt"
+    ],
+    "limitations": "計装の SAF 結果は試験から注入した。登録・走査の成功は試験用の提供元で確認した。"
+  },
+  {
+    "case_id": "E03-03-room-shared-recent-plays-2026-11-22",
+    "requirement_ids": [
+      "FR-UI-02"
+    ],
+    "test_ids": [
+      "TEST-UI-01"
+    ],
+    "commit": "8d4ce4f04a13bafe80e2d824b5b16e0d45738188",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "両方の呼出元で同一の Room を共有し、履歴が空の状態からサービスの履歴書き込みがホームと同じ Flow に通知されることを確認した。実際の聴取を再生開始時刻の新しい順に取得する。",
+    "evidence": [
+      "docs/evidence/issue-64/ui-verification.md",
+      "app/src/test/java/com/audipp/data/db/PlaybackHistoryDatabaseTest.kt"
+    ],
+    "limitations": "曲名はライブラリに残っている場合に表示する。"
+  },
+  {
+    "case_id": "E03-03-adaptive-navigation-display-2026-11-22",
+    "requirement_ids": [
+      "FR-UI-01",
+      "FR-UI-02"
+    ],
+    "test_ids": [
+      "TEST-UI-01"
+    ],
+    "commit": "8d4ce4f04a13bafe80e2d824b5b16e0d45738188",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "API 36 で日英、ライト・ダーク、320 dp・文字200%、横画面を確認。320・360・599 dp は下部ナビゲーション、600・839・840 dp はレールを表示した。狭幅でタブを切り替えて戻ってもホームのスクロール位置を保持した。",
+    "evidence": [
+      "docs/evidence/issue-64/ui-verification.md",
+      "docs/evidence/issue-64/home-ja-dark-320dp-200pct.png",
+      "docs/evidence/issue-64/home-en-light-landscape.png"
+    ],
+    "limitations": "専用エミュレーターで表示とタップ操作を確認した。"
+  },
+  {
+    "case_id": "E03-03-playback-controls-api36-2026-11-22",
+    "requirement_ids": [
+      "FR-UI-06"
+    ],
+    "test_ids": [
+      "TEST-UI-01"
+    ],
+    "commit": "8d4ce4f04a13bafe80e2d824b5b16e0d45738188",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "API 36 で既存メディアセッションの再生エラー、一時停止、Activity 再生成後の同じ項目の再開を確認した。",
+    "evidence": [
+      "docs/evidence/issue-64/ui-verification.md",
+      "app/src/androidTest/java/com/audipp/ui/navigation/NavigationPlaybackIntegrationTest.kt"
+    ],
+    "limitations": "試験用 WAV による操作の確認。"
+  },
+  {
+    "case_id": "E03-03-provider-hardware-and-accessibility-2026-11-22",
+    "requirement_ids": [
+      "FR-UI-01",
+      "FR-UI-02",
+      "FR-UI-06"
+    ],
+    "test_ids": [
+      "TEST-UI-01"
+    ],
+    "commit": "8d4ce4f04a13bafe80e2d824b5b16e0d45738188",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "reason": "実際の SAF 提供元での登録成功、Galaxy S25・FiiO M21・Galaxy S20、TalkBack、通知・フルプレイヤーとの表示一致は検証していない。",
+    "evidence": [
+      "docs/evidence/issue-64/ui-verification.md"
+    ],
+    "limitations": "採用済みナビゲーション案と TEST-UI-01 の試験範囲のうち、今回のエミュレーターと単体試験で確認できなかった項目。"
   }
 ]

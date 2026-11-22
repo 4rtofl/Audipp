@@ -8,6 +8,7 @@ import androidx.room.Transaction
 import androidx.room.Upsert
 import com.audipp.domain.model.TrackVariant
 import com.audipp.domain.model.VariantId
+import kotlinx.coroutines.flow.Flow
 
 // Partial scans must not turn omitted rows into deletions.
 data class LibraryBatch(
@@ -18,6 +19,8 @@ data class LibraryBatch(
     val variants: List<VariantEntity> = emptyList(),
     val trackArtists: List<TrackArtistEntity> = emptyList(),
 )
+
+data class LocalSourceSummary(val registered: Long, val unavailable: Long, val unknown: Long)
 
 @Dao
 abstract class LibraryDao {
@@ -47,6 +50,14 @@ abstract class LibraryDao {
 
     @Query("SELECT * FROM sources WHERE source_id = :id")
     abstract suspend fun source(id: String): SourceEntity?
+
+    @Query("""
+        SELECT COUNT(*) AS registered,
+               COUNT(CASE WHEN availability NOT IN ('PLAYABLE', 'UNKNOWN') THEN 1 END) AS unavailable,
+               COUNT(CASE WHEN availability = 'UNKNOWN' THEN 1 END) AS unknown
+        FROM sources WHERE kind = 'LOCAL'
+    """)
+    abstract fun observeLocalSourceSummary(): Flow<LocalSourceSummary>
 
     @Query("SELECT * FROM tracks WHERE track_id = :id")
     abstract suspend fun track(id: String): TrackEntity?
