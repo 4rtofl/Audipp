@@ -3,6 +3,9 @@ package com.audipp.integrations.network
 import com.audipp.data.secrets.SecretFailure
 import com.audipp.data.secrets.SecretStorageException
 import java.io.IOException
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -26,7 +29,7 @@ data class NetworkCallPolicy(
 class NetworkCalls(val policy: NetworkCallPolicy = NetworkCallPolicy()) {
     internal suspend fun <T> run(
         retrySafe: Boolean = true,
-        timeoutMs: Long = policy.operationTimeoutMs,
+        timeoutMs: Long? = policy.operationTimeoutMs,
         rejection: () -> NetworkFailure? = { null },
         operation: suspend () -> NetworkResult<T>,
     ): NetworkResult<T> {
@@ -35,9 +38,13 @@ class NetworkCalls(val policy: NetworkCallPolicy = NetworkCallPolicy()) {
             currentCoroutineContext().ensureActive()
             rejection()?.let { return NetworkResult.Failure(it) }
             val result = try {
-                withTimeoutOrNull(timeoutMs) {
-                    withContext(Dispatchers.IO) { operation() }
-                } ?: NetworkResult.Failure(NetworkFailure.TIMEOUT)
+                if (timeoutMs == null) withContext(Dispatchers.IO) { operation() }
+                else {
+                    val deadline = NetworkDeadline(timeoutMs)
+                    withTimeoutOrNull(timeoutMs) {
+                        withContext(Dispatchers.IO + deadline) { operation() }
+                    } ?: NetworkResult.Failure(NetworkFailure.TIMEOUT)
+                }
             } catch (error: SecretStorageException) {
                 NetworkResult.Failure(if (error.failure == SecretFailure.AUTH_REQUIRED) NetworkFailure.AUTH_REQUIRED else NetworkFailure.IO)
             } catch (_: IOException) {
@@ -55,4 +62,12 @@ class NetworkCalls(val policy: NetworkCallPolicy = NetworkCallPolicy()) {
         }
         error("Unreachable")
     }
+}
+
+internal class NetworkDeadline(timeoutMs: Long) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<NetworkDeadline>
+
+    private val deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+
+    fun remainingNanos(): Long = deadlineNanos - System.nanoTime()
 }

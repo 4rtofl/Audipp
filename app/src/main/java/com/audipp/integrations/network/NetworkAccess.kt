@@ -10,7 +10,7 @@ internal class NetworkAccess(
 
     suspend fun <T> call(
         retrySafe: Boolean = true,
-        timeoutMs: Long = calls.policy.operationTimeoutMs,
+        timeoutMs: Long? = calls.policy.operationTimeoutMs,
         rejection: () -> NetworkFailure? = { null },
         operation: suspend (ByteArray?) -> NetworkResult<T>,
     ): NetworkResult<T> = calls.run(retrySafe, timeoutMs,

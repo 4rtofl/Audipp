@@ -7,6 +7,7 @@ import androidx.room.Transaction
 import androidx.room.Upsert
 import com.audipp.domain.model.QueueEntry
 import com.audipp.domain.model.QueueEntryId
+import kotlin.random.Random
 
 data class StoredQueue(val queue: QueueEntity, val entries: List<QueueEntry>)
 
@@ -27,6 +28,31 @@ abstract class QueueDao {
     open suspend fun read(queueId: String): StoredQueue? {
         val queue = queue(queueId) ?: return null
         return StoredQueue(queue, items(queueId).map(QueueItemEntity::toDomain))
+    }
+
+    @Query("SELECT revision FROM queues WHERE queue_id = :queueId")
+    abstract suspend fun revision(queueId: String): Long?
+
+    @Transaction
+    open suspend fun setPlaybackOrder(
+        queueId: String,
+        expectedRevision: Long,
+        shuffleEnabled: Boolean,
+        repeatMode: QueueRepeatMode,
+        updatedAt: Long,
+    ): QueueEditResult {
+        require(updatedAt >= 0)
+        val queue = queue(queueId)
+        if (queue == null || queue.revision != expectedRevision) return QueueEditResult.StaleRevision
+        if (queue.shuffleEnabled == shuffleEnabled && queue.repeatMode == repeatMode) {
+            return QueueEditResult.Updated(expectedRevision)
+        }
+
+        val seed = queue.shuffleSeed ?: if (shuffleEnabled) Random.nextLong() else null
+        val revision = expectedRevision + 1
+        updatePlaybackOrder(queueId, revision, shuffleEnabled, seed, repeatMode, updatedAt)
+        reviseCheckpoint(queueId, revision, clearEntry = false)
+        return QueueEditResult.Updated(revision)
     }
 
     @Query("SELECT * FROM playback_checkpoint WHERE slot_id = 1")
@@ -126,4 +152,15 @@ abstract class QueueDao {
 
     @Query("UPDATE queues SET revision = :revision, updated_at = :updatedAt WHERE queue_id = :queueId")
     protected abstract suspend fun reviseQueue(queueId: String, revision: Long, updatedAt: Long)
+
+    @Query("""
+        UPDATE queues
+        SET revision = :revision, shuffle_enabled = :shuffleEnabled, shuffle_seed = :seed,
+            repeat_mode = :repeatMode, updated_at = :updatedAt
+        WHERE queue_id = :queueId
+    """)
+    protected abstract suspend fun updatePlaybackOrder(
+        queueId: String, revision: Long, shuffleEnabled: Boolean, seed: Long?,
+        repeatMode: QueueRepeatMode, updatedAt: Long,
+    )
 }
