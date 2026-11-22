@@ -16,7 +16,7 @@
 
 ## 保存（Room v7）
 
-`LibraryDatabase` を v6 → v7 に上げ、`artwork_overrides` を AutoMigration で追加した。**スキーマ版を上げたので、他の Room 変更と並行する場合は版の衝突に注意する。** 主キーは `variant_id`（`track_variants` へのFK、削除を連鎖させない）。列は `origin`、`location`、`provider_key`、`display_permission`、`redistribution_permission`、`expired`、`updated_at`。行がなければ元の埋込画像を使う。「元に戻す」は行の削除、「失効」は `expired = 1`。
+`LibraryDatabase` を v6 → v7 に上げ、`artwork_overrides` を AutoMigration で追加した。**スキーマ版を上げたので、他の Room 変更と並行する場合は版の衝突に注意する。** 主キーは `variant_id`（`track_variants` へのFKで `ON DELETE CASCADE`。プレイリスト・履歴と同じく、Variant を削除すると差替えも消える）。列は `origin`、`location`、`provider_key`、`display_permission`、`redistribution_permission`、`updated_at`。行がなければ元の埋込画像を使う。「元に戻す」は行の削除。失効は保存せず、`load` のたびに読めるかで決める。
 
 アルバム単位の代表画像の選び方は #84 が決める。本層は Variant 単位で、アルバムの画像は代表 Variant の `load` を呼ぶ。
 
@@ -33,7 +33,7 @@
 
 縮小率は、長辺が 2048 px 以下になる最小の2の冪から、さらに要求した表示辺（`targetEdgePx`）を下回らない範囲で大きくする。2 の冪なので 2048 px を少し超える画像は約半分（例: 4100 px → 1025 px）になり、2048 px ちょうどまで拡大縮小はしない。メモリは最大でも 2048 × 2048 × 4 バイト = 16 MiB。画像全体のバイト列（最大 20 MiB）を読んだ後でデコードする。GIF は先頭フレームだけ。切れた JPEG などで Android が部分的に画像を返す場合は破損として検出しない。
 
-IO とデコードは `Dispatchers.IO` で行い、読取り後とデコード前にキャンセルを確認する。デコード中の中断は保証しない。
+IO とデコードは `Dispatchers.IO` で行い、読込（最大 20 MiB のバッファ）とデコードの同時実行数を `Semaphore` で 2 に制限する（実装提案。#84 のグリッドなどで多数を同時に要求しても、保持するバッファは最大 2 枚）。キャッシュのヒットは制限の外で返す。読取り後とデコード前にキャンセルを確認する。デコード中の中断は保証しない。
 
 ## 表示側の入口（#85 / #84 / #158）
 
@@ -53,7 +53,7 @@ provider.revert(variantId)                                                      
 
 - `load` は差替えがあればそれを、なければ埋込画像を返す。キャッシュは `targetEdgePx` ごとで、ヒットすれば画像を読み直さない。呼出側は同じ描画サイズに同じ値を渡す（バケット化は表示側の責務）。
 - `Placeholder` の理由: `NO_ARTWORK`（画像なし）、`EXPIRED`（差替え画像が読めなくなった）、`UNAVAILABLE`（埋込元の音源が読めない）、`DISPLAY_NOT_ALLOWED`、`REJECTED`（`rejection` に理由）。
-- 差替え画像が読めなくなると、その場で `expired` を保存して `EXPIRED` の placeholder を返す。元の埋込画像へは自動では戻さず、利用者が差し替え直すか `revert` する。戻ってきたファイルでも自動では復活しない。
+- 差替え画像が読めないときは、その都度 `EXPIRED` の placeholder を返し、何も保存しない。SD カードの一時的な取り外しなどで読めるようになれば、次の `load` で表示される。元の埋込画像へは自動では戻さず、利用者が差し替え直すか `revert` する。
 - 表示側は `Bitmap` を保持せず、`load` の結果をそのまま描画する。Compose では `produceState` 等で呼び、取消は協調キャンセルに任せる。
 
 ## 検証と未実施
@@ -61,7 +61,7 @@ provider.revert(variantId)                                                      
 | 検査 | 試験 |
 |---|---|
 | 容量・画素・長辺の上限、縮小後サイズ、破損・偽装・種別違いの拒否理由、埋込範囲、表示許可、キャッシュの上限と追い出し・ヒット | `ArtworkLoaderTest`（JVM / Robolectric）、`ArtworkDecodeTest`（API 23 / 36） |
-| 差替え・元に戻す・失効・拒否時の保持、出典ごとの許可と再配布の分離、参照の解釈と秘匿 | `ArtworkProviderTest` |
+| 差替え・元に戻す・失効（一時的な読取り不能からの復帰）・拒否時の保持・Variant 削除での連鎖、同時読込数の上限、出典ごとの許可と再配布の分離、参照の解釈と秘匿 | `ArtworkProviderTest` |
 | v6 → v7 の移行で既存行と `local_artwork_ref` を保持 | `ArtworkMigrationTest` |
 
 未実施: 実際の文書プロバイダーと実ファイルの画像、画面での描画とスクロール、メモリの実測（PSS）、外部画像の取得（#57）、同期 payload の組立て（payload の担当が判定を使うこと）、物理端末。

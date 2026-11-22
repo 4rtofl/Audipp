@@ -14,6 +14,8 @@ import java.io.InputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 internal class ArtworkStream(val input: InputStream, val mimeType: String?)
@@ -58,12 +60,21 @@ internal sealed interface ArtworkLoad {
     data object Unreadable : ArtworkLoad
 }
 
-internal class ArtworkLoader(private val opener: ArtworkOpener, val cache: ArtworkCache = ArtworkCache()) {
+internal class ArtworkLoader(
+    private val opener: ArtworkOpener,
+    val cache: ArtworkCache = ArtworkCache(),
+    maxConcurrentReads: Int = MAX_CONCURRENT_READS,
+) {
+    // 1 枚が最大 20 MiB のバッファになるので、読込とデコードの同時実行数を絞ってヒープを守る。
+    private val permits = Semaphore(maxConcurrentReads)
+
     /** バイト数・種別・ヘッダー寸法だけを検査する。デコードしない。 */
-    suspend fun inspect(source: ArtworkSource): ArtworkLoad? = withContext(Dispatchers.IO) {
-        when (val read = read(source)) {
-            is Read.Failed -> read.result
-            is Read.Bytes -> bounds(read.bytes).let { if (it is Bounds.Rejected) ArtworkLoad.Rejected(it.reason) else null }
+    suspend fun inspect(source: ArtworkSource): ArtworkLoad? = permits.withPermit {
+        withContext(Dispatchers.IO) {
+            when (val read = read(source)) {
+                is Read.Failed -> read.result
+                is Read.Bytes -> bounds(read.bytes).let { if (it is Bounds.Rejected) ArtworkLoad.Rejected(it.reason) else null }
+            }
         }
     }
 
@@ -78,24 +89,26 @@ internal class ArtworkLoader(private val opener: ArtworkOpener, val cache: Artwo
         }
         val key = "${source.cacheKey()}#$targetEdgePx"
         cache[key]?.let { return@withContext ArtworkLoad.Loaded(it) }
-        val bytes = when (val read = read(source)) {
-            is Read.Failed -> return@withContext read.result
-            is Read.Bytes -> read.bytes
+        permits.withPermit {
+            val bytes = when (val read = read(source)) {
+                is Read.Failed -> return@withContext read.result
+                is Read.Bytes -> read.bytes
+            }
+            val bounds = when (val b = bounds(bytes)) {
+                is Bounds.Rejected -> return@withContext ArtworkLoad.Rejected(b.reason)
+                is Bounds.Ok -> b
+            }
+            var sample = 1
+            val longEdge = maxOf(bounds.width, bounds.height)
+            while (longEdge / sample > ArtworkLimits.MAX_DECODED_EDGE) sample *= 2
+            while (longEdge / (sample * 2) >= targetEdgePx) sample *= 2
+            currentCoroutineContext().ensureActive()
+            val options = BitmapFactory.Options().apply { inSampleSize = sample }
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                ?: return@withContext ArtworkLoad.Rejected(ArtworkRejection.CORRUPT)
+            cache.put(key, bitmap)
+            ArtworkLoad.Loaded(bitmap)
         }
-        val bounds = when (val b = bounds(bytes)) {
-            is Bounds.Rejected -> return@withContext ArtworkLoad.Rejected(b.reason)
-            is Bounds.Ok -> b
-        }
-        var sample = 1
-        val longEdge = maxOf(bounds.width, bounds.height)
-        while (longEdge / sample > ArtworkLimits.MAX_DECODED_EDGE) sample *= 2
-        while (longEdge / (sample * 2) >= targetEdgePx) sample *= 2
-        currentCoroutineContext().ensureActive()
-        val options = BitmapFactory.Options().apply { inSampleSize = sample }
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-            ?: return@withContext ArtworkLoad.Rejected(ArtworkRejection.CORRUPT)
-        cache.put(key, bitmap)
-        ArtworkLoad.Loaded(bitmap)
     }
 
     private sealed interface Read {
@@ -184,6 +197,8 @@ internal class ArtworkLoader(private val opener: ArtworkOpener, val cache: Artwo
     private fun ByteArray.startsWith(vararg prefix: Int) =
         size >= prefix.size && prefix.indices.all { this[it] == prefix[it].toByte() }
 }
+
+internal const val MAX_CONCURRENT_READS = 2
 
 internal fun ArtworkSource.location(): String = when (this) {
     is ArtworkSource.Embedded -> documentUri

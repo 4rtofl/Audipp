@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 7,
-    "identityHash": "2cccb12998ee43a4d4b57acb18951d38",
+    "identityHash": "5da73c8625877f44906f941954ac33dc",
     "entities": [
       {
         "tableName": "sources",
@@ -1112,7 +1112,7 @@
       },
       {
         "tableName": "artwork_overrides",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`variant_id` TEXT NOT NULL, `origin` TEXT NOT NULL, `location` TEXT NOT NULL, `provider_key` TEXT, `display_permission` TEXT NOT NULL, `redistribution_permission` TEXT NOT NULL, `expired` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`variant_id`), FOREIGN KEY(`variant_id`) REFERENCES `track_variants`(`variant_id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`variant_id` TEXT NOT NULL, `origin` TEXT NOT NULL, `location` TEXT NOT NULL, `provider_key` TEXT, `display_permission` TEXT NOT NULL, `redistribution_permission` TEXT NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`variant_id`), FOREIGN KEY(`variant_id`) REFERENCES `track_variants`(`variant_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
             "fieldPath": "variantId",
@@ -1150,12 +1150,6 @@
             "notNull": true
           },
           {
-            "fieldPath": "expired",
-            "columnName": "expired",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
             "fieldPath": "updatedAt",
             "columnName": "updated_at",
             "affinity": "INTEGER",
@@ -1171,7 +1165,7 @@
         "foreignKeys": [
           {
             "table": "track_variants",
-            "onDelete": "NO ACTION",
+            "onDelete": "CASCADE",
             "onUpdate": "NO ACTION",
             "columns": [
               "variant_id"
@@ -1185,7 +1179,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2cccb12998ee43a4d4b57acb18951d38')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '5da73c8625877f44906f941954ac33dc')"
     ]
   }
 }

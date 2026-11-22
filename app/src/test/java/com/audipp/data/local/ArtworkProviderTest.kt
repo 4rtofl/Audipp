@@ -105,22 +105,28 @@ class ArtworkProviderTest {
     }
 
     @Test
-    fun anUnreadableOverrideExpiresToAPlaceholderUntilRevertedOrReplaced() = runBlocking {
-        opener["content://picked/1"] = encode(32, 32)
+    fun anUnreadableOverrideShowsAPlaceholderOnlyWhileItIsUnreadable() = runBlocking {
+        val png = encode(32, 32)
+        opener["content://picked/1"] = png
         provider.replace("with-art", ArtworkSource.UserSelected("content://picked/1"), 10)
         opener.remove("content://picked/1")
-        provider.load("with-art", 8) // キャッシュに載せない別サイズ
-        assertEquals(PlaceholderReason.EXPIRED, placeholder(load()).reason)
-        assertTrue(db.artworkDao().override("with-art")!!.expired)
+        assertEquals(PlaceholderReason.EXPIRED, placeholder(load(edge = 8)).reason)
 
-        opener["content://picked/1"] = encode(32, 32) // 戻ってきても自動では復活しない
-        assertEquals(PlaceholderReason.EXPIRED, placeholder(load()).reason)
+        opener["content://picked/1"] = png // 取り外した媒体が戻った
+        assertEquals(ArtworkOrigin.USER_SELECTED, image(load(edge = 8)).origin)
 
-        assertEquals(ArtworkChange.Applied, provider.replace("with-art", ArtworkSource.UserSelected("content://picked/1"), 12))
-        assertEquals(ArtworkOrigin.USER_SELECTED, image(load()).origin)
         opener.remove("content://picked/1")
+        assertEquals(PlaceholderReason.EXPIRED, placeholder(load(edge = 4)).reason)
         provider.revert("with-art")
         assertEquals(ArtworkOrigin.EMBEDDED, image(load()).origin)
+    }
+
+    @Test
+    fun deletingAVariantRemovesItsOverride() = runBlocking {
+        opener["content://picked/1"] = encode(32, 32)
+        provider.replace("with-art", ArtworkSource.UserSelected("content://picked/1"), 10)
+        db.openHelper.writableDatabase.execSQL("DELETE FROM track_variants WHERE variant_id = 'with-art'")
+        assertNull(db.artworkDao().override("with-art"))
     }
 
     @Test

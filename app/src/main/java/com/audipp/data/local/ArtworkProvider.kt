@@ -22,7 +22,6 @@ class ArtworkProvider internal constructor(private val dao: ArtworkDao, private 
     suspend fun load(variantId: String, targetEdgePx: Int): Artwork {
         val override = dao.override(variantId)
         val source: ArtworkSource = when {
-            override?.expired == true -> return Artwork.Placeholder(PlaceholderReason.EXPIRED)
             override != null -> override.toSource()
             else -> {
                 val row = dao.embedded(variantId)
@@ -37,12 +36,9 @@ class ArtworkProvider internal constructor(private val dao: ArtworkDao, private 
             is ArtworkLoad.Rejected ->
                 if (result.reason == ArtworkRejection.DISPLAY_NOT_ALLOWED) Artwork.Placeholder(PlaceholderReason.DISPLAY_NOT_ALLOWED)
                 else Artwork.Placeholder(PlaceholderReason.REJECTED, result.reason)
-            ArtworkLoad.Unreadable -> if (override != null) {
-                dao.markExpired(variantId)
-                Artwork.Placeholder(PlaceholderReason.EXPIRED)
-            } else {
-                Artwork.Placeholder(PlaceholderReason.UNAVAILABLE)
-            }
+            ArtworkLoad.Unreadable -> Artwork.Placeholder(
+                if (override != null) PlaceholderReason.EXPIRED else PlaceholderReason.UNAVAILABLE,
+            )
         }
     }
 

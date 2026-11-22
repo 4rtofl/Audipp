@@ -14,7 +14,7 @@ import com.audipp.domain.model.PermissionState
 /** Variant ごとの差替え画像。元の埋込画像は音源ファイルを参照するので複製しない。行を消せば元に戻る。 */
 @Entity(
     tableName = "artwork_overrides",
-    foreignKeys = [ForeignKey(entity = VariantEntity::class, parentColumns = ["variant_id"], childColumns = ["variant_id"])],
+    foreignKeys = [ForeignKey(entity = VariantEntity::class, parentColumns = ["variant_id"], childColumns = ["variant_id"], onDelete = ForeignKey.CASCADE)],
 )
 data class ArtworkOverrideEntity(
     @PrimaryKey @ColumnInfo(name = "variant_id") val variantId: String,
@@ -23,7 +23,6 @@ data class ArtworkOverrideEntity(
     @ColumnInfo(name = "provider_key") val providerKey: String? = null,
     @ColumnInfo(name = "display_permission") val displayPermission: PermissionState,
     @ColumnInfo(name = "redistribution_permission") val redistributionPermission: PermissionState,
-    val expired: Boolean = false,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
 ) {
     fun toSource(): ArtworkSource.Replacement = when (origin) {
@@ -40,7 +39,7 @@ data class ArtworkOverrideEntity(
                 is ArtworkSource.External -> source.localUri
             },
             (source as? ArtworkSource.External)?.providerKey,
-            source.display, source.redistribution, updatedAt = updatedAt,
+            source.display, source.redistribution, updatedAt,
         )
     }
 }
@@ -66,7 +65,4 @@ interface ArtworkDao {
 
     @Query("DELETE FROM artwork_overrides WHERE variant_id = :variantId")
     suspend fun revert(variantId: String): Int
-
-    @Query("UPDATE artwork_overrides SET expired = 1 WHERE variant_id = :variantId")
-    suspend fun markExpired(variantId: String): Int
 }

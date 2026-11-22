@@ -6,6 +6,9 @@ import com.audipp.domain.model.ArtworkRejection
 import com.audipp.domain.model.ArtworkSource
 import com.audipp.domain.model.PermissionState
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -148,6 +151,31 @@ class ArtworkLoaderTest {
         assertEquals(opensBefore, opener.opens)
         small.load(ArtworkSource.UserSelected("content://picked/1"), 64) // 追い出し済み
         assertEquals(opensBefore + 1, opener.opens)
+    }
+
+    @Test
+    fun limitsConcurrentReadsSoLargeBuffersCannotPileUp() = runBlocking {
+        val png = encode(8, 8)
+        val open = AtomicInteger()
+        val peak = AtomicInteger()
+        val tracked = ArtworkLoader({
+            peak.accumulateAndGet(open.incrementAndGet(), ::maxOf)
+            ArtworkStream(object : java.io.ByteArrayInputStream(png) {
+                override fun close() { Thread.sleep(20); open.decrementAndGet() }
+            }, null)
+        })
+        assertEquals(2, MAX_CONCURRENT_READS)
+        (1..30).map { async { tracked.load(ArtworkSource.UserSelected("p$it"), 8) } }.awaitAll()
+        assertTrue("peak=${peak.get()}", peak.get() in 1..MAX_CONCURRENT_READS)
+        assertEquals(0, open.get())
+    }
+
+    @Test
+    fun cacheHitsAreServedWhileAllReadPermitsAreBusy() = runBlocking {
+        opener["content://picked/1"] = encode(8, 8)
+        loader.load(user, 8)
+        val hit = ArtworkLoader({ error("must not open") }, loader.cache)
+        assertTrue(hit.load(user, 8) is ArtworkLoad.Loaded)
     }
 
     @Test
