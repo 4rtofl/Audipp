@@ -48,4 +48,6 @@ Planに秘密や期限付きURLを追加せず、非Serializableな`SourceDescri
 | FR-PLY-07 → DD-NET-03 → TEST-QUEUE-01 | content URI拒否、現在の到達性・経路/遷移照合、取消・古い成功、期限切れ |
 | FR-SRC-08 → DD-MODEL-01 → TEST-PROV-01 | Provider未許諾の入口拒否と再検査、REMOTE/HANDOFFのAuxiliary分類、技術的PCM能力との区別 |
 
-2026-10-30: 固定fixtureとローカル文書アダプターによるJVM試験を追加。引き渡しの全Unit・Debugビルド・Lint結果、対象commitとCIは対応PRへ記録する。API23/36、実ContentResolver、Service/実プロトコル接続、スマートフォン/DAP・DAC試験は未実施。ADB serialの指定がないため端末操作は行わない。この層は音声sampleを処理せず、DSP数値精度・Bit-perfect実測は不適用。試験ファミリー全体とIssueの最終レビューの完了は別途判定する。
+2026-10-30: 固定fixtureとローカル文書アダプターによるJVM試験を追加。引き渡しの全Unit・Debugビルド・Lint結果、対象commitとCIは対応PRへ記録する。実プロトコル接続、スマートフォン/DAP・DAC試験は未実施。
+
+2026-11-22: `PlaybackService`と同じ`AndroidDocumentAccess`を実ContentResolverへ接続した`SourceResolverDeviceTest`がAPI 36で成功した。API 23は`ContentResolver.wrap`がないため対象外で未実施。受入条件と試験の対応は[検証記録](../evidence/issue-31/README.md)を参照。ADB serialの指定がないため端末操作は行わない。この層は音声sampleを処理せず、DSP数値精度・Bit-perfect実測は不適用。試験ファミリー全体とIssueの最終レビューの完了は別途判定する。

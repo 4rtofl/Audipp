@@ -2842,5 +2842,67 @@
       "docs/contracts/preferences-v1.md"
     ],
     "limitations": "エミュレーターのみで、物理端末・書込中の電源断・ストレージ満杯は未実施。書込失敗は JVM の障害注入試験だけで確かめている。画面からの設定変更と保存失敗の表示は #40 の記録で扱う。外部送信・Visualizer 処理への接続は未確認。"
+  },
+  {
+    "case_id": "E02-09-resolver-acceptance-host-2026-11-22",
+    "requirement_ids": [
+      "FR-SRC-01",
+      "FR-SRC-08",
+      "FR-PLY-07"
+    ],
+    "test_ids": [
+      "TEST-QUEUE-01",
+      "TEST-PROV-01"
+    ],
+    "commit": "dca0437d996679d46d7abecece8f7fe714a4b2f4",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "JDK 17 の SourceResolverTest 23件が成功した。同じ NAS 音源の端末再生と Renderer 制御で Plan のモードと出力先が分かれること、content URI を Renderer へ渡さず未許諾の Provider をアダプター呼出前に拒否すること、指定版が使えないときは別版の ID を返すだけで解決しないこと、Provider の REMOTE／HANDOFF を Auxiliary に分類することを、受入条件ごとに試験名と照合した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/source/SourceResolverTest.kt",
+      "docs/evidence/issue-31/README.md"
+    ],
+    "limitations": "固定 fixture と差し替えた access による JVM 試験。NAS・Provider・Renderer の実アダプターと実プロトコルは未接続。"
+  },
+  {
+    "case_id": "E02-09-resolver-content-resolver-api36-2026-11-22",
+    "requirement_ids": [
+      "FR-PLY-07"
+    ],
+    "test_ids": [
+      "TEST-QUEUE-01"
+    ],
+    "commit": "dca0437d996679d46d7abecece8f7fe714a4b2f4",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 36 の x86_64 エミュレーターで SourceResolverDeviceTest 4件が成功した。PlaybackService と同じ AndroidDocumentAccess を ContentResolver.wrap で試験用の提供元へ接続し、読める文書が指定版のまま LOCAL_DIRECT の Plan になり確認用の FD が閉じること、消失した指定版が SOURCE_MISSING になり別版を開かないこと、SecurityException が PERMISSION_REQUIRED になること、content URI の Renderer 向け解決が提供元を開かずに拒否されることを確かめた。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/playback/source/SourceResolverDeviceTest.kt",
+      "docs/evidence/issue-31/README.md"
+    ],
+    "limitations": "試験用の提供元のみで、SAF ピッカーで許可した実フォルダと物理端末は未実施。"
+  },
+  {
+    "case_id": "E02-09-resolver-content-resolver-api23-2026-11-22",
+    "requirement_ids": [
+      "FR-PLY-07"
+    ],
+    "test_ids": [
+      "TEST-QUEUE-01"
+    ],
+    "commit": "dca0437d996679d46d7abecece8f7fe714a4b2f4",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "SourceResolverDeviceTest は試験用の提供元をつなぐ ContentResolver.wrap が API 29 以降にしかないため、API 23 のエミュレーターでは @SdkSuppress で対象外になり、実行結果は0件だった。",
+    "evidence": [
+      "docs/evidence/issue-31/README.md"
+    ],
+    "limitations": "API 23 での実 ContentResolver 経由の解決は未確認。"
   }
 ]
