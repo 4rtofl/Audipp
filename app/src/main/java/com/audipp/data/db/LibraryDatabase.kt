@@ -14,15 +14,18 @@ import java.util.UUID
     entities = [SourceEntity::class, TrackEntity::class, VariantEntity::class,
         AlbumEntity::class, ArtistEntity::class, TrackArtistEntity::class,
         QueueEntity::class, QueueItemEntity::class, PlaybackCheckpointEntity::class,
-        PlaylistEntity::class, PlaylistItemEntity::class],
-    version = 3,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
+        PlaylistEntity::class, PlaylistItemEntity::class, LocalScanRoot::class, LocalScanSource::class],
+    version = 4,
+    autoMigrations = [
+        AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4),
+    ],
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
     abstract fun queueDao(): QueueDao
     abstract fun playlistDao(): PlaylistDao
+    internal abstract fun safScanDao(): SafScanDao
 
     suspend fun appendPlaylistToQueue(
         playlistId: String,

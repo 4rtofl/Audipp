@@ -2285,6 +2285,126 @@
     "limitations": "試験したのは一覧の取得で、音源のREADは同じ受信検査を通るが直接は試験していない。SMB 2.1のHMAC-SHA256に限定し、SMB 3.x（AES-CMAC）、暗号化セッション、oplock breakの通知、Samba・実NASとの再確認は未実施。"
   },
   {
+    "case_id": "E01-02-saf-traversal-emulators-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-02",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-LIB-01"
+    ],
+    "commit": "28e4367aa9ee3bd76ebefa0b2c42b5e900a78f2a",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23/36 の合成提供元と Room で、不完全走査・古い走査が未訪問曲の状態を維持し、正常完了でのみ消失を確定すること、解析失敗時の既存曲保持と再許可後の Variant 参照復旧を確認した。",
+    "evidence": [
+      "docs/contracts/saf-library-scan.md"
+    ],
+    "limitations": "TEST-LIB-01 の合成ケース。物理 SD 抜去、実際のシステムピッカー経由の許可成功、実プレイリスト UI は未実施。"
+  },
+  {
+    "case_id": "E01-02-saf-minimum-read-access-2026-11-20",
+    "requirement_ids": [
+      "NFR-SEC-01"
+    ],
+    "test_ids": [
+      "TEST-SEC-01"
+    ],
+    "commit": "28e4367aa9ee3bd76ebefa0b2c42b5e900a78f2a",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23/36 で読み取り・永続化フラグの欠落と OS による未許可アクセスの拒否を確認した。権限宣言を増やさず、API 36 で合成 WAV の記述子を読み取り専用で開くことを検査した。",
+    "evidence": [
+      "docs/contracts/saf-library-scan.md"
+    ],
+    "limitations": "SAF 登録と読取経路の部分ケース。実ファイルの許可成功、外部サービス用途、同期、TEST-SEC-01 のその他のケースは未実施。"
+  },
+  {
+    "case_id": "E01-02-saf-picker-and-physical-sd-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-02"
+    ],
+    "test_ids": [
+      "TEST-LIB-01"
+    ],
+    "commit": "28e4367aa9ee3bd76ebefa0b2c42b5e900a78f2a",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "専用エミュレーターの OS 拒否と合成提供元で確認した。システムピッカーでの実フォルダ許可成功、物理 SD 抜去、実プレイリスト画面経由の参照は試験していない。",
+    "evidence": [
+      "docs/contracts/saf-library-scan.md"
+    ],
+    "limitations": "実機シリアルの指定なし。登録画面とプレイリスト画面の結合後に実施する。"
+  },
+  {
+    "case_id": "E01-02-saf-review-fixes-host-2026-11-22",
+    "requirement_ids": [
+      "FR-SRC-02",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-LIB-01"
+    ],
+    "commit": "c98a85dcf682ec439e4ce5f56100145f034365b2",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "Robolectric で、エクスポート済み v1／v3 スキーマから v4 への移行で既存の ID・キュー・プレイリストを保持し、走査用の表が空で使えること、確定状態の保存が最新の走査 ID に限られることを確認した。API 23／35 で、MediaExtractor が開けないファイルと動画トラックを含むコンテナを曲にしないことを確認した。:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest が成功し、単体試験225件が成功、Lint はエラー0件。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/SafScanMigrationTest.kt",
+      "app/src/test/java/com/audipp/data/local/AndroidSafAccessTest.kt",
+      "docs/contracts/saf-library-scan.md"
+    ],
+    "limitations": "Robolectric の MediaExtractor は内容を解析しないため、トラック構成と IOException は合成した。実ファイル（画像・テキスト・動画）に対する端末の MediaExtractor の挙動、AndroidSafAccess の10秒取消の経路は未確認。"
+  },
+  {
+    "case_id": "E01-02-saf-review-fixes-emulators-2026-11-22",
+    "requirement_ids": [
+      "FR-SRC-02",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-LIB-01"
+    ],
+    "commit": "c98a85dcf682ec439e4ce5f56100145f034365b2",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "深さ超過のサブツリーだけを飛ばす継続、確定状態の保存と DB 再オープン後の取得を加えた SafLibraryTest と、v3→v4 移行・未対応版 v5 の LibraryDatabaseTest は、AndroidTest APK のビルドだけを確認した。専用エミュレーターでは実行していない。",
+    "evidence": [
+      "docs/contracts/saf-library-scan.md"
+    ],
+    "limitations": "API 23／36 の専用エミュレーターで SafLibraryTest・LibraryDatabaseTest・AndroidSafAudioTest を実行するまで、端末の SQLite と Room の組み合わせでの結果は不明。"
+  },
+  {
+    "case_id": "E01-02-saf-shared-directory-depth-host-2026-11-22",
+    "requirement_ids": [
+      "FR-SRC-02",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-LIB-01"
+    ],
+    "commit": "2e0830ce3f1b16079afac698d7d0cc888564ca4f",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "深さ上限2で、同じディレクトリ ID が深さ3と2に現れる合成ツリーを走査した。修正前は配下の音源の索引が0件だった。修正後は1件を PLAYABLE として索引し、5ディレクトリを走査して問題のない COMPLETE を返した。深いサブツリーのスキップと、深さ・件数・メモリ上限で既存音源の消失を確定しない挙動も確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/data/local/SafLibraryTest.kt"
+    ],
+    "limitations": "AndroidTest の対象3ケースを一時的に Robolectric API 35（ネイティブ SQLite）で実行した。実際の DocumentsProvider、専用エミュレーターおよび実機での実行結果は未確認。"
+  },
+  {
     "case_id": "E02-06-host-playback-checkpoint",
     "requirement_ids": [
       "FR-PLY-04",
