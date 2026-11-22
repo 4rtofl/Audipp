@@ -1679,5 +1679,165 @@
       "docs/contracts/playback-owner.md"
     ],
     "limitations": "#61の切替契約をホストのFakeで確認した。実Serviceからの効果接続、実SDKでのコマンド終端・失効の保証、外部サービスと実機の再生状態は未確認。"
+  },
+  {
+    "case_id": "E07-02-api23-before-desugaring-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "e5091081a111f29ac5a767dfa3440b392955f49f",
+    "stage": "CURRENT",
+    "outcome": "FAIL",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23エミュレーターでSMBJのNTLM処理が参照するJava 8 APIをロードできず、署名付きSamba fixtureへの接続試験が認証中に失敗した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "Java API desugaringを追加したcommitで再試験した。"
+  },
+  {
+    "case_id": "E07-02-samba-loopback-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "e8f1936bb9d5101ce098d16c4bc53a718c7943bd",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "署名必須のSMB2.1/SMB3.1.1とのローカル相互運用、認証と共有拒否の分類、固定fixtureによる署名エラー分類、取消・タイムアウト・同一offsetへの再試行、差し替えの拒否、失敗後の再選択を確認した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "実NAS・実機・長時間再生は未実施。署名不正の応答をSMBJが内部で破棄した場合はタイムアウトになり得る。"
+  },
+  {
+    "case_id": "E07-02-android-signed-smb-keystore-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01",
+      "NFR-SEC-02"
+    ],
+    "test_ids": [
+      "TEST-NET-01",
+      "TEST-SEC-01"
+    ],
+    "commit": "e8f1936bb9d5101ce098d16c4bc53a718c7943bd",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23/36のエミュレーターからループバックSambaへ署名付きで接続し、Android Keystoreで保護した資格の再取得、非ゼロ位置の読込、許可取消後の拒否を各1件確認した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "固定fixtureとエミュレーターに限定。実機のAndroid LAN権限フローと実利用許可は未確認。"
+  },
+  {
+    "case_id": "E07-02-wav-range-2026-11-20",
+    "requirement_ids": [
+      "FR-SRC-01"
+    ],
+    "test_ids": [
+      "TEST-FORMAT-01"
+    ],
+    "commit": "e8f1936bb9d5101ce098d16c4bc53a718c7943bd",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "自作PCM WAVで、先頭、非ゼロoffset、SMB単発要求の上限をまたぐ範囲、終端のbyte列が入力と一致した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "SMB経由のWAVのファイル読込を検証。Media3のデコード、他形式、破損ファイル、音声出力は未実施。"
+  },
+  {
+    "case_id": "E07-02-physical-nas-and-dap-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "e8f1936bb9d5101ce098d16c4bc53a718c7943bd",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "UNKNOWN",
+    "reason": "実環境へ接続せずローカルfixtureに限定したため、実NASとGalaxy/FiiOの相互運用および用途許可は確認していない。",
+    "evidence": [
+      "docs/contracts/smb-v1.md"
+    ],
+    "limitations": "実NASや実機での動作、音声出力、DAC実測は未確認。"
+  },
+  {
+    "case_id": "E07-02-ipv6-literal-loopback-2026-11-20",
+    "requirement_ids": [
+      "FR-NET-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "a0a9789c1636c285c507e3332012e8a213f73269",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "IPv6リテラルの表記がSMBJで正規化されても、指定したループバックでSMB2交渉を開始し、タイムアウトでソケットが閉じた。",
+    "evidence": [
+      "docs/contracts/smb-v1.md",
+      "app/src/test/java/com/audipp/integrations/network/smb/SmbLoopbackTest.kt"
+    ],
+    "limitations": "IPv6では交渉の開始とソケットの終了を検証した。署名付きSambaとの相互運用を再確認した接続先はIPv4ループバック。"
+  },
+  {
+    "case_id": "E07-02-forged-smb-response-loopback-2026-11-22",
+    "requirement_ids": [
+      "FR-NET-01",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "545e2287aed4697b4556993f7ddd92a9d526ab8a",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "署名必須のSMB 2.1でNTLM認証と署名付きTREE_CONNECTを返すループバック偽サーバーを使った。CREATEへの偽応答4種（未署名でSessionId 0、未署名で別セッション、署名フラグのみでSessionId 0、署名後の改ざん）は、いずれもバイトを返さずSIGNATURE_REJECTEDになり、後続要求と再試行もなかった。修正前は4種ともタイムアウトから再試行に至り、前3種では偽応答が受理されていた。",
+    "evidence": [
+      "docs/contracts/smb-v1.md",
+      "app/src/test/java/com/audipp/integrations/network/smb/SmbLoopbackTest.kt"
+    ],
+    "limitations": "検証はSMB 2.1のHMAC-SHA256に限定。SMB 3.x（AES-CMAC）、暗号化セッション、Samba・実NASとの再確認は未実施。上流SMBJの修正は未マージで、依存側の欠陥はアプリ側の受信前検査で回避している。"
+  },
+  {
+    "case_id": "E07-02-signed-smb-response-reach-loopback-2026-11-22",
+    "requirement_ids": [
+      "FR-NET-01",
+      "NFR-REL-01"
+    ],
+    "test_ids": [
+      "TEST-NET-01"
+    ],
+    "commit": "16961925e12bd7142fd2a6a7a9c105541ffca144",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "ループバック偽サーバーが受け取ったコマンドを照合した。CREATEへの偽応答4種は、いずれもCREATEまで届いた後にSIGNATURE_REJECTEDとなり、後続の要求と再試行はなかった。未署名の非同期中間応答に続く署名付きの最終応答と、署名付きのQUERY_INFO、QUERY_DIRECTORY、CLOSEの応答では、一覧の取得が成功した。検査にTREE_CONNECTを拒否する変異を入れると、両方の試験が失敗した。",
+    "evidence": [
+      "docs/contracts/smb-v1.md",
+      "app/src/test/java/com/audipp/integrations/network/smb/SmbLoopbackTest.kt"
+    ],
+    "limitations": "試験したのは一覧の取得で、音源のREADは同じ受信検査を通るが直接は試験していない。SMB 2.1のHMAC-SHA256に限定し、SMB 3.x（AES-CMAC）、暗号化セッション、oplock breakの通知、Samba・実NASとの再確認は未実施。"
   }
 ]
