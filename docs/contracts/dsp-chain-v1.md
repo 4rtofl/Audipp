@@ -10,7 +10,7 @@
 
 - 入力は interleaved の Float32 を `FloatArray` で受け取り、その場で処理する。出力は呼び出し元の `ByteBuffer` の position からリトルエンディアンで書く。`PROCESSED` 以外では何も書かない。
 - 形式は mono / stereo / 5.1 の 1・2・6 ch、1〜384000 Hz。`DspChain.open` が設定を1回だけ検査し、失敗した設定は `Rejected` を返して chain を作らない。`process` は検査済みの値だけを扱う。
-- `process` は音声スレッドで動き、確保・ロック・I/O を行わない。実行中のゲイン変更は `@Volatile` の目標値だけで渡し、次のブロックの先頭で読む。
+- `process` は音声スレッドで動き、確保・ロック・I/O を行わない（段は配列と添字で回し、Iterator を作らない）。実行中のゲイン変更は `@Volatile` の目標値だけで渡し、次のブロックの先頭で読む。
 - フィルター係数や段の差し替えは、バックグラウンドで新しい `DspChain` を作ってから呼び出し元が差し替える。差し替えの手順と crossfade は各段の Issue で扱う。
 
 ## headroom
@@ -30,7 +30,7 @@
 ## 量子化と dither
 
 - 16/24-bit 整数だけに TPDF dither（±1 LSB、xorshift32）をかけ、最近接偶数へ丸めて範囲内に収める。
-- 32-bit 整数は dither しない。Float32 の仮数は 24 bit で、この変換では精度を落とさないため。
+- 32-bit 整数は dither しない。|x| < 2^-7 では Float32 の刻みが int32 の LSB より細かく、精度は落ちる。ただし丸め誤差は int32 の LSB の半分（約 -193 dBFS）以下で、DAC の雑音より十分小さいため。
 - Float32 出力と DSD 変調器への出力は Float のまま渡し、PCM 用の dither を重ねない。
 
 ## 経路の分離
@@ -42,14 +42,14 @@
 | 入口 | 結果 |
 |---|---|
 | `open` | `NOT_PROCESSED_PATH`、`UNSUPPORTED_FORMAT`、`INVALID_PARAMETER`（NaN/Inf・負の減衰・0 以下の IR 和・`gainDb` が最大正ゲイン超）、`HEADROOM_INSUFFICIENT`、`OVERLOAD` |
-| `process` | `NON_FINITE_SAMPLE`（入力に NaN/Inf、段は呼ばない）、`OVERLOAD`（段の出力に NaN/Inf）、`INVALID_BLOCK`（フレーム数・バッファ容量） |
+| `process` | `NON_FINITE_SAMPLE`（入力に NaN/Inf、段は呼ばない）、`OVERLOAD`（段の出力に NaN/Inf。ゲインの ramp と段の内部状態は進み `samples` も書き換わっている。出力バッファと guard には書かない。呼び出し元はこの chain を破棄して作り直す）、`INVALID_BLOCK`（フレーム数・バッファ容量） |
 | `setGainDb` | 非有限、または最大正ゲイン超は `false` |
 
 ## 検証の範囲
 
 | 要求・試験 | この変更の検証範囲 |
 |---|---|
-| FR-AUD-07 / NFR-AUD-04 → DD-DSP-01 / TEST-AUD-02 | JVM 単体試験20件。処理順、headroom の式と拒否、NaN/Inf・過負荷の拒否と状態の不変、10 ms の線形平滑化（48/44.1 kHz）、guard の先読み 240 フレームと -1 dBTP（1/11/20 kHz の正弦波・インパルス）、ch 共通ゲイン、dither の適用範囲と統計、Native/DoP 経路の拒否。True Peak は試験側の別実装（16 倍・±128 サンプルの sinc、Float64）で測り、許容は +0.2 dB（QLT-05 の True Peak 誤差）とする。 |
+| FR-AUD-07 / NFR-AUD-04 → DD-DSP-01 / TEST-AUD-02 | JVM 単体試験20件。処理順、headroom の式と拒否、NaN/Inf の拒否（入力は状態不変）と過負荷の拒否（出力に書かない）、10 ms の線形平滑化（48/44.1 kHz）、guard の先読み 240 フレームと -1 dBTP（1/11/20 kHz の正弦波・インパルス）、ch 共通ゲイン、dither の適用範囲と統計、Native/DoP 経路の拒否。True Peak は試験側の別実装（16 倍・±128 サンプルの sinc、Float64）で測り、許容は +0.2 dB（QLT-05 の True Peak 誤差）とする。 |
 | FR-AUD-09 | 設定の検査と生成を `open` に分けた。失敗した設定からは chain ができない。音声スレッドのロック不使用は設計で担保し、競合の試験はない。 |
 
 **NOT_RUN:** ART 上（API 23 / 36）での実行、ブロック処理時間と P99（QLT-11）、実機・DAC の出力と測定、`LocalPlayback` への接続、IR・PEQ など実際の段との組合せ、再生中のゲイン変更を含む聴感確認。

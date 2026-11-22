@@ -156,8 +156,10 @@ class DspChainTest {
     fun overloadedStageOutputIsRejectedAndInvalidBlocksAreRefused() {
         val chain = chain(config(stages = DspStages(ir = DspStage { s, f ->
             for (i in 0 until f) s[i] = Float.POSITIVE_INFINITY })))
-        val out = ByteBuffer.allocate(8)
+        val out = ByteBuffer.allocate(8).also { b -> repeat(8) { b.put(it, 0x55) } }
         assertEquals(DspBlockResult.OVERLOAD, chain.process(floatArrayOf(0.1f, 0.1f), 2, out))
+        // The chain's state is spent (caller must reopen), but nothing reached the output.
+        assertTrue((0 until 8).all { out.get(it) == 0x55.toByte() })
         assertEquals(DspBlockResult.INVALID_BLOCK, chain.process(floatArrayOf(0.1f), 2, out))
         assertEquals(DspBlockResult.INVALID_BLOCK, chain.process(floatArrayOf(0.1f, 0.1f), 2,
             ByteBuffer.allocate(7)))

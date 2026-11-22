@@ -66,11 +66,12 @@ internal class DspChain private constructor(
     private val config: DspConfig,
     private val attenuationDb: Double,
 ) {
-    private val stagesBeforeGain = listOfNotNull(config.stages.map)
+    // Arrays and index loops: iterating a List would allocate an Iterator per block.
+    private val stagesBeforeGain = listOfNotNull(config.stages.map).toTypedArray()
     private val stagesAfterGain = listOfNotNull(
         config.stages.peq, config.stages.ir, config.stages.crossfeed, config.stages.apodizing,
         config.stages.src,
-    )
+    ).toTypedArray()
     private val guard = ClipGuard(config.sampleRateHz, config.channelCount, CEILING_DB)
     private val quantizer = PcmQuantizer(config.output, config.dither)
     private val rampFrames = (config.sampleRateHz * RAMP_MS / 1_000.0).roundToInt()
@@ -95,7 +96,11 @@ internal class DspChain private constructor(
 
     /**
      * Processes [frames] frames of [samples] in place and writes the quantized frames at
-     * [output]'s position. Nothing is written unless the result is PROCESSED.
+     * [output]'s position. [output] is written only when the result is PROCESSED.
+     *
+     * NON_FINITE_SAMPLE leaves [samples] and the chain untouched. OVERLOAD does not: the gain ramp
+     * and the stages' own state have advanced and [samples] was modified, though the clip guard and
+     * [output] were not reached. The caller must discard this chain and open a new one.
      */
     fun process(samples: FloatArray, frames: Int, output: ByteBuffer): DspBlockResult {
         val count = frames * config.channelCount
@@ -104,9 +109,9 @@ internal class DspChain private constructor(
         }
         if (!allFinite(samples, count)) return DspBlockResult.NON_FINITE_SAMPLE
 
-        for (stage in stagesBeforeGain) stage.process(samples, frames)
+        for (i in stagesBeforeGain.indices) stagesBeforeGain[i].process(samples, frames)
         applyGain(samples, frames)
-        for (stage in stagesAfterGain) stage.process(samples, frames)
+        for (i in stagesAfterGain.indices) stagesAfterGain[i].process(samples, frames)
         if (!allFinite(samples, count)) return DspBlockResult.OVERLOAD
         guard.process(samples, frames)
         quantizer.write(samples, count, output)

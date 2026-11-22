@@ -4,8 +4,10 @@ import java.nio.ByteBuffer
 
 /**
  * Float to little-endian PCM bytes. TPDF dither (±1 LSB) is applied only to 16/24-bit output.
- * 32-bit integer output is not dithered because a Float32 source carries at most 24 significant
- * bits, so that step discards nothing. Float32 and DSD-modulator output pass the float through.
+ * 32-bit integer output is not dithered: rounding a Float32 to the int32 grid errs by at most half
+ * an LSB (about -193 dBFS), far below any DAC's noise. (Below |x| < 2^-7 the Float32 step is finer
+ * than the int32 LSB, so the step does discard bits; they are just inaudible.) Float32 and
+ * DSD-modulator output pass the float through.
  */
 internal class PcmQuantizer(private val output: DspOutput, private val dither: Boolean) {
     private var random = 0x2545F491
