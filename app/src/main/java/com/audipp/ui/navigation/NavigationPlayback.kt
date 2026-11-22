@@ -7,12 +7,14 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import com.audipp.R
+import com.audipp.audio.route.OutputConfirmation
 import com.audipp.domain.model.Availability
 import com.audipp.domain.model.ErrorDomain
 import com.audipp.domain.model.PlaybackPhase
 import com.audipp.domain.model.PlaybackSnapshot
 import com.audipp.domain.model.QueueEntryId
 import com.audipp.domain.model.TransitionId
+import com.audipp.playback.OutputConfirmationRequest
 import com.audipp.playback.PlaybackConnection
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
@@ -31,6 +33,7 @@ internal sealed interface NavigationPlaybackState {
         val title: String?,
         val artist: String?,
         val control: PlaybackControl?,
+        val outputConfirmation: OutputConfirmationRequest? = null,
     ) : NavigationPlaybackState
 }
 
@@ -43,15 +46,19 @@ internal data class PlaybackControl(
 internal fun PlaybackSnapshot.controlFor(
     mediaId: String?,
     playPauseAvailable: Boolean,
+    preparedTransition: TransitionId? = null,
 ): PlaybackControl? {
     val entry = currentEntryId ?: return null
-    val plan = executionPlan ?: return null
-    if (entry.value != mediaId || !playPauseAvailable || plan.source.availability != Availability.PLAYABLE) return null
+    // An output revision invalidates the plan without dropping the service's prepared media item.
+    val transition = executionPlan?.transitionId ?: preparedTransition ?: return null
+    if (entry.value != mediaId || !playPauseAvailable || effectiveSource?.availability != Availability.PLAYABLE) {
+        return null
+    }
     return when {
-        phase == PlaybackPhase.PLAYING && plan.capabilities.canPause ->
-            PlaybackControl(entry, plan.transitionId, pause = true)
-        phase == PlaybackPhase.PAUSED && plan.capabilities.canPlay ->
-            PlaybackControl(entry, plan.transitionId, pause = false)
+        phase == PlaybackPhase.PLAYING && executionPlan?.capabilities?.canPause != false ->
+            PlaybackControl(entry, transition, pause = true)
+        phase == PlaybackPhase.PAUSED && executionPlan?.capabilities?.canPlay != false ->
+            PlaybackControl(entry, transition, pause = false)
         else -> null
     }
 }
@@ -116,8 +123,19 @@ internal class NavigationPlayback(private val context: Context) {
 
     fun toggle(requested: PlaybackControl) {
         val current = controller?.takeIf { it.isConnected } ?: return
+        if (PlaybackConnection.outputConfirmation(current.sessionExtras) != null) return
         if (current.control(current.snapshot()) != requested) return
         if (requested.pause) current.pause() else current.play()
+    }
+
+    fun confirmOutput(requested: OutputConfirmationRequest) {
+        val current = controller?.takeIf { it.isConnected } ?: return
+        if (PlaybackConnection.outputConfirmation(current.sessionExtras) != requested) return
+        if (requested.reason == OutputConfirmation.ROUTE_UNKNOWN) {
+            PlaybackConnection.retryOutputObservation(current, requested.id)
+        } else {
+            PlaybackConnection.confirmOutput(current, requested.id)
+        }
     }
 
     private fun MediaController.presentation(): NavigationPlaybackState {
@@ -134,12 +152,14 @@ internal class NavigationPlayback(private val context: Context) {
             null
         }
         val title = metadata?.title?.toString()
+        val outputConfirmation = PlaybackConnection.outputConfirmation(sessionExtras)
         // The service seeds the notification with the app name before file metadata is available.
         return NavigationPlaybackState.Current(
             phase = snapshot.phase,
             title = title?.takeUnless { it.isBlank() || it == context.getString(R.string.app_name) },
             artist = metadata?.artist?.toString()?.takeIf { it.isNotBlank() },
-            control = control(snapshot),
+            control = if (outputConfirmation == null) control(snapshot) else null,
+            outputConfirmation = outputConfirmation,
         )
     }
 
@@ -147,7 +167,8 @@ internal class NavigationPlayback(private val context: Context) {
         if (isCommandAvailable(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)) currentMediaItem?.mediaId else null
 
     private fun MediaController.control(snapshot: PlaybackSnapshot?): PlaybackControl? =
-        snapshot?.controlFor(mediaId(), isCommandAvailable(Player.COMMAND_PLAY_PAUSE))
+        snapshot?.controlFor(mediaId(), isCommandAvailable(Player.COMMAND_PLAY_PAUSE),
+            PlaybackConnection.preparedTransition(sessionExtras))
 
     private fun MediaController.snapshot(): PlaybackSnapshot? = try {
         PlaybackConnection.snapshot(sessionExtras)

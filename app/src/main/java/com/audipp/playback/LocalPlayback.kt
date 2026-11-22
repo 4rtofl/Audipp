@@ -154,7 +154,7 @@ internal class LocalPlayback(
         if (previous.executionPlan != null) publish(previous.copy(executionPlan = null), schedule.value)
     }
 
-    // A route change retires the plan while the prepared media item keeps playing under this transition.
+    // Retiring the plan does not discard the prepared item needed for a confirmed restart.
     fun isCurrentTransition(transitionId: TransitionId?): Boolean =
         transitionId == context.transitionId && snapshot.value.effectiveSource != null
 

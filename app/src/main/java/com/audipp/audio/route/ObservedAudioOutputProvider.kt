@@ -18,24 +18,60 @@ internal class ObservedAudioOutputProvider(
         val output = super.getAudioOutput(config)
         val track = (output as? AudioTrackAudioOutput)?.audioTrack
         return object : ForwardingAudioOutput(output) {
+            private val volumeLock = Any()
+            private var attempt: Any? = null
+            private var requestedVolume = 1f
+            private var safetyGain = 0f
+
             override fun play() {
+                val probe = Any()
+                synchronized(volumeLock) {
+                    attempt = probe
+                    safetyGain = 0f
+                    output.setVolume(0f)
+                }
                 super.play()
-                routes.onPlaying(this, track)
+                routes.onPlaying(probe, track, { synchronized(volumeLock) { attempt === probe } }) { gain ->
+                    synchronized(volumeLock) {
+                        if (attempt === probe) {
+                            safetyGain = gain
+                            output.setVolume(requestedVolume * safetyGain)
+                        }
+                    }
+                }
+            }
+
+            override fun setVolume(volume: Float) {
+                synchronized(volumeLock) {
+                    requestedVolume = volume
+                    output.setVolume(requestedVolume * safetyGain)
+                }
             }
 
             override fun pause() {
+                endObservation()
                 super.pause()
-                routes.onInactive(this)
             }
 
             override fun stop() {
+                // Media3 also calls stop() to drain the end of a stream. Keep that audio revocable
+                // until release rather than muting the final queued frames of every item.
                 super.stop()
-                routes.onInactive(this)
+                synchronized(volumeLock) { attempt?.let(routes::onDraining) }
             }
 
             override fun release() {
-                routes.onInactive(this)
+                endObservation()
                 super.release()
+            }
+
+            private fun endObservation() {
+                synchronized(volumeLock) {
+                    attempt?.let(routes::onInactive)
+                    attempt = null
+                    safetyGain = 0f
+                    output.setVolume(0f)
+                }
             }
         }
     }

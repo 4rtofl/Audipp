@@ -33,10 +33,11 @@ class OutputRouteInstrumentedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val wav = File.createTempFile("output-route", ".wav", context.cacheDir)
+        val safety = OutputSafety({ 0 }) { player.pause() }
         try {
             wav.writeBytes(silentWav())
             instrumentation.runOnMainSync {
-                monitor = OutputRouteMonitor(context) {}
+                monitor = OutputRouteMonitor(context, safety) {}
                 assertEquals(EvidenceLevel.OS_REPORTED, monitor.snapshot.value.connectedOutputs.level)
                 assertEquals(EvidenceLevel.UNKNOWN, monitor.snapshot.value.observedOutputs.level)
                 player = ExoPlayer.Builder(context)
@@ -48,7 +49,8 @@ class OutputRouteInstrumentedTest {
             }
             awaitCondition("The player's AudioTrack never exposed a routed output") {
                 instrumentation.runOnMainSync { monitor.refreshRoute() }
-                monitor.snapshot.value.observedOutputs.level == EvidenceLevel.APP_OBSERVED
+                monitor.snapshot.value.observedOutputs.level == EvidenceLevel.APP_OBSERVED &&
+                    safety.state.value == OutputSafetyState.Ready
             }
             val playing = monitor.snapshot.value
             assertTrue(playing.observedOutputs.value!!.isNotEmpty())
@@ -89,7 +91,7 @@ class OutputRouteInstrumentedTest {
         var fixture: MultipleRouteTrack? = null
         try {
             instrumentation.runOnMainSync {
-                monitor = OutputRouteMonitor(context) {}
+                monitor = OutputRouteMonitor(context, OutputSafety({ 0 }) {}) {}
                 fixture = MultipleRouteTrack(devices.reversed()).also { monitor.onPlaying(it, it) }
             }
             instrumentation.waitForIdleSync()

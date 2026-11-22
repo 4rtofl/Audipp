@@ -59,4 +59,13 @@ class NavigationPlaybackTest {
         val replacement = paused.copy(executionPlan = plan.copy(transitionId = TransitionId("next")))
         assertNotEquals(paused.controlFor(entry.value, true), replacement.controlFor(entry.value, true))
     }
+
+    @Test
+    fun aPreparedItemCanResumeAfterARouteChangeInvalidatesItsPlan() {
+        val retained = paused.copy(executionPlan = null)
+        assertEquals(PlaybackControl(entry, plan.transitionId, pause = false),
+            retained.controlFor(entry.value, true, preparedTransition = plan.transitionId))
+        assertNull(retained.controlFor("different-entry", true, preparedTransition = plan.transitionId))
+        assertNull(retained.controlFor(entry.value, false, preparedTransition = plan.transitionId))
+    }
 }
