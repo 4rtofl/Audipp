@@ -3743,24 +3743,27 @@
   {
     "case_id": "E04-09-crossfeed-channel-jvm",
     "requirement_ids": [
+      "FR-AUD-05",
       "FR-AUD-06",
+      "FR-AUD-07",
       "FR-AUD-09"
     ],
     "test_ids": [
-      "TEST-AUD-02"
+      "TEST-AUD-02",
+      "TEST-FORMAT-02"
     ],
-    "commit": "0e1ffe013ca3d10d7da9a6287324b35799c9c58c",
+    "commit": "d9f5579a2a23d6db8c6996ab4cfabbd6c1a8b44a",
     "stage": "CURRENT",
     "permission": "NOT_REQUIRED",
     "outcome": "PASS",
     "execution": "EXECUTED",
-    "reason": "JVM単体試験23件（ChannelStageTest 11件、CrossfeedStageTest 12件）に成功。同相・逆相・片chのimpulseでswap/mono/左右gainの7通りが定義のFloat64計算と1e-7以内で一致し、5.1の2組とFC/LFE、mono（1 ch）での拒否を確認した。Crossfeedの処理したインパルス応答をFloat64でDFTし、独立に書いたアナログ原型と比べてFs 5通り×6通り×9周波数で複素数の差が1e-6以内（最大2.9e-8）。非2chでNOT_STEREOを返し入力を変えないこと、範囲外・NaN/Infの拒否と拒否後の旧設定の保持（bit単位）、10 msの切替の式との一致と連続性、各段の最大の正ゲインを足したheadroomでclip guard前が0 dBFS以下になること、STANDARD/DIRECT_ATTEMPTで段が呼ばれないことを確認した。assembleDebug・単体試験全510件（スキップ1・失敗0）・lintDebugも成功。",
+    "reason": "JVM単体試験24件（ChannelStageTest 11件、CrossfeedStageTest 13件）に成功。同相・逆相・片chのimpulseでswap/mono/左右gainの7通りが定義のFloat64計算と1e-7以内で一致し、2chと5.1の2組（FC/LFEは不変）、mono（1 ch）での拒否を確認した。Crossfeedの処理したインパルス応答をFloat64でDFTし、独立に書いたアナログ原型と比べてFs 5通り×6通り×9周波数で複素数の差が1e-6以内（最大2.9e-8）。非2chでNOT_STEREOを返し入力を変えないこと、有効な設定の範囲外・NaN/Infの拒否と拒否後の旧設定の保持（bit単位）、範囲外の保存値でもOFFが効くこと、10 msの切替の式との一致と連続性を確認した。Crossfeedの最大の正ゲインはインパルス応答の絶対値の和（実測と0.01 dB以内、最大+2.96 dB）で、満振幅のL=10 kHz・R=50 Hzでもclip guard前が0 dBFS以下になり、各段の寄与を足したheadroomでもclip guard前が0 dBFS以下になること、STANDARD/DIRECT_ATTEMPTでChannel・Crossfeedを含むどの段も呼ばれないことを確認した。assembleDebug・単体試験全511件（スキップ1・失敗0）・lintDebugも成功。",
     "evidence": [
       "app/src/test/java/com/audipp/audio/dsp/ChannelStageTest.kt",
       "app/src/test/java/com/audipp/audio/dsp/CrossfeedStageTest.kt",
       "docs/contracts/crossfeed-channel-v1.md"
     ],
-    "limitations": "Kotlin実装のJVM上の結果。ART（API 23/36）での実行、音声スレッドの競合試験、LocalPlaybackと設定画面（#133）への接続、downmix（#41）・IRとの組合せは未実施。Crossfeedの最大の正ゲインは正弦波の定常応答の最大で、任意の信号ではインパルス応答の絶対値の和（最大+2.90 dB）まで超えうる。"
+    "limitations": "Kotlin実装のJVM上の結果。ART（API 23/36）での実行、音声スレッドの競合試験、LocalPlaybackと設定画面（#133）への接続、downmix（#41）・IRとの組合せは未実施。TEST-FORMAT-02は2ch/5.1chの配置と非2chの拒否の範囲だけで、384 kHz超・32-bit超・DSDの変換は対象外。clip基準はclip guardの前の値（0 dBFS）で確かめ、DSP後のTrue Peak（QLT-13）は別に未測定。DspChain.setGainDbの上限が段の寄与まで含む値と比べられる既存の問題（#68）は残る。"
   },
   {
     "case_id": "E04-09-crossfeed-channel-art-api23-36",
@@ -3771,7 +3774,7 @@
     "test_ids": [
       "TEST-AUD-02"
     ],
-    "commit": "0e1ffe013ca3d10d7da9a6287324b35799c9c58c",
+    "commit": "d9f5579a2a23d6db8c6996ab4cfabbd6c1a8b44a",
     "stage": "CURRENT",
     "permission": "NOT_REQUIRED",
     "outcome": "NOT_RUN",
@@ -3791,7 +3794,7 @@
     "test_ids": [
       "TEST-AUD-02"
     ],
-    "commit": "0e1ffe013ca3d10d7da9a6287324b35799c9c58c",
+    "commit": "d9f5579a2a23d6db8c6996ab4cfabbd6c1a8b44a",
     "stage": "CURRENT",
     "permission": "NOT_REQUIRED",
     "outcome": "NOT_RUN",
@@ -3801,5 +3804,25 @@
       "docs/contracts/crossfeed-channel-v1.md"
     ],
     "limitations": "JVMの値をARTや実機の合格として扱わない。内部処理の結果から外部出力の音質やBit-perfectを判定しない。"
+  },
+  {
+    "case_id": "E04-09-crossfeed-channel-qlt13-true-peak",
+    "requirement_ids": [
+      "FR-AUD-07"
+    ],
+    "test_ids": [
+      "TEST-AUD-03"
+    ],
+    "commit": "d9f5579a2a23d6db8c6996ab4cfabbd6c1a8b44a",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "reason": "QLT-13（DSP後のTrue Peakが目標を超えない）は、この変更では測っていない。JVMで確かめたのはclip guardの前の値が0 dBFS以下になることと、clip guard自体の-1 dBTPの試験（#68）までで、Crossfeed・左右gainを含むchainの出力のTrue Peakを独立の方法で測った結果はない。DAC/BT切断、プロファイル切替、実機の出力も未実施。",
+    "evidence": [
+      "docs/contracts/crossfeed-channel-v1.md",
+      "docs/contracts/dsp-chain-v1.md"
+    ],
+    "limitations": "0 dBFS以下のclip guard前の値をQLT-13の合格として扱わない。"
   }
 ]
