@@ -34,6 +34,9 @@ internal data class OutputConfirmationRequest(
 @androidx.annotation.OptIn(UnstableApi::class)
 object PlaybackConnection {
     internal const val PLAY_LOCAL = "com.audipp.playback.PLAY_LOCAL"
+    internal const val PLAY_QUEUE = "com.audipp.playback.PLAY_QUEUE"
+    internal const val QUEUE_ID = "queueId"
+    internal const val QUEUE_REVISION = "queueRevision"
     internal const val CONFIRM_OUTPUT = "com.audipp.playback.CONFIRM_OUTPUT"
     internal const val RETRY_OUTPUT_OBSERVATION = "com.audipp.playback.RETRY_OUTPUT_OBSERVATION"
     internal const val CONFIRMATION_ID = "confirmationId"
@@ -50,6 +53,7 @@ object PlaybackConnection {
     internal const val OBSERVED_OUTPUT_TYPES = "observedOutputTypes"
     const val ACTION_OPEN_NOW_PLAYING = "com.audipp.playback.OPEN_NOW_PLAYING"
     internal val playLocalCommand = SessionCommand(PLAY_LOCAL, Bundle.EMPTY)
+    internal val playQueueCommand = SessionCommand(PLAY_QUEUE, Bundle.EMPTY)
     internal val confirmOutputCommand = SessionCommand(CONFIRM_OUTPUT, Bundle.EMPTY)
     internal val retryOutputObservationCommand = SessionCommand(RETRY_OUTPUT_OBSERVATION, Bundle.EMPTY)
 
@@ -64,6 +68,19 @@ object PlaybackConnection {
         playLocalCommand, Bundle().apply {
             putString(ENTRY_ID, entryId.value)
             putString(VARIANT, ModelJson.encode(variant))
+        },
+    )
+
+    /**
+     * Plays a saved queue entry and continues with the queue's order on natural end. A revision
+     * other than the committed one is rejected with ERROR_INVALID_STATE without touching playback.
+     */
+    fun playQueue(controller: MediaController, queueId: String, entryId: QueueEntryId,
+        queueRevision: Long): ListenableFuture<SessionResult> = controller.sendCustomCommand(
+        playQueueCommand, Bundle().apply {
+            putString(QUEUE_ID, queueId)
+            putString(ENTRY_ID, entryId.value)
+            putLong(QUEUE_REVISION, queueRevision)
         },
     )
 

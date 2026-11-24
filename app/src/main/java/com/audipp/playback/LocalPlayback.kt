@@ -10,6 +10,7 @@ import com.audipp.domain.model.ErrorDomain
 import com.audipp.domain.model.PlaybackCapabilities
 import com.audipp.domain.model.PlaybackError
 import com.audipp.domain.model.PlaybackPhase
+import com.audipp.domain.model.PlaybackQueueRef
 import com.audipp.domain.model.PlaybackSnapshot
 import com.audipp.domain.model.QueueEntry
 import com.audipp.domain.model.QueueEntryId
@@ -39,7 +40,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 
 internal interface LocalPlaybackEngine {
-    fun prepare(entryId: QueueEntryId, transitionId: TransitionId, document: SourceDescriptor.LocalDocument)
+    fun prepare(entryId: QueueEntryId, transitionId: TransitionId, document: SourceDescriptor.LocalDocument,
+        startPositionMs: Long?)
     fun reset()
 }
 
@@ -64,14 +66,24 @@ internal class LocalPlayback(
     private var seekPending = false
     private var pcmProcessor: NativePcmProcessor? = null
     private var pcmSetup: Any? = null
-    private val resolver = SourceResolver(
+    // Kept across stop so a stopped or restored queue can still be reconciled and resumed.
+    internal var queue: PlaybackQueueRef? = null
+        private set
+    internal val resolutionContext: ResolutionContext get() = context
+    internal val resolver = SourceResolver(
         mapOf(AdapterKey(SourceKind.LOCAL, TargetKind.DEVICE) to LocalDocumentSourceAdapter(
             PlaybackCapabilities(canPlay = true, canPause = true, canReadPosition = true), access,
         )), { context }, timeoutMs = timeoutMs,
     )
 
-    suspend fun start(entryId: QueueEntryId, variant: TrackVariant): PlaybackError? {
+    suspend fun start(
+        entryId: QueueEntryId,
+        variant: TrackVariant,
+        queue: PlaybackQueueRef? = null,
+        startPositionMs: Long? = null,
+    ): PlaybackError? {
         stop()
+        this.queue = queue
         val transitionId = context.transitionId
         publish(PlaybackSnapshot(0, PlaybackPhase.RESOLVING, currentEntryId = entryId))
         try {
@@ -93,7 +105,7 @@ internal class LocalPlayback(
                 selectedVariant = variant
                 publish(snapshot.value.copy(phase = PlaybackPhase.BUFFERING,
                     effectiveSource = result.plan.source, executionPlan = result.plan))
-                engine.prepare(entryId, attempt.transitionId, descriptor)
+                engine.prepare(entryId, attempt.transitionId, descriptor, startPositionMs)
                 return null
             }
             return fail(playbackError(ErrorDomain.AUDIO_ROUTE, "ROUTE_CHANGED_DURING_RESOLUTION",
@@ -123,13 +135,28 @@ internal class LocalPlayback(
         engine.reset()
     }
 
-    fun fail(error: PlaybackError): PlaybackError {
+    /** Shows a restored or queue-only checkpoint without preparing the engine. */
+    fun restore(queue: PlaybackQueueRef, entryId: QueueEntryId?, positionMs: Long?) {
+        this.queue = queue
+        publish(PlaybackSnapshot(0, PlaybackPhase.IDLE, currentEntryId = entryId,
+            positionMs = positionMs?.takeIf { entryId != null }))
+    }
+
+    /** The queue was edited without removing the current entry. */
+    fun onQueueRevision(revision: Long) {
+        val current = queue ?: return
+        if (revision <= current.revision) return
+        queue = current.copy(revision = revision)
+        publish(snapshot.value, schedule.value)
+    }
+
+    fun fail(error: PlaybackError, entryId: QueueEntryId? = snapshot.value.currentEntryId): PlaybackError {
         history?.finish()
         invalidatePcm()
         context = context.copy(transitionId = newTransition())
         selectedVariant = null
         seekPending = false
-        publish(snapshot.value.copy(phase = PlaybackPhase.ERROR, executionPlan = null,
+        publish(snapshot.value.copy(phase = PlaybackPhase.ERROR, currentEntryId = entryId, executionPlan = null,
             effectiveSource = null, positionMs = null, durationMs = null, error = error))
         engine.reset()
         return error
@@ -259,6 +286,7 @@ internal class LocalPlayback(
 
     private fun publish(value: PlaybackSnapshot, schedule: PlaybackSchedule = PlaybackSchedule.Unknown) {
         val previous = snapshot.value
+        val value = value.copy(queue = queue)
         if (value.copy(revision = previous.revision) != previous || schedule != mutableSchedule.value) {
             mutableSchedule.value = schedule
             mutableSnapshot.value = value.copy(revision = previous.revision + 1)

@@ -8,6 +8,7 @@ import androidx.room.Upsert
 import com.audipp.domain.model.QueueEntry
 import com.audipp.domain.model.QueueEntryId
 import kotlin.random.Random
+import kotlinx.coroutines.flow.Flow
 
 data class StoredQueue(val queue: QueueEntity, val entries: List<QueueEntry>)
 
@@ -32,6 +33,9 @@ abstract class QueueDao {
 
     @Query("SELECT revision FROM queues WHERE queue_id = :queueId")
     abstract suspend fun revision(queueId: String): Long?
+
+    @Query("SELECT revision FROM queues WHERE queue_id = :queueId")
+    abstract fun observeRevision(queueId: String): Flow<Long?>
 
     @Transaction
     open suspend fun setPlaybackOrder(
