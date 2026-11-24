@@ -4,18 +4,18 @@
 
 ## 処理順
 
-`map → ReplayGain/R128 + preamp → PEQ → IR → Crossfeed → Apodizing → SRC → clip guard → 量子化`（DD-DSP-01、[09 ②](../specifications/09_private_completion_review.md)）。`DspStages` の各スロットが順序を固定し、未設定のスロットは素通しにする。ReplayGain/R128 と preamp は線形ゲインで可換なので、map の直後に1つの平滑化ゲインとして適用する。
+`map → channels → ReplayGain/R128 + preamp → PEQ → IR → Crossfeed → Apodizing → SRC → clip guard → 量子化`（DD-DSP-01、[09 ②](../specifications/09_private_completion_review.md)）。`DspStages` の各スロットが順序を固定し、未設定のスロットは素通しにする。`channels`（swap・mono・左右 gain）は channel map の一部で、[crossfeed-channel-v1](crossfeed-channel-v1.md) で足した。ReplayGain/R128 と preamp は線形ゲインで可換なので、map の直後に1つの平滑化ゲインとして適用する。
 
 ## 入出力と所有権
 
 - 入力は interleaved の Float32 を `FloatArray` で受け取り、その場で処理する。出力は呼び出し元の `ByteBuffer` の position からリトルエンディアンで書く。`PROCESSED` 以外では何も書かない。
 - 形式は mono / stereo / 5.1 の 1・2・6 ch、1〜384000 Hz。`DspChain.open` が設定を1回だけ検査し、失敗した設定は `Rejected` を返して chain を作らない。`process` は検査済みの値だけを扱う。
 - `process` は音声スレッドで動き、確保・ロック・I/O を行わない（段は配列と添字で回し、Iterator を作らない）。実行中のゲイン変更は `@Volatile` の目標値だけで渡し、次のブロックの先頭で読む。
-- フィルター係数や段の差し替えは、バックグラウンドで新しい `DspChain` を作ってから呼び出し元が差し替える。差し替えの手順と crossfade は各段の Issue で扱う。PEQ の段は [peq-v1](peq-v1.md)。
+- フィルター係数や段の差し替えは、バックグラウンドで新しい `DspChain` を作ってから呼び出し元が差し替える。差し替えの手順と crossfade は各段の Issue で扱う。PEQ の段は [peq-v1](peq-v1.md)、swap・mono・左右 gain と Crossfeed の段は [crossfeed-channel-v1](crossfeed-channel-v1.md)。
 
 ## headroom
 
-`requiredHeadroomAttenuationDb = max(0, 最大の正ゲインの合計 dB + 20·log10(IR 係数の絶対値の和))`。入力は 0 dBFS を想定する。呼び出し元は表示した減衰量を `headroomAttenuationDb` に渡す。必要量に満たなければ `HEADROOM_INSUFFICIENT`、必要量が 60 dB を超えれば `OVERLOAD` で拒否する。chain が減衰量を自動で選ぶことはない。
+`requiredHeadroomAttenuationDb = max(0, 最大の正ゲインの合計 dB + 20·log10(IR 係数の絶対値の和))`。入力は 0 dBFS を想定する。最大の正ゲインは、ReplayGain/R128 と preamp の最大に各段の `Applied.maxPositiveGainDb`（PEQ・ChannelStage・CrossfeedStage）を dB で足した値とする（[crossfeed-channel-v1](crossfeed-channel-v1.md)）。呼び出し元は表示した減衰量を `headroomAttenuationDb` に渡す。必要量に満たなければ `HEADROOM_INSUFFICIENT`、必要量が 60 dB を超えれば `OVERLOAD` で拒否する。chain が減衰量を自動で選ぶことはない。
 
 ## ゲインの平滑化
 
