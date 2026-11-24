@@ -28,6 +28,9 @@ enum class AlbumCandidateReason {
 
     /** Albums without a release ID share a title and album artist across folders or roots. */
     SAME_TITLE,
+
+    /** In one album folder, some Variants of a title carry a release ID and the others carry none. */
+    RELEASE_ID_MISSING,
 }
 
 /** A grouping that was not confirmed automatically. Confirming it is a user merge of [variantIds]. */
@@ -52,6 +55,8 @@ internal fun classifyAlbums(rows: List<AlbumInput>): AlbumClassification {
     val albums = mutableListOf<AlbumEntity>()
     val candidates = mutableListOf<AlbumCandidate>()
     val folderAlbums = mutableListOf<Pair<AlbumEntity, List<AlbumInput>>>()
+    val folderGroups = mutableMapOf<List<String?>, List<AlbumInput>>()
+    val releaseAlbums = mutableListOf<Pair<AlbumEntity, List<AlbumInput>>>()
 
     val groups = rows.groupBy { row ->
         val title = normalized(row.title)
@@ -74,6 +79,7 @@ internal fun classifyAlbums(rows: List<AlbumInput>): AlbumClassification {
             !release && !discStructureConsistent(members) -> AlbumCandidateReason.DISC_CONFLICT
             else -> null
         }
+        if (!release) folderGroups[key] = ordered
         if (conflict != null) {
             candidates += AlbumCandidate(conflict, title, albumArtist, ordered.map { it.variantId }, emptyList())
             continue
@@ -86,7 +92,20 @@ internal fun classifyAlbums(rows: List<AlbumInput>): AlbumClassification {
         )
         albums += album
         for (member in members) assignments[member.variantId] = albumId
-        if (!release) folderAlbums += album to ordered
+        if (release) releaseAlbums += album to ordered else folderAlbums += album to ordered
+    }
+
+    // A release ID missing from only part of one folder is more likely a tagging gap than another album.
+    for ((album, members) in releaseAlbums) {
+        val untagged = members.map { listOf("folder", it.rootId.orEmpty(), it.folder, normalized(it.title)) }
+            .distinct().mapNotNull { key -> folderGroups[key] }
+        for (rest in untagged) {
+            val restAlbum = assignments[rest.first().variantId]
+            candidates += AlbumCandidate(
+                AlbumCandidateReason.RELEASE_ID_MISSING, album.title, album.albumArtist,
+                (members + rest).sortedWith(TRACK_ORDER).map { it.variantId }, listOfNotNull(album.albumId, restAlbum),
+            )
+        }
     }
 
     // Without an external ID, the same title in another folder may be another disc or another release.

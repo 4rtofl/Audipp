@@ -101,6 +101,25 @@ class AlbumClassificationTest {
     }
 
     @Test
+    fun aReleaseIdMissingFromPartOfOneFolderIsOfferedAsACandidate() {
+        val result = classifyAlbums(listOf(
+            row("t1", "Album", disc = 1, track = 1, release = RELEASE),
+            row("t2", "Album", disc = 1, track = 2, release = RELEASE),
+            row("t3", "Album", disc = 1, track = 3),
+            row("elsewhere", "Other folder", disc = 1, track = 3),
+        ))
+        val released = result.assignments.getValue("t1")
+        val untagged = result.assignments.getValue("t3")
+        assertNotEquals(released, untagged)
+        val candidate = result.candidates.single { it.reason == AlbumCandidateReason.RELEASE_ID_MISSING }
+        assertEquals(listOf("t1", "t2", "t3"), candidate.variantIds)
+        assertEquals(listOf(released, untagged), candidate.albumIds)
+        // The same title in another folder without the release is compared only with untagged folders.
+        assertEquals(AlbumCandidateReason.SAME_TITLE, result.candidates.single { "elsewhere" in it.variantIds }.reason)
+        assertEquals(2, result.candidates.size)
+    }
+
+    @Test
     fun untaggedVariantsStayUnclassifiedWithoutACandidate() {
         val result = classifyAlbums(listOf(row("a", "f", title = null), row("b", "f", title = "  ")))
         assertTrue(result.albums.isEmpty())

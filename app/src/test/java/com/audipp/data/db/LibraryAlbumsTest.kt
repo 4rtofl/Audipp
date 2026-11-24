@@ -120,6 +120,20 @@ class LibraryAlbumsTest {
     }
 
     @Test
+    fun aMergedVariantStaysInTheUserAlbumWhenItsTagsChangeOnRescan() = runBlocking {
+        val root = register()
+        twoDiscs(release = null)
+        scan(root)
+        val merge = albums.merge(albums.candidates().single().variantIds) as AlbumEditResult.Applied
+        access.audio["d2t1"] = song("Retitled", disc = 2, track = 1, release = OTHER_RELEASE)
+        scan(root)
+        assertEquals("Retitled", db.libraryDao().variant(variant("d2t1"))?.localMetadata?.album)
+        assertEquals(merge.albumId, albumOf("d2t1"))
+        assertEquals(4, tracksOf(merge.albumId).size)
+        assertTrue(albums.candidates().isEmpty())
+    }
+
+    @Test
     fun undoingTheNewestEditRestoresThePreviousEdit() = runBlocking {
         val root = register()
         twoDiscs(release = null)

@@ -141,6 +141,9 @@ class AudioContainerTest {
         assertNull(read(flac(vendor + le32(1) + comment("MUSICBRAINZ_ALBUMID=not-an-mbid")), "a.flac").releaseId)
         // A comment count beyond the block leaves the release unknown instead of rejecting the audio.
         assertNull(read(flac(vendor + le32(5) + comment("ALBUM=x")), "a.flac").releaseId)
+        // Two release values are ambiguous, so neither is used.
+        assertNull(read(flac(vendor + le32(2) + comment("MUSICBRAINZ_ALBUMID=0e7a9c1b-2f4d-4c3b-9a8e-1d2c3b4a5f60") +
+            comment("MUSICBRAINZ_ALBUMID=11111111-2f4d-4c3b-9a8e-1d2c3b4a5f60")), "a.flac").releaseId)
     }
 
     @Test
@@ -153,6 +156,24 @@ class AudioContainerTest {
             freeform("MusicBrainz Album Id", "0e7a9c1b-2f4d-4c3b-9a8e-1d2c3b4a5f60"))
         val bytes = box("ftyp", ascii("M4A ") + be32(0)) + box("moov", box("udta", box("meta", be32(0) + items)))
         assertEquals("0e7a9c1b-2f4d-4c3b-9a8e-1d2c3b4a5f60", read(bytes, "a.m4a").releaseId)
+    }
+
+    @Test
+    fun aBrokenOrOverBudgetMp4ItemListLeavesTheReleaseUnknownWithoutRejectingTheFile() {
+        val cover = box("covr", box("data", be32(14) + be32(0) + ByteArray(16)))
+        fun movie(items: ByteArray) = box("ftyp", ascii("M4A ") + be32(0)) +
+            box("moov", box("udta", box("meta", be32(0) + box("ilst", cover + items))))
+        val brokenMean = box("----", be32(4) + ascii("mean") + ByteArray(8))
+        // Each unrelated freeform atom costs several reads, so 100 of them exceed the inspection budget.
+        val manyItems = (1..100).fold(ByteArray(0)) { bytes, _ ->
+            bytes + box("----", box("mean", be32(0) + ascii("com.apple.iTunes")) +
+                box("name", be32(0) + ascii("MusicBrainz Album Type")) + box("data", be32(1) + be32(0) + ascii("album")))
+        }
+        for (items in listOf(brokenMean, manyItems)) {
+            val result = read(movie(items), "a.m4a")
+            assertNull(result.releaseId)
+            assertEquals("image/png", result.artwork?.mimeType)
+        }
     }
 
     @Test

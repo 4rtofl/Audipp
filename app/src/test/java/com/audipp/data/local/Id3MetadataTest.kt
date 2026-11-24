@@ -60,11 +60,14 @@ class Id3MetadataTest {
             }
             assertEquals(mbid, tags.releaseId)
         }
-        val invalid = frame("TXXX", byteArrayOf(0) + "MusicBrainz Album Id".toByteArray() + byteArrayOf(0) + "1234".toByteArray())
-        val bytes = header(invalid.size) + invalid
-        assertNull(readId3Metadata(Id3Location(0, bytes.size.toLong())) { offset, count ->
-            bytes.copyOfRange(offset.toInt(), offset.toInt() + count)
-        }.first.releaseId)
+        val other = "11111111-2f4d-4c3b-9a8e-1d2c3b4a5f60"
+        for (value in listOf("1234", "$mbid\u0000$other")) {
+            val invalid = frame("TXXX", byteArrayOf(3) + "MusicBrainz Album Id".toByteArray() + byteArrayOf(0) + value.toByteArray())
+            val bytes = header(invalid.size) + invalid
+            assertNull(readId3Metadata(Id3Location(0, bytes.size.toLong())) { offset, count ->
+                bytes.copyOfRange(offset.toInt(), offset.toInt() + count)
+            }.first.releaseId)
+        }
     }
 
     private fun frame(key: String, body: ByteArray) = frameHeader(key, body.size) + body

@@ -164,7 +164,15 @@ private class ContainerReader(
         return AudioProbeResult.Identified(AudioContainer.MP4, artwork = artwork, releaseId = items?.let(::mp4ReleaseId))
     }
 
-    private fun mp4ReleaseId(items: Box): String? {
+    // The release is optional metadata, so a broken or over-budget item list leaves it unknown
+    // instead of rejecting audio that the cover search already accepted.
+    private fun mp4ReleaseId(items: Box): String? = try {
+        findMp4ReleaseId(items)
+    } catch (_: ContainerFailure) {
+        null
+    }
+
+    private fun findMp4ReleaseId(items: Box): String? {
         var position = items.start
         while (position < items.limit) {
             val item = items.boxAt(position)
@@ -282,16 +290,19 @@ private class ContainerReader(
         if (vendor > block.limit() - offset) return null
         offset += vendor.toInt()
         val count = field() ?: return null
+        var release: String? = null
         for (index in 0 until count) {
             val size = field() ?: return null
             if (size > block.limit() - offset) return null
             val comment = String(block.array(), offset, size.toInt(), Charsets.UTF_8)
             offset += size.toInt()
             if (comment.substringBefore('=', "").equals("MUSICBRAINZ_ALBUMID", ignoreCase = true)) {
-                return musicBrainzReleaseId(comment.substringAfter('='))
+                // A second value makes the release ambiguous.
+                if (release != null) return null
+                release = comment.substringAfter('=')
             }
         }
-        return null
+        return release?.let(::musicBrainzReleaseId)
     }
 
     private fun picture(start: Long, limit: Long): EmbeddedArtwork? {

@@ -46,7 +46,7 @@ internal fun readId3Metadata(
         if (key == "TXXX" && releaseId == null && frameSize <= 16_385) {
             read(start, frameSize.toInt()).id3Text(keepFields = true)?.split('\u0000', limit = 2)
                 ?.takeIf { it.size == 2 && it[0].trim().equals(MUSICBRAINZ_ALBUM_ID, ignoreCase = true) }
-                ?.let { releaseId = musicBrainzReleaseId(it[1].trimStart('\u0000', '\uFEFF')) }
+                ?.let { releaseId = musicBrainzReleaseId(it[1]) }
         }
         if (key == "APIC" && artwork == null) {
             val prefix = read(start, minOf(4096, frameSize).toInt())
@@ -71,7 +71,8 @@ internal const val MUSICBRAINZ_ALBUM_ID = "MusicBrainz Album Id"
 
 /** Accepts one canonical MBID; multi-valued or malformed tags leave the release unknown. */
 internal fun musicBrainzReleaseId(value: String): String? =
-    value.substringBefore('\u0000').trim().lowercase().takeIf { MBID.matches(it) }
+    value.split('\u0000').map { it.trim('\uFEFF', ' ', '\t', '\r', '\n') }.filter(String::isNotEmpty)
+        .singleOrNull()?.lowercase()?.takeIf { MBID.matches(it) }
 
 private val MBID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
