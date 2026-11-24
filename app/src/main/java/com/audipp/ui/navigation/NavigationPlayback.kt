@@ -7,6 +7,7 @@ import androidx.core.content.ContextCompat
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionResult
 import com.audipp.R
 import com.audipp.audio.route.OutputConfirmation
 import com.audipp.domain.model.AudioFormat
@@ -16,6 +17,7 @@ import com.audipp.domain.model.PlaybackPhase
 import com.audipp.domain.model.PlaybackSnapshot
 import com.audipp.domain.model.QueueEntryId
 import com.audipp.domain.model.SourceRef
+import com.audipp.domain.model.TrackVariant
 import com.audipp.domain.model.TransitionId
 import com.audipp.domain.model.VariantId
 import com.audipp.playback.OutputConfirmationRequest
@@ -25,13 +27,15 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import java.util.concurrent.ExecutionException
 
 internal sealed interface NavigationPlaybackState {
     data object Connecting : NavigationPlaybackState
     data object Disconnected : NavigationPlaybackState
     data object Idle : NavigationPlaybackState
-    data class Failed(val domain: ErrorDomain) : NavigationPlaybackState
+    data class Failed(val domain: ErrorDomain, val entryId: QueueEntryId? = null) : NavigationPlaybackState
     data class Current(
         val phase: PlaybackPhase,
         val title: String?,
@@ -46,6 +50,7 @@ internal sealed interface NavigationPlaybackState {
         val durationMs: Long? = null,
         val seekCommandAvailable: Boolean = false,
         val observedOutput: ObservedOutput = ObservedOutput.Unobserved,
+        val entryId: QueueEntryId? = null,
     ) : NavigationPlaybackState {
         val seek: SeekState
             get() = when {
@@ -67,6 +72,12 @@ internal sealed interface NavigationPlaybackState {
                 else -> R.string.playback_paused
             }
     }
+}
+
+internal sealed interface PlayRequest {
+    data object Accepted : PlayRequest
+    data object Disconnected : PlayRequest
+    data class Rejected(val domain: ErrorDomain) : PlayRequest
 }
 
 internal enum class SeekBlock { OUTPUT_CONFIRMATION, PREPARING, UNKNOWN_DURATION, NOT_SEEKABLE }
@@ -180,6 +191,22 @@ internal class NavigationPlayback(private val context: Context) {
         if (requested.pause) current.pause() else current.play()
     }
 
+    /** Sends the chosen Variant to the service's play entry. Acceptance only means the service started preparing it. */
+    suspend fun play(entryId: QueueEntryId, variant: TrackVariant): PlayRequest {
+        val current = controller?.takeIf { it.isConnected } ?: return PlayRequest.Disconnected
+        val future = PlaybackConnection.playLocal(current, entryId, variant)
+        val result = try {
+            suspendCancellableCoroutine<SessionResult> { continuation ->
+                continuation.invokeOnCancellation { future.cancel(false) }
+                future.addListener({ continuation.resume(future.get()) }, ContextCompat.getMainExecutor(context))
+            }
+        } catch (_: ExecutionException) {
+            return PlayRequest.Disconnected
+        }
+        return if (result.resultCode == SessionResult.RESULT_SUCCESS) PlayRequest.Accepted
+        else PlayRequest.Rejected(PlaybackConnection.error(result)?.domain ?: ErrorDomain.UNKNOWN)
+    }
+
     fun seek(positionMs: Long) {
         val current = controller?.takeIf { it.isConnected } ?: return
         if (PlaybackConnection.outputConfirmation(current.sessionExtras) != null) return
@@ -199,7 +226,7 @@ internal class NavigationPlayback(private val context: Context) {
     private fun MediaController.presentation(): NavigationPlaybackState {
         val snapshot = snapshot() ?: return NavigationPlaybackState.Disconnected
         if (snapshot.phase == PlaybackPhase.ERROR) {
-            return NavigationPlaybackState.Failed(snapshot.error?.domain ?: ErrorDomain.UNKNOWN)
+            return NavigationPlaybackState.Failed(snapshot.error?.domain ?: ErrorDomain.UNKNOWN, snapshot.currentEntryId)
         }
         if (snapshot.currentEntryId == null || snapshot.phase == PlaybackPhase.IDLE) {
             return NavigationPlaybackState.Idle
@@ -225,6 +252,7 @@ internal class NavigationPlayback(private val context: Context) {
             durationMs = snapshot.durationMs,
             seekCommandAvailable = isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
             observedOutput = PlaybackConnection.observedOutputTypes(sessionExtras).toObservedOutput(),
+            entryId = snapshot.currentEntryId,
         )
     }
 

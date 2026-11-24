@@ -114,6 +114,77 @@ class LibraryQueryDaoTest {
         }
     }
 
+    @Test
+    fun groupsKeepSameNamedAlbumsAndFoldersApartAndCollectUnknownValues() = runBlocking {
+        seedBrowsing()
+        val albums = groups(LibraryGrouping.ALBUM)
+        assertEquals(listOf("album-1", "album-2", null), albums.groups.map { it.albumId })
+        assertEquals(listOf("同名", "同名", null), albums.groups.map { it.name })
+        assertEquals(listOf("Band", null, null), albums.groups.map { it.albumArtist })
+        assertEquals(listOf(2L, 1L, 2L), albums.groups.map { it.tracks })
+        assertEquals("v1", albums.groups.first().firstVariantId)
+
+        assertEquals(listOf("Band" to 2L, "Solo" to 1L, null to 2L),
+            groups(LibraryGrouping.ARTIST).groups.map { it.name to it.tracks })
+        val folders = groups(LibraryGrouping.FOLDER).groups
+        assertEquals(listOf("root-a" to "disc", "root-b" to "disc", null to null), folders.map { it.rootId to it.name })
+        assertEquals(listOf(2L, 2L, 1L), folders.map { it.tracks })
+        assertEquals(listOf("FLAC", "MP3", null), groups(LibraryGrouping.FORMAT).groups.map { it.name })
+
+        assertEquals(listOf("Solo", "Band", null),
+            groups(LibraryGrouping.ARTIST, descending = true).groups.map { it.name })
+        assertEquals(listOf("Solo"), groups(LibraryGrouping.ARTIST, keyword = "sol").groups.map { it.name })
+        val window = groups(LibraryGrouping.ALBUM, offset = 2, limit = 1)
+        assertEquals(3L, window.total)
+        assertEquals(listOf(null), window.groups.map { it.albumId })
+        assertEquals(0L, groups(LibraryGrouping.ALBUM, keyword = "none").total)
+    }
+
+    @Test
+    fun songsFilterByAlbumIdAndFolderAndSortByDiscAndTrack() = runBlocking {
+        seedBrowsing()
+        assertPage(LibraryQuery(albumId = Exact("album-1"), sort = LibraryField.TRACK_NUMBER), listOf("v2", "v1"))
+        assertPage(LibraryQuery(albumId = Unknown), listOf("v4", "v5"))
+        assertPage(LibraryQuery(folder = Exact(LibraryFolder("root-a", "disc"))), listOf("v1", "v2"))
+        assertPage(LibraryQuery(folder = Exact(LibraryFolder("root-b", "disc"))), listOf("v3", "v4"))
+        assertPage(LibraryQuery(folder = Unknown), listOf("v5"))
+        assertPage(LibraryQuery(sort = LibraryField.TRACK_NUMBER), listOf("v2", "v1", "v4", "v3", "v5"))
+        assertPage(LibraryQuery(artist = Exact("BAND")), listOf("v1", "v2"))
+    }
+
+    private suspend fun groups(
+        grouping: LibraryGrouping, keyword: String = "", descending: Boolean = false, offset: Int = 0, limit: Int = 50,
+    ): LibraryGroupPage {
+        val query = LibraryGroupQuery(grouping, keyword, descending, offset, limit)
+        return db.libraryQueryDao().observeGroups(flowOf(query)).first().also { assertEquals(query, it.query) }
+    }
+
+    /** Two scan roots each holding a folder named "disc"; the albums share a title but not an ID. */
+    private suspend fun seedBrowsing() {
+        fun variant(id: String, album: String?, disc: Int?, track: Int?, artist: String?, folder: String?, codec: String?) =
+            VariantEntity(id, id, "s-$id", albumId = album, discNo = disc, trackNo = track, codec = codec,
+                localMetadata = VariantLocalMetadata(title = "t-$id", artist = artist, folder = folder))
+        val ids = listOf("v1", "v2", "v3", "v4", "v5")
+        db.libraryDao().save(LibraryBatch(
+            sources = ids.map { SourceEntity("s-$it", SourceKind.LOCAL, localUri = "content://test/$it", updatedAt = 0) },
+            tracks = ids.map { TrackEntity(it) },
+            albums = listOf(AlbumEntity("album-1", "同名", albumArtist = "Band"), AlbumEntity("album-2", "同名")),
+            variants = listOf(
+                variant("v1", "album-1", 1, 2, "Band", "disc", "FLAC"),
+                variant("v2", "album-1", 1, 1, "band", "disc", "FLAC"),
+                variant("v3", "album-2", 2, null, "Solo", "disc", "MP3"),
+                variant("v4", null, 2, 1, null, "disc", null),
+                variant("v5", null, null, null, null, null, null),
+            ),
+        ))
+        val scans = db.safScanDao()
+        scans.register(LocalScanRoot("root-a", "content://tree/a"))
+        scans.register(LocalScanRoot("root-b", "content://tree/b"))
+        listOf("v1" to "root-a", "v2" to "root-a", "v3" to "root-b", "v4" to "root-b", "v5" to "root-b").forEach { (id, root) ->
+            scans.recordVisit(LocalScanSource("s-$id", root, "scan"))
+        }
+    }
+
     private suspend fun assertPage(query: LibraryQuery, ids: List<String>, total: Long = ids.size.toLong()) {
         val page = db.libraryQueryDao().observePages(flowOf(query)).first()
         assertEquals(query, page.query)
@@ -168,6 +239,8 @@ class LibraryQueryFlowTest {
                     genre: String?, unknownGenre: Boolean,
                     year: Int?, unknownYear: Boolean,
                     format: String?, unknownFormat: Boolean,
+                    albumId: String?, unknownAlbumId: Boolean,
+                    folderRoot: String?, folderPath: String?, unknownFolder: Boolean,
                     sort: String, descending: Boolean, limit: Int, offset: Int,
                 ) = flow {
                     if (keyword == "old") {
@@ -183,6 +256,9 @@ class LibraryQueryFlowTest {
                         emit(listOf(QueryRow(2, null)))
                     }
                 }
+
+                override fun observeGroupRows(grouping: String, keyword: String, descending: Boolean, limit: Int, offset: Int) =
+                    flowOf(emptyList<GroupRow>())
             }
             val queries = MutableStateFlow(LibraryQuery(keyword = "old"))
             val received = mutableListOf<Pair<String, Long>>()

@@ -55,6 +55,11 @@ import com.audipp.domain.model.ThemeMode
 import com.audipp.ui.audio.UpnpScreen
 import com.audipp.ui.home.HomeScreen
 import com.audipp.ui.home.LocalMusic
+import com.audipp.ui.library.LibraryActions
+import com.audipp.ui.library.LibraryScreen
+import com.audipp.ui.library.LibraryUi
+import com.audipp.ui.library.SourceScreen
+import com.audipp.ui.library.libraryNotice
 import com.audipp.ui.navigation.FolderRegistration
 import com.audipp.ui.navigation.HomeSources
 import com.audipp.playback.OutputConfirmationRequest
@@ -73,7 +78,7 @@ internal enum class NavigationTab(@param:StringRes val label: Int) {
 
 internal enum class NavigationPage(@param:StringRes val label: Int) {
     SETTINGS(R.string.settings), APPEARANCE(R.string.appearance), UPNP(R.string.upnp_output),
-    QUEUE(R.string.navigation_queue),
+    QUEUE(R.string.navigation_queue), SOURCE(R.string.source_manage),
 }
 
 /** Full-screen layers over the tab and page being viewed; closing them returns to that screen. */
@@ -120,6 +125,8 @@ internal fun AudippApp(
     loadArtwork: suspend (VariantId, Int) -> Artwork,
     openNowPlaying: Boolean,
     onOpenNowPlayingHandled: () -> Unit,
+    library: LibraryUi = LibraryUi(),
+    libraryActions: LibraryActions = object : LibraryActions {},
 ) {
     var tab by rememberSaveable { mutableStateOf(NavigationTab.HOME) }
     var page by rememberSaveable { mutableStateOf<NavigationPage?>(null) }
@@ -144,6 +151,21 @@ internal fun AudippApp(
             else NavigationDestination(NavigationTab.HOME, null),
         )
         onOpenNowPlayingHandled()
+    }
+    // A song the service accepted from the library opens Now Playing once, also across recreation.
+    var openedEntry by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(library.acceptedEntry) {
+        val accepted = library.acceptedEntry?.value ?: return@LaunchedEffect
+        if (accepted == openedEntry) return@LaunchedEffect
+        openedEntry = accepted
+        nowPlaying = NowPlayingLayer.PLAYER
+    }
+    val actions = object : LibraryActions by libraryActions {
+        override fun addMusic() = onAddMusic()
+        override fun manageSources() = navigate(NavigationDestination(NavigationTab.LIBRARY, NavigationPage.SOURCE))
+        override fun retrySources() = onRetrySources()
+        override fun retryScan(rootId: String) = onRetryScan(rootId)
+        override fun cancelScan() = onCancelScan()
     }
     // Closing Now Playing hands focus back to the mini player that opened it.
     val miniFocus = remember { FocusRequester() }
@@ -218,6 +240,8 @@ internal fun AudippApp(
                         screenState.SaveableStateProvider(currentPage?.name ?: tab.name) {
                             if (currentPage == NavigationPage.UPNP) {
                                 UpnpScreen()
+                            } else if (currentPage == null && tab == NavigationTab.LIBRARY) {
+                                LibraryScreen(library, libraryNotice(sources, registration, library.lastScan), actions, loadArtwork)
                             } else {
                                 ScreenColumn {
                                     if (currentPage != NavigationPage.APPEARANCE) {
@@ -239,15 +263,15 @@ internal fun AudippApp(
                                         }
                                         NavigationPage.APPEARANCE -> ThemeSettingsScreen(themeState, onTheme, onRetryTheme)
                                         NavigationPage.QUEUE -> QueueContent(playback)
+                                        NavigationPage.SOURCE -> SourceScreen(
+                                            sources, registration, library.lastScan,
+                                            onAddMusic, onRetrySources, onRetryScan, onCancelScan,
+                                        )
                                         NavigationPage.UPNP -> Unit
                                         null -> when (tab) {
                                             NavigationTab.HOME, NavigationTab.LIBRARY -> {
                                                 LocalMusic(sources, registration, onAddMusic, onRetrySources, onRetryScan, onCancelScan)
-                                                if (tab == NavigationTab.HOME) {
-                                                    HomeScreen(recentPlays, playback, onRetryHistory, onRetryPlayback)
-                                                } else if (sources is HomeSources.Ready && sources.summary.registered > 0) {
-                                                    Text(stringResource(R.string.navigation_library_unavailable))
-                                                }
+                                                HomeScreen(recentPlays, playback, onRetryHistory, onRetryPlayback)
                                             }
                                             NavigationTab.SEARCH -> {
                                                 var query by rememberSaveable { mutableStateOf("") }

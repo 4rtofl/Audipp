@@ -88,7 +88,7 @@ class NavigationPlaybackIntegrationTest {
                         }.get(10, TimeUnit.SECONDS)
                         assertEquals(ErrorDomain.SOURCE_IO, PlaybackConnection.error(rejected)?.domain)
                         withTimeout(10_000) {
-                            model.playback.first { it == NavigationPlaybackState.Failed(ErrorDomain.SOURCE_IO) }
+                            model.playback.first { it is NavigationPlaybackState.Failed && it.domain == ErrorDomain.SOURCE_IO }
                         }
 
                         val result = withContext(Dispatchers.Main) {

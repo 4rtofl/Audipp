@@ -6,6 +6,7 @@ import android.provider.DocumentsContract
 import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import com.audipp.data.db.LibraryDatabase
+import com.audipp.data.local.LibraryScanIssue
 import com.audipp.data.local.LibraryScanStatus
 import com.audipp.data.local.SafAccess
 import com.audipp.data.local.SafAudio
@@ -53,9 +54,14 @@ class FolderRegistrationTest {
         val root = (model.registration.value as FolderRegistration.ScanFailed).rootId
         assertEquals(LibraryScanStatus.PARTIAL, runBlocking { library.lastScanStatus(root) })
 
+        assertEquals(LibraryScanStatus.PARTIAL, model.lastScan.value?.status)
+        assertEquals(setOf(LibraryScanIssue.DIRECTORY_READ), model.lastScan.value?.issues)
+
         access.failRead = false
         model.retryScan(root)
         await { model.registration.value == FolderRegistration.Idle }
+        assertEquals(LibraryScanStatus.COMPLETE, model.lastScan.value?.status)
+        assertEquals(1, model.lastScan.value?.progress?.indexed)
         assertEquals(listOf(root), runBlocking { library.registeredRoots() })
         assertEquals(LibraryScanStatus.COMPLETE, runBlocking { library.lastScanStatus(root) })
 
