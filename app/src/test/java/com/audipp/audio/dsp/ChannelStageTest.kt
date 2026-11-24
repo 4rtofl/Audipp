@@ -252,8 +252,9 @@ class ChannelStageTest {
                 assertEquals(DspBlockResult.PROCESSED, chain.process(x, frames, out))
             }
             assertTrue("$l/$r ${probe.peak}", probe.peak <= 1.0 + 1e-6)
-            // Adding the stages' peaks in dB is an upper bound; here it leaves about 1.3 dB unused.
-            if (l == r) assertTrue("in phase comes near the bound ${probe.peak}", probe.peak > 0.8)
+            // Adding the stages' bounds in dB is safe but loose: with the crossfeed's any-input bound
+            // (about +2.9 dB here) a 50 Hz in-phase sine stays about 3.9 dB below full scale.
+            if (l == r) assertTrue("in phase ${probe.peak}", probe.peak > 0.6)
         }
     }
 

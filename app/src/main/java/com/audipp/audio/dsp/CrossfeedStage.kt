@@ -3,13 +3,10 @@ package com.audipp.audio.dsp
 import com.audipp.domain.device.DspSettings
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.PI
-import kotlin.math.cos
+import kotlin.math.abs
 import kotlin.math.log10
-import kotlin.math.log2
 import kotlin.math.pow
 import kotlin.math.roundToInt
-import kotlin.math.sin
-import kotlin.math.sqrt
 import kotlin.math.tan
 
 /**
@@ -83,9 +80,16 @@ internal class CrossfeedStage(private val sampleRateHz: Int, private val channel
     private val fadeFrames = maxOf(1, (sampleRateHz * DspChain.RAMP_MS / 1_000.0).roundToInt())
     private var fadeLeft = 0
 
-    /** A rejected setting changes nothing: the previous one stays in effect. */
+    /**
+     * A rejected setting changes nothing: the previous one stays in effect. A disabled setting is
+     * never rejected, whatever its values, so switching crossfeed off always takes effect.
+     */
     fun apply(settings: CrossfeedSettings): CrossfeedResult {
-        if (settings.enabled && channelCount != 2) return CrossfeedResult.Rejected.NOT_STEREO
+        if (!settings.enabled) {
+            if (channelCount == 2) pending.set(flat)
+            return CrossfeedResult.Applied(0.0)
+        }
+        if (channelCount != 2) return CrossfeedResult.Rejected.NOT_STEREO
         if (!settings.levelDb.isFinite()) return CrossfeedResult.Rejected.NON_FINITE
         if (settings.levelDb !in MIN_LEVEL_DB..MAX_LEVEL_DB) {
             return CrossfeedResult.Rejected.LEVEL_OUT_OF_RANGE
@@ -93,8 +97,7 @@ internal class CrossfeedStage(private val sampleRateHz: Int, private val channel
         if (settings.cutoffHz !in MIN_CUTOFF_HZ..MAX_CUTOFF_HZ ||
             highBoostHz(settings.cutoffHz, settings.levelDb) > 0.45 * sampleRateHz
         ) return CrossfeedResult.Rejected.CUTOFF_OUT_OF_RANGE
-        if (channelCount != 2) return CrossfeedResult.Applied(0.0)
-        val filter = if (settings.enabled) design(settings.cutoffHz, settings.levelDb) else flat
+        val filter = design(settings.cutoffHz, settings.levelDb)
         pending.set(filter)
         return CrossfeedResult.Applied(maxPositiveGainDb(filter))
     }
@@ -151,30 +154,14 @@ internal class CrossfeedStage(private val sampleRateHz: Int, private val channel
     }
 
     /**
-     * Peak over frequency of |direct| + |cross|, floored at 0 dB: the steady-state bound when both
-     * channels carry a full-scale sinusoid in the worst phase. Sampled on a log grid plus DC and
-     * Nyquist; it is not a bound for arbitrary signals.
+     * Sum of |h| over the direct and the cross impulse responses, floored at 0 dB: each output is
+     * direct(own) + cross(other), so this bounds it for any input, whatever the two channels carry.
      */
-    private fun maxPositiveGainDb(filter: Filter): Double {
-        var peak = maxOf(sumOfMagnitudes(filter, 0.0), sumOfMagnitudes(filter, PI))
-        val lowW = 2 * PI * 10.0 / sampleRateHz
-        val octaves = log2(PI / lowW)
-        for (i in 0..RESPONSE_GRID_POINTS) {
-            peak = maxOf(peak, sumOfMagnitudes(filter, lowW * 2.0.pow(octaves * i / RESPONSE_GRID_POINTS)))
-        }
-        return maxOf(0.0, 20 * log10(peak))
-    }
+    private fun maxPositiveGainDb(f: Filter) = maxOf(0.0,
+        20 * log10(absSum(f.directB0, f.directB1, f.directA1) + absSum(f.crossB0, f.crossB1, f.crossA1)))
 
-    private fun sumOfMagnitudes(f: Filter, w: Double) =
-        magnitude(f.directB0, f.directB1, f.directA1, w) + magnitude(f.crossB0, f.crossB1, f.crossA1, w)
-
-    private fun magnitude(b0: Double, b1: Double, a1: Double, w: Double): Double {
-        val c = cos(w)
-        val s = sin(w)
-        val nr = b0 + b1 * c
-        val dr = 1 + a1 * c
-        return sqrt((nr * nr + b1 * s * b1 * s) / (dr * dr + a1 * s * a1 * s))
-    }
+    /** h[0] = b0, h[n] = (b1 - a1*b0) * (-a1)^(n-1): a geometric tail, |a1| < 1. */
+    private fun absSum(b0: Double, b1: Double, a1: Double) = abs(b0) + abs(b1 - a1 * b0) / (1 - abs(a1))
 
     companion object {
         const val MIN_CUTOFF_HZ = 300
@@ -183,7 +170,6 @@ internal class CrossfeedStage(private val sampleRateHz: Int, private val channel
         const val MAX_LEVEL_DB = 15.0
         const val DEFAULT_CUTOFF_HZ = 700
         const val DEFAULT_LEVEL_DB = 4.5
-        private const val RESPONSE_GRID_POINTS = 4096
 
         private fun lowPassGainDb(levelDb: Double) = levelDb * -5.0 / 6.0 - 3.0
 

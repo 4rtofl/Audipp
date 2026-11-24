@@ -167,10 +167,13 @@ class CrossfeedStageTest {
             CrossfeedSettings(true, 700, 15.001) to R.LEVEL_OUT_OF_RANGE,
             CrossfeedSettings(true, 700, Double.NaN) to R.NON_FINITE,
             CrossfeedSettings(true, 700, Double.POSITIVE_INFINITY) to R.NON_FINITE,
-            CrossfeedSettings(false, 700, Double.NEGATIVE_INFINITY) to R.NON_FINITE,
-            CrossfeedSettings(false, 100) to R.CUTOFF_OUT_OF_RANGE,
         )
         for ((s, reason) in bad) assertEquals(s.toString(), reason, stage.apply(s))
+        // Switching off is never rejected, whatever values the saved setting carries.
+        for (off in listOf(CrossfeedSettings(false, 100), CrossfeedSettings(false, 700, Double.NaN),
+            CrossfeedSettings(false, 2_001, -1.0))) {
+            assertEquals(off.toString(), CrossfeedResult.Applied(0.0), stage.apply(off))
+        }
         // The high-boost corner (up to about 3.47 kHz) must stay at or below 0.45 Fs.
         assertTrue(CrossfeedStage(8_000, 2).apply(CrossfeedSettings(true, 2_000, 15.0)) is
             CrossfeedResult.Applied)
@@ -191,7 +194,7 @@ class CrossfeedStageTest {
             probed.process(buffer, 240)
             System.arraycopy(buffer, 0, got, b * 480, 480)
             assertEquals(R.LEVEL_OUT_OF_RANGE, probed.apply(CrossfeedSettings(true, 700, 30.0)))
-            assertEquals(R.NON_FINITE, probed.apply(CrossfeedSettings(false, 700, Double.NaN)))
+            assertEquals(R.NON_FINITE, probed.apply(CrossfeedSettings(true, 700, Double.NaN)))
         }
         assertArrayEquals(want, got, 0f)
     }
@@ -323,49 +326,85 @@ class CrossfeedStageTest {
     }
 
     @Test
-    fun maxPositiveGainMatchesAFineIndependentGridAndIsZeroAcrossTheRange() {
-        for (rate in listOf(8_000, 44_100, 48_000, 384_000)) for ((cutoff, level) in corners) {
-            val applied = CrossfeedStage(rate, 2).apply(CrossfeedSettings(true, cutoff, level))
-                as CrossfeedResult.Applied
-            val b = Bauer(cutoff, level)
-            var peak = 0.0
-            val steps = 200_000
-            val low = 1.0
-            for (i in 0..steps) {
-                val hz = low * (rate / 2.0 / low).pow(i.toDouble() / steps) * (1 - 1e-12)
-                val (d, c) = reference(b, hz, rate)
-                peak = maxOf(peak, d.abs() + c.abs())
-            }
-            val want = maxOf(0.0, 20 * log10(peak))
-            assertEquals("$rate $cutoff/$level", want, applied.maxPositiveGainDb, 0.01)
-            assertEquals(0.0, applied.maxPositiveGainDb, 1e-9)
-        }
-        assertEquals(CrossfeedResult.Applied(0.0), CrossfeedStage(fs, 2).apply(CrossfeedSettings(false)))
+    fun switchingOffWithOutOfRangeSavedValuesStillTurnsCrossfeedOff() {
+        val stage = settled(CrossfeedSettings(true, 700, 4.5))
+        assertEquals(CrossfeedResult.Applied(0.0), stage.apply(CrossfeedSettings(false, 250)))
+        stage.process(FloatArray(480 * 2), 480)
+        val input = FloatArray(960 * 2) { (sin(it * 0.17) * 0.8).toFloat() }
+        assertArrayEquals(input, run(stage, input), 0f)
     }
 
     @Test
-    fun arbitrarySignalsCanExceedTheSteadyStateBoundByTheImpulseResponseSum() {
-        // The sum of |h| over both paths bounds any input; it is what the clip guard has to absorb.
+    fun maxPositiveGainIsTheMeasuredSumOfTheImpulseResponses() {
+        // The sum of |h| over both paths bounds every input, including different frequencies on
+        // the two channels. It is compared with the stage's actual impulse responses.
         var worst = 0.0
-        for ((cutoff, level) in corners) {
-            val (d, c) = impulseResponses(cutoff, level, fs, (fs * 0.35).toInt())
-            val b = Bauer(cutoff, level)
-            val analog = b.gain * (1 + b.highCut + b.lowGain)
-            val sum = d.sumOf { abs(it) } + c.sumOf { abs(it) }
-            // The bilinear transform keeps it at or below the analog filters' sum.
-            assertTrue("$cutoff/$level $sum vs $analog", sum in 1.0..analog * (1 + 1e-6))
-            worst = maxOf(worst, 20 * log10(sum))
+        for (rate in listOf(8_000, 44_100, 48_000, 384_000)) for ((cutoff, level) in corners) {
+            val applied = CrossfeedStage(rate, 2).apply(CrossfeedSettings(true, cutoff, level))
+                as CrossfeedResult.Applied
+            val (d, c) = impulseResponses(cutoff, level, rate, (rate * 0.35).toInt())
+            val measured = 20 * log10(d.sumOf { abs(it) } + c.sumOf { abs(it) })
+            assertEquals("$rate $cutoff/$level", measured, applied.maxPositiveGainDb, 0.01)
+            worst = maxOf(worst, applied.maxPositiveGainDb)
+            if (rate == fs) {
+                // Below Fs/4 the bilinear transform keeps it at or below the analog g*(1 + GH + GL).
+                val b = Bauer(cutoff, level)
+                assertTrue(applied.maxPositiveGainDb <=
+                    20 * log10(b.gain * (1 + b.highCut + b.lowGain)) + 1e-6)
+            }
         }
-        println("crossfeed sum of |h|: worst ${worst} dB")
-        assertTrue("$worst", worst in 2.5..3.0)
+        println("crossfeed max positive gain: worst $worst dB")
+        assertTrue("$worst", worst in 2.5..4.0)
+    }
+
+    /** Records the largest |sample| that reaches it, after every stage before the clip guard. */
+    private class Probe(var skip: Int) : DspStage {
+        var peak = 0.0
+        override fun process(samples: FloatArray, frames: Int) {
+            if (skip > 0) {
+                skip -= frames
+                return
+            }
+            for (i in 0 until frames * 2) peak = maxOf(peak, abs(samples[i].toDouble()))
+        }
+    }
+
+    @Test
+    fun differentFullScaleFrequenciesOnTheTwoSidesStayAtOrBelowFullScaleBeforeTheGuard() {
+        for ((cutoff, level) in corners) {
+            val crossfeed = CrossfeedStage(fs, 2)
+            val gain = (crossfeed.apply(CrossfeedSettings(true, cutoff, level)) as CrossfeedResult.Applied)
+                .maxPositiveGainDb
+            val probe = Probe(fs / 2)
+            val chain = (DspChain.open(DspConfig(OutputMode.PROCESSED, fs, 2, DspOutput.FLOAT32, 0.0,
+                gain, headroomAttenuationDb = requiredHeadroomAttenuationDb(gain, 1.0),
+                stages = DspStages(crossfeed = crossfeed, apodizing = probe))) as DspOpenResult.Ready).chain
+            val frames = 480
+            val out = java.nio.ByteBuffer.allocate(frames * 8)
+            for (block in 0 until 100) {
+                // L = 10 kHz, R = 50 Hz, both at 0 dBFS: high-boost and low pass add up above 1.
+                val x = FloatArray(frames * 2) {
+                    val n = block * frames + it / 2
+                    sin(2 * PI * (if (it % 2 == 0) 10_000.0 else 50.0) * n / fs).toFloat()
+                }
+                out.clear()
+                assertEquals(DspBlockResult.PROCESSED, chain.process(x, frames, out))
+            }
+            // Without the attenuation this input would exceed full scale.
+            val unattenuated = probe.peak * 10.0.pow(requiredHeadroomAttenuationDb(gain, 1.0) / 20)
+            assertTrue("$cutoff/$level ${probe.peak}", probe.peak <= 1.0 + 1e-6)
+            assertTrue("$cutoff/$level $unattenuated", unattenuated > 1.0 || level == 15.0)
+        }
     }
 
     @Test
     fun chainOutsideTheProcessedPathNeverRunsTheseStages() {
         var calls = 0
         val counting = DspStage { _, _ -> calls++ }
-        val channels = ChannelStage(fs, 2).apply { apply(ChannelSettings(swap = true)) }
-        val crossfeed = CrossfeedStage(fs, 2).apply { apply(CrossfeedSettings(true)) }
+        val channelStage = ChannelStage(fs, 2).apply { apply(ChannelSettings(swap = true)) }
+        val crossfeedStage = CrossfeedStage(fs, 2).apply { apply(CrossfeedSettings(true)) }
+        val channels = DspStage { samples, frames -> calls++; channelStage.process(samples, frames) }
+        val crossfeed = DspStage { samples, frames -> calls++; crossfeedStage.process(samples, frames) }
         for (mode in OutputMode.entries - OutputMode.PROCESSED) {
             val result = DspChain.open(DspConfig(mode, fs, 2, DspOutput.INT32, 0.0, 0.0,
                 stages = DspStages(map = counting, channels = channels, crossfeed = crossfeed,
