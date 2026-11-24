@@ -3833,12 +3833,12 @@
     "test_ids": [
       "TEST-LIB-02"
     ],
-    "commit": "b61d3e9eab5c575f29cc979d345942d75b15b568",
+    "commit": "92bb966f7684a7d1791f657f25ef015f7dc62ce9",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
     "permission": "NOT_REQUIRED",
-    "reason": "JDK 17 の単体試験（Robolectric API 35 を含む）で、同じ release ID の2枚組をディスク順に1アルバムにまとめ、ディスク番号の欠損を補わずに後ろへ並べた。同名の別 release、release 内の矛盾タグ、フォルダ内のアルバムアーティストの不一致とディスク構造の曖昧さは自動で結合せず候補として返した。結合・分割を再走査後も保ち、新旧どちらの順でも取り消せること、拒否時に何も保存しないこと、v7 からの移行で既存の行と従来の所属を保つことを確認した。ID3・FLAC・MP4 の release ID 読み取りも検証した。単体試験全505件成功・1件スキップ、Lint エラー0件。",
+    "reason": "JDK 17 の単体試験（Robolectric API 35 を含む）で、同じ release ID の2枚組をディスク順に1アルバムにまとめ、ディスク番号の欠損を補わずに後ろへ並べた。同名の別 release、release 内の矛盾タグ、同じフォルダで一部だけ release ID が欠けた組、フォルダ内のアルバムアーティストの不一致とディスク構造の曖昧さは自動で結合せず候補として返した。結合・分割をタグが変わった再走査後も保ち、新旧どちらの順でも取り消せること、拒否時に何も保存しないこと、v7 からの移行で既存の行と従来の所属を保つことを確認した。ID3・FLAC・MP4 の release ID 読み取り、複数値の release を不明にすること、壊れた MP4 の項目一覧でファイルを拒否しないことも検証した。単体試験全508件成功・1件スキップ、Lint エラー0件。",
     "evidence": [
       "app/src/test/java/com/audipp/data/db/AlbumClassificationTest.kt",
       "app/src/test/java/com/audipp/data/db/LibraryAlbumsTest.kt",
@@ -3856,7 +3856,7 @@
     "test_ids": [
       "TEST-LIB-02"
     ],
-    "commit": "b61d3e9eab5c575f29cc979d345942d75b15b568",
+    "commit": "92bb966f7684a7d1791f657f25ef015f7dc62ce9",
     "stage": "CURRENT",
     "outcome": "PASS",
     "execution": "EXECUTED",
@@ -3877,7 +3877,7 @@
     "test_ids": [
       "TEST-LIB-02"
     ],
-    "commit": "b61d3e9eab5c575f29cc979d345942d75b15b568",
+    "commit": "92bb966f7684a7d1791f657f25ef015f7dc62ce9",
     "stage": "CURRENT",
     "outcome": "NOT_RUN",
     "execution": "NOT_RUN",

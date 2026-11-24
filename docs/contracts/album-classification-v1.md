@@ -26,14 +26,15 @@ FR-SRC-05 のうち、DD-SRC-03 に沿ってタグ・フォルダ・ディスク
 
 ## 自動分類の規則
 
-走査は各音源の `MusicBrainz Album Id`（ID3 の TXXX、FLAC の Vorbis コメント `MUSICBRAINZ_ALBUMID`、MP4 の iTunes 形式 freeform）と、走査ルート内の親フォルダを Variant に保存する。release ID は UUID の書式を満たす値だけを小文字にして保存し、名前空間は `musicbrainz:release` とする。書式の検査だけで、MusicBrainz への照会はしていない。複数の値や書式外の値は不明として扱う。
+走査は各音源の `MusicBrainz Album Id`（ID3 の TXXX、FLAC の Vorbis コメント `MUSICBRAINZ_ALBUMID`、MP4 の iTunes 形式 freeform）と、走査ルート内の親フォルダを Variant に保存する。release ID は UUID の書式を満たす値だけを小文字にして保存し、名前空間は `musicbrainz:release` とする。書式の検査だけで、MusicBrainz への照会はしていない。複数の値（ID3 の2つ目の値、FLAC の2つ目のコメント）や書式外の値は不明として扱う。MP4 で項目の一覧が壊れている場合や読み取りの上限に達した場合も、ファイルは拒否せず release を不明にする。
 
 分類は全ローカル Variant を次のように組に分ける。題名とアルバムアーティストは NFKC 正規化、前後の空白の除去、連続する空白の1つへの置換、小文字化をしてから比べる。
 
 1. release ID がある Variant は、名前空間と ID が同じものを1組にする。フォルダが違ってもまとめるので、ディスクごとのフォルダに分かれた複数枚組も1つのアルバムになる。組の中で題名またはアルバムアーティストが食い違うときは確定せず、`CONFLICTING_TAGS` の候補にする。ディスク番号は並び順にだけ使い、欠けていても組は確定する
 2. release ID がなく題名がある Variant は、走査ルート・親フォルダ・題名が同じものを1組にする。アルバムアーティストが食い違う組は `CONFLICTING_TAGS`、ディスク番号のある曲とない曲が混ざる組や同じディスク・曲番号が重複する組は `DISC_CONFLICT` の候補にする
 3. 2 で確定した組のうち、題名とアルバムアーティストが同じでフォルダやルートが違うものは、まとめずに別のアルバムとし、`SAME_TITLE` の候補として返す。release ID が違う同名アルバムは候補にもしない
-4. 題名も release ID もない Variant は未分類のままにし、候補にもしない
+4. 1 で確定した release の組と、同じルート・同じフォルダ・同じ題名で release ID のない 2 の組は、別のアルバムのままにして `RELEASE_ID_MISSING` の候補として返す。一部の曲だけタグ付けが漏れた場合にあたる
+5. 題名も release ID もない Variant は未分類のままにし、候補にもしない
 
 候補になった組の Variant は `album_id` が null になる。自動のアルバム ID は組の鍵（release なら名前空間と ID、フォルダならルート・フォルダ・正規化した題名）から決まるので、再走査しても変わらない。
 
@@ -65,6 +66,7 @@ v7 以前の Variant は `local_folder` が null なので分類の対象にな�
 ## 制約と未実施
 
 - 取り消した走査では完了処理を実行しないので、その走査で新しく索引した曲は次の走査か `organize()` まで未分類のままになる
+- 結合・分割した Variant は自動分類の入力から外すので、後から同じフォルダに曲を追加すると、その曲は別の自動アルバムになり、編集済みのアルバムとの候補も出ない。利用者は追加した曲をもう一度 `merge` する
 - 1回の `merge`・`split` の対象は SQLite の変数上限（API 23 では 999）を超えられない
 - 分類は Variant 数に比例するメモリを使う。大規模ライブラリでの時間・メモリは測定していない
 - 走査ルートやフォルダを移動・改名すると #35 の契約どおり別の Variant になり、以前の編集は新しい Variant に引き継がれない
@@ -73,9 +75,9 @@ v7 以前の Variant は `local_folder` が null なので分類の対象にな�
 
 ## 検証結果
 
-2026-11-24 JST、実装コミット `b61d3e9eab5c575f29cc979d345942d75b15b568` を検証した。
+2026-11-24 JST、レビュー修正後の実装コミット `92bb966f7684a7d1791f657f25ef015f7dc62ce9` を検証した。
 
-- JDK 17 で `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest` が成功。ユニット試験は505件成功・1件スキップ。うち本変更で追加した試験は `AlbumClassificationTest` 8件、`LibraryAlbumsTest` 7件（Robolectric API 35）、release ID の読み取り3件。Lint はエラー0件で、警告は既存の箇所だけだった
-- 単体試験の対象: 複数ディスク、ディスク番号の欠損、同名別 release、フォルダとタグの不一致、曖昧な候補、結合・分割の保存と再走査後の保持、新旧どちらの順での取り消し、拒否時に何も保存しないこと、v7 からの移行で既存の行と従来の所属を保つこと
+- JDK 17 で `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest` が成功。ユニット試験は508件成功・1件スキップ。うち本変更で追加した試験は `AlbumClassificationTest` 9件、`LibraryAlbumsTest` 8件（Robolectric API 35）、release ID の読み取り4件。Lint はエラー0件で、警告は既存の箇所だけだった
+- 単体試験の対象: 複数ディスク、ディスク番号の欠損、同名別 release、フォルダとタグの不一致、同じフォルダで一部だけ release ID が欠けた組、曖昧な候補、結合・分割の保存と再走査後の保持（タグを変えた再走査を含む）、新旧どちらの順での取り消し、拒否時に何も保存しないこと、v7 からの移行で既存の行と従来の所属を保つこと、複数の値を持つ release タグを不明にすること、壊れた MP4 の項目一覧や読み取り上限でファイルを拒否しないこと
 - API 23（`emulator-5580`）と API 36（`emulator-5582`）の専用 x86_64 エミュレーターで `SafLibraryTest` と `LibraryDatabaseTest` を実行し、各25件が成功した。本変更で加えたのは、release による2枚組の分類・同名フォルダの分離・結合の DB 再オープンと再走査後の保持・取り消しの試験と、v7 から v8 への移行試験
 - 走査は試験用の SAF 実装を使った。実際の文書プロバイダー、実在の音源ファイルのタグ、物理端末、ライブラリ画面との接続は未実施
