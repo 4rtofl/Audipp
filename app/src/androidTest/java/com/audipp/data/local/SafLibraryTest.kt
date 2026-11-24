@@ -5,6 +5,9 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.audipp.data.db.AlbumCandidateReason
+import com.audipp.data.db.AlbumEditResult
+import com.audipp.data.db.LibraryAlbums
 import com.audipp.data.db.LibraryDatabase
 import com.audipp.domain.model.Availability
 import com.audipp.domain.model.VariantId
@@ -12,6 +15,7 @@ import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -354,6 +358,43 @@ class SafLibraryTest {
             assertEquals(Availability.PLAYABLE, availability(song))
             assertEquals(LibraryScanStatus.COMPLETE, scanner.lastScanStatus(root))
         }
+    }
+
+    @Test
+    fun albumsGroupByReleaseKeepSameNamedFoldersApartAndKeepUserMergesAcrossRescans() = runBlocking {
+        val scanner = library
+        val albums = LibraryAlbums(db)
+        val root = register(scanner)
+        val release = "0e7a9c1b-2f4d-4c3b-9a8e-1d2c3b4a5f60"
+        access.entries["root"] = listOf(directory("CD2"), directory("CD1"), directory("Live1"), directory("Live2"))
+        access.entries["CD1"] = listOf(file("cd1"))
+        access.entries["CD2"] = listOf(file("cd2"))
+        access.entries["Live1"] = listOf(file("live1"))
+        access.entries["Live2"] = listOf(file("live2"))
+        fun song(album: String, disc: Int, mbid: String? = null) = SafAudio(
+            codec = "audio/flac", album = album, albumArtist = "Artist", disc = disc, track = 1, musicBrainzReleaseId = mbid,
+        )
+        access.audioById["cd1"] = song("Studio", 1, release)
+        access.audioById["cd2"] = song("Studio", 2, release)
+        access.audioById["live1"] = song("Live", 1)
+        access.audioById["live2"] = song("Live", 2)
+        assertEquals(LibraryScanStatus.COMPLETE, scanner.startScan(root, this).await().status)
+
+        val studio = dao.variant(variant("root", "cd1").value)!!.albumId!!
+        assertEquals(listOf("cd1", "cd2").map { variant("root", it).value },
+            albums.observeTracks(studio).first().map { it.variantId })
+        val live = listOf("live1", "live2").map { dao.variant(variant("root", it).value)!!.albumId }
+        assertNotEquals(live[0], live[1])
+        val candidate = albums.candidates().single()
+        assertEquals(AlbumCandidateReason.SAME_TITLE, candidate.reason)
+
+        val merge = albums.merge(candidate.variantIds) as AlbumEditResult.Applied
+        db.close()
+        db = LibraryDatabase.open(context, DB_NAME)
+        assertEquals(LibraryScanStatus.COMPLETE, library.startScan(root, this).await().status)
+        assertEquals(2, LibraryAlbums(db).observeTracks(merge.albumId).first().size)
+        assertTrue(LibraryAlbums(db).undo(merge.editId))
+        assertEquals(live, listOf("live1", "live2").map { dao.variant(variant("root", it).value)!!.albumId })
     }
 
     private suspend fun indexSong(scanner: SafLibrary, scope: CoroutineScope): Pair<String, VariantId> {

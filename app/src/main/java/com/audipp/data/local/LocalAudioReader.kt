@@ -107,6 +107,7 @@ private fun analyzeIdentified(
         pcm = header.pcm,
         artwork = artwork,
         standardPath = !dsd && platform != null,
+        musicBrainzReleaseId = header.releaseId ?: tags.releaseId,
     )
     return if (platform == null) audio else readTags(descriptor, audio)
 }

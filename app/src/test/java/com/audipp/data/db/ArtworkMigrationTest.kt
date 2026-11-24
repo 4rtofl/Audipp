@@ -30,7 +30,7 @@ class ArtworkMigrationTest {
             val row = upgraded.artworkDao().embedded("v")
             assertEquals("content://song", row?.documentUri)
             assertNull(upgraded.artworkDao().override("v"))
-            assertEquals(7, upgraded.openHelper.writableDatabase.version)
+            assertEquals(8, upgraded.openHelper.writableDatabase.version)
         } finally {
             upgraded.close()
             context.deleteDatabase(name)

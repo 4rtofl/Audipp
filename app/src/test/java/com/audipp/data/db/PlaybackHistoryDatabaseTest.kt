@@ -143,7 +143,7 @@ class PlaybackHistoryDatabaseTest {
                 assertEquals("entry", current.entryId.value)
                 assertEquals("playlist-entry", database.playlistDao().read("list")!!.entries.single().entryId)
                 assertEquals(PlaybackCheckpointEntity("queue", 7, "entry", 42, 3), queues.checkpoint())
-                assertEquals(7, database.openHelper.writableDatabase.version)
+                assertEquals(8, database.openHelper.writableDatabase.version)
 
                 val history = database.playbackHistoryDao()
                 history.save(event.copy(endUtcMs = 350), segment)

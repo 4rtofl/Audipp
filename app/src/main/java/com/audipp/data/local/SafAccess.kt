@@ -30,6 +30,8 @@ internal data class SafAudio(
     val pcm: PcmLayout? = null,
     val artwork: EmbeddedArtwork? = null,
     val standardPath: Boolean = true,
+    /** A canonical MusicBrainz release MBID read from the file's own tags. */
+    val musicBrainzReleaseId: String? = null,
 )
 
 internal data class ScanLimits(

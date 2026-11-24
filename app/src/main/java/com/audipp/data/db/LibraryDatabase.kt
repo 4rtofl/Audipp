@@ -16,11 +16,13 @@ import java.util.UUID
         AlbumEntity::class, ArtistEntity::class, TrackArtistEntity::class,
         QueueEntity::class, QueueItemEntity::class, PlaybackCheckpointEntity::class,
         PlaylistEntity::class, PlaylistItemEntity::class, LocalScanRoot::class, LocalScanSource::class,
-        PlayEventEntity::class, PlaySegmentEntity::class, ArtworkOverrideEntity::class],
-    version = 7,
+        PlayEventEntity::class, PlaySegmentEntity::class, ArtworkOverrideEntity::class,
+        AlbumEditEntity::class, AlbumEditVariantEntity::class],
+    version = 8,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7),
+        AutoMigration(from = 7, to = 8),
     ],
     exportSchema = true,
 )
@@ -30,6 +32,7 @@ abstract class LibraryDatabase : RoomDatabase() {
     abstract fun queueDao(): QueueDao
     abstract fun playlistDao(): PlaylistDao
     abstract fun artworkDao(): ArtworkDao
+    internal abstract fun albumDao(): AlbumDao
     internal abstract fun safScanDao(): SafScanDao
     internal abstract fun playbackHistoryDao(): PlaybackHistoryDao
 

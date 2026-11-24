@@ -3824,5 +3824,68 @@
       "docs/contracts/dsp-chain-v1.md"
     ],
     "limitations": "0 dBFS以下のclip guard前の値をQLT-13の合格として扱わない。"
+  },
+  {
+    "case_id": "E01-04-album-classification-unit-2026-11-24",
+    "requirement_ids": [
+      "FR-SRC-05"
+    ],
+    "test_ids": [
+      "TEST-LIB-02"
+    ],
+    "commit": "92bb966f7684a7d1791f657f25ef015f7dc62ce9",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "JDK 17 の単体試験（Robolectric API 35 を含む）で、同じ release ID の2枚組をディスク順に1アルバムにまとめ、ディスク番号の欠損を補わずに後ろへ並べた。同名の別 release、release 内の矛盾タグ、同じフォルダで一部だけ release ID が欠けた組、フォルダ内のアルバムアーティストの不一致とディスク構造の曖昧さは自動で結合せず候補として返した。結合・分割をタグが変わった再走査後も保ち、新旧どちらの順でも取り消せること、拒否時に何も保存しないこと、v7 からの移行で既存の行と従来の所属を保つことを確認した。ID3・FLAC・MP4 の release ID 読み取り、複数値の release を不明にすること、壊れた MP4 の項目一覧でファイルを拒否しないことも検証した。単体試験全508件成功・1件スキップ、Lint エラー0件。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/AlbumClassificationTest.kt",
+      "app/src/test/java/com/audipp/data/db/LibraryAlbumsTest.kt",
+      "app/src/test/java/com/audipp/data/local/AudioContainerTest.kt",
+      "app/src/test/java/com/audipp/data/local/Id3MetadataTest.kt",
+      "docs/contracts/album-classification-v1.md"
+    ],
+    "limitations": "走査は試験用の SAF 実装、タグは合成したバイト列。TEST-LIB-02 のうち巨大アートとメモリ制限は本ケースの対象外。"
+  },
+  {
+    "case_id": "E01-04-album-classification-emulator-2026-11-24",
+    "requirement_ids": [
+      "FR-SRC-05"
+    ],
+    "test_ids": [
+      "TEST-LIB-02"
+    ],
+    "commit": "92bb966f7684a7d1791f657f25ef015f7dc62ce9",
+    "stage": "CURRENT",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23（emulator-5580）と API 36（emulator-5582）の専用 x86_64 エミュレーターで SafLibraryTest と LibraryDatabaseTest が各25件成功した。release による2枚組の分類、同名フォルダの分離と候補、結合の DB 再オープン・再走査後の保持と取り消し、Room v7 から v8 への移行を含む。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/data/local/SafLibraryTest.kt",
+      "app/src/androidTest/java/com/audipp/data/db/LibraryDatabaseTest.kt",
+      "docs/contracts/album-classification-v1.md"
+    ],
+    "limitations": "試験用の SAF 実装を使った。実際の文書プロバイダーと大規模ライブラリでの時間・メモリは未測定。"
+  },
+  {
+    "case_id": "E01-04-album-classification-real-library",
+    "requirement_ids": [
+      "FR-SRC-05"
+    ],
+    "test_ids": [
+      "TEST-LIB-02"
+    ],
+    "commit": "92bb966f7684a7d1791f657f25ef015f7dc62ce9",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "物理端末、実在の音源ファイルのタグ、実際の文書プロバイダー、ライブラリ画面（#84）との接続では試験していない。",
+    "evidence": [
+      "docs/contracts/album-classification-v1.md"
+    ],
+    "limitations": "エミュレーターと合成データの結果を実利用ライブラリでの合格として扱わない。"
   }
 ]
