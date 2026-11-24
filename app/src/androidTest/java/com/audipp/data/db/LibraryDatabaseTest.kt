@@ -215,6 +215,9 @@ class LibraryDatabaseTest {
     @Test
     fun migratesExportedVersionFourWithoutChangingExistingIds() = verifyMigration(4)
 
+    @Test
+    fun migratesExportedVersionSevenWithoutChangingExistingIds() = verifyMigration(7)
+
     private fun verifyMigration(version: Int) = runBlocking {
         db.close()
         val assets = InstrumentationRegistry.getInstrumentation().context.assets
@@ -253,13 +256,13 @@ class LibraryDatabaseTest {
         assertEquals(entries, db.playlistDao().read("list")?.entries)
         assertNull(dao.variant("old-variant")?.localMetadata)
         assertTrue(db.safScanDao().roots().isEmpty())
-        assertEquals(7, db.openHelper.writableDatabase.version)
+        assertEquals(8, db.openHelper.writableDatabase.version)
     }
 
     @Test
     fun unsupportedDatabaseVersionFailsWithoutDestroyingRows() = runBlocking {
         dao.save(LibraryBatch(tracks = listOf(TrackEntity("retained"))))
-        db.openHelper.writableDatabase.version = 8
+        db.openHelper.writableDatabase.version = 9
         db.close()
         db = LibraryDatabase.open(context, "library-test.db")
         try {
@@ -271,7 +274,7 @@ class LibraryDatabaseTest {
         db.close()
         val raw = context.openOrCreateDatabase("library-test.db", 0, null)
         raw.use {
-            assertEquals(8, it.version)
+            assertEquals(9, it.version)
             it.rawQuery("SELECT track_id FROM tracks", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals("retained", cursor.getString(0))

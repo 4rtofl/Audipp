@@ -154,7 +154,17 @@ data class VariantLocalMetadata(
     @ColumnInfo(name = "pcm_storage_bits") val pcmStorageBits: Int? = null,
     @ColumnInfo(name = "pcm_floating_point") val pcmFloatingPoint: Boolean? = null,
     @ColumnInfo(name = "artwork_ref") val artworkRef: String? = null,
-)
+    @ColumnInfo(name = "release_namespace") val releaseNamespace: String? = null,
+    @ColumnInfo(name = "release_id") val releaseId: String? = null,
+    /** The parent document within the scanned tree; album grouping compares it only inside one root. */
+    val folder: String? = null,
+) {
+    init {
+        require((releaseNamespace == null) == (releaseId == null))
+        require(releaseNamespace == null || releaseNamespace.isNotBlank())
+        require(releaseId == null || releaseId.isNotBlank())
+    }
+}
 
 @Entity(
     tableName = "track_artists",

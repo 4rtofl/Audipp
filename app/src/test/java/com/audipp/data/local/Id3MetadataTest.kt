@@ -43,6 +43,30 @@ class Id3MetadataTest {
         }
     }
 
+    @Test
+    fun readsTheMusicBrainzReleaseFromItsTxxxFrameInAnyEncoding() {
+        val mbid = "0e7a9c1b-2f4d-4c3b-9a8e-1d2c3b4a5f60"
+        val utf16 = Charsets.UTF_16
+        val bodies = listOf(
+            byteArrayOf(0) + "MusicBrainz Album Id".toByteArray(Charsets.ISO_8859_1) + byteArrayOf(0) + mbid.uppercase().toByteArray(),
+            byteArrayOf(1) + "MusicBrainz Album Id".toByteArray(utf16) + byteArrayOf(0, 0) + mbid.toByteArray(utf16),
+        )
+        for (body in bodies) {
+            val tag = frame("TXXX", byteArrayOf(0) + "MusicBrainz Artist Id".toByteArray() + byteArrayOf(0) + "x".toByteArray()) +
+                frame("TXXX", body)
+            val bytes = header(tag.size) + tag
+            val (tags, _) = readId3Metadata(Id3Location(0, bytes.size.toLong())) { offset, count ->
+                bytes.copyOfRange(offset.toInt(), offset.toInt() + count)
+            }
+            assertEquals(mbid, tags.releaseId)
+        }
+        val invalid = frame("TXXX", byteArrayOf(0) + "MusicBrainz Album Id".toByteArray() + byteArrayOf(0) + "1234".toByteArray())
+        val bytes = header(invalid.size) + invalid
+        assertNull(readId3Metadata(Id3Location(0, bytes.size.toLong())) { offset, count ->
+            bytes.copyOfRange(offset.toInt(), offset.toInt() + count)
+        }.first.releaseId)
+    }
+
     private fun frame(key: String, body: ByteArray) = frameHeader(key, body.size) + body
 
     private fun frameHeader(key: String, size: Int) =

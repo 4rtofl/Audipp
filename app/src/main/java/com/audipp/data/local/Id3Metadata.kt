@@ -10,6 +10,7 @@ internal data class AudioTags(
     val albumArtist: String? = null,
     val track: Int? = null,
     val disc: Int? = null,
+    val releaseId: String? = null,
 )
 
 /** Reads the common ID3v2.3/v2.4 text frames and locates an APIC image without loading it. */
@@ -27,6 +28,7 @@ internal fun readId3Metadata(
     if (size > location.limit - position) return AudioTags() to null
     val end = position + size
     val text = mutableMapOf<String, String>()
+    var releaseId: String? = null
     var artwork: EmbeddedArtwork? = null
     for (index in 0 until 256) {
         if (end - position < 10) break
@@ -40,6 +42,11 @@ internal fun readId3Metadata(
         val key = frame.ascii(0, 4)
         if (key in ID3_TEXT_KEYS && frameSize <= 16_385 && key !in text) {
             read(start, frameSize.toInt()).id3Text()?.let { text[key] = it }
+        }
+        if (key == "TXXX" && releaseId == null && frameSize <= 16_385) {
+            read(start, frameSize.toInt()).id3Text(keepFields = true)?.split('\u0000', limit = 2)
+                ?.takeIf { it.size == 2 && it[0].trim().equals(MUSICBRAINZ_ALBUM_ID, ignoreCase = true) }
+                ?.let { releaseId = musicBrainzReleaseId(it[1].trimStart('\u0000', '\uFEFF')) }
         }
         if (key == "APIC" && artwork == null) {
             val prefix = read(start, minOf(4096, frameSize).toInt())
@@ -55,15 +62,25 @@ internal fun readId3Metadata(
         albumArtist = text["TPE2"],
         track = text["TRCK"].tagNumber(),
         disc = text["TPOS"].tagNumber(),
+        releaseId = releaseId,
     ) to artwork
 }
+
+/** Picard writes this description for ID3 TXXX and MP4 freeform atoms. */
+internal const val MUSICBRAINZ_ALBUM_ID = "MusicBrainz Album Id"
+
+/** Accepts one canonical MBID; multi-valued or malformed tags leave the release unknown. */
+internal fun musicBrainzReleaseId(value: String): String? =
+    value.substringBefore('\u0000').trim().lowercase().takeIf { MBID.matches(it) }
+
+private val MBID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 internal fun String?.tagNumber(): Int? = this?.substringBefore('/')?.trim()?.toIntOrNull()?.takeIf { it > 0 }
 
 private val ID3_TEXT_KEYS = setOf("TIT2", "TPE1", "TALB", "TPE2", "TRCK", "TPOS")
 private val ID3_IMAGE_TYPES = setOf("image/jpeg", "image/png", "image/gif", "image/webp")
 
-private fun ByteArray.id3Text(): String? {
+private fun ByteArray.id3Text(keepFields: Boolean = false): String? {
     val charset = when (firstOrNull()?.toInt()) {
         0 -> Charsets.ISO_8859_1
         1 -> Charsets.UTF_16
@@ -76,7 +93,8 @@ private fun ByteArray.id3Text(): String? {
     } catch (_: CharacterCodingException) {
         return null
     }
-    return value.substringBefore('\u0000').trim().take(4096).takeIf { it.isNotEmpty() }
+    val field = if (keepFields) value else value.substringBefore('\u0000')
+    return field.trim().take(4096).takeIf { it.isNotEmpty() }
 }
 
 private fun ByteArray.pictureOffset(): Pair<Int, String>? {

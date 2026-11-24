@@ -6,7 +6,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.core.net.toUri
 import androidx.room.withTransaction
-import com.audipp.data.db.AlbumEntity
+import com.audipp.data.db.LibraryAlbums
 import com.audipp.data.db.LibraryBatch
 import com.audipp.data.db.LibraryDatabase
 import com.audipp.data.db.LocalScanRoot
@@ -43,6 +43,7 @@ class SafLibrary internal constructor(
 
     private val scans get() = db.safScanDao()
     private val library get() = db.libraryDao()
+    private val albums = LibraryAlbums(db)
 
     suspend fun registeredRoots(): List<String> = scans.roots()
 
@@ -228,7 +229,7 @@ class SafLibrary internal constructor(
                             } else pending.addLast(Directory(entry.id, dir.depth + 1))
                         } else {
                             val uri = DocumentsContract.buildDocumentUriUsingTree(tree, entry.id)
-                            inspect(uri, entry.displayName)
+                            inspect(uri, entry.displayName, dir.id)
                         }
                     }
                     if (directoryComplete) {
@@ -248,7 +249,7 @@ class SafLibrary internal constructor(
             } else rootAccess
         }
 
-        private suspend fun inspect(uri: Uri, displayName: String?) {
+        private suspend fun inspect(uri: Uri, displayName: String?, folder: String) {
             var scanIssue: LibraryScanIssue? = null
             var rejectedAvailability: Availability? = null
             val audio = try {
@@ -284,7 +285,7 @@ class SafLibrary internal constructor(
                 check(previous == null || previous.localUri == uriString)
                 if (audio != null) {
                     val track = library.track(trackId) ?: TrackEntity(trackId)
-                    val album = audio.album?.let { AlbumEntity("saf-album:$id", it, audio.albumArtist) }
+                    val stored = library.variant(variantId)
                     library.save(LibraryBatch(
                         sources = listOf(SourceEntity(
                             sourceId, SourceKind.LOCAL, localUri = uriString,
@@ -292,11 +293,11 @@ class SafLibrary internal constructor(
                             grantMode = "PERSISTED_READ", updatedAt = updatedAt,
                         )),
                         tracks = listOf(track.copy(title = audio.title, artistDisplay = audio.artist)),
-                        albums = listOfNotNull(album),
                         variants = listOf(VariantEntity(
-                            variantId, trackId, sourceId, album?.albumId, audio.disc, audio.track,
+                            // Album membership is re-derived for the whole library when the scan finishes.
+                            variantId, trackId, sourceId, stored?.albumId, audio.disc, audio.track,
                             audio.durationMs, audio.codec, audio.sampleRate, audio.bitDepth, audio.channels,
-                            masteringLabel = library.variant(variantId)?.masteringLabel,
+                            masteringLabel = stored?.masteringLabel,
                             localMetadata = VariantLocalMetadata(
                                 container = audio.container?.name,
                                 title = audio.title,
@@ -306,6 +307,9 @@ class SafLibrary internal constructor(
                                 pcmStorageBits = audio.pcm?.storageBits,
                                 pcmFloatingPoint = audio.pcm?.floatingPoint,
                                 artworkRef = audio.artwork?.let { "embedded:${it.offset}:${it.length}:${it.mimeType}" },
+                                releaseNamespace = audio.musicBrainzReleaseId?.let { MUSICBRAINZ_RELEASE },
+                                releaseId = audio.musicBrainzReleaseId,
+                                folder = folder,
                             ),
                         )),
                     ))
@@ -339,11 +343,13 @@ class SafLibrary internal constructor(
                 missing = db.withTransaction {
                     // Only the latest scan of a registered root matches, so superseded scans record nothing.
                     val current = scans.recordStatus(rootId, scanId, status) == 1
-                    when {
+                    val missing = when {
                         status != LibraryScanStatus.COMPLETE -> 0
                         current -> scans.markUnvisitedMissing(rootId, scanId, System.currentTimeMillis())
                         else -> throw SupersededScan()
                     }
+                    albums.organize()
+                    missing
                 }
             } catch (_: SupersededScan) {
                 finalStatus = LibraryScanStatus.PARTIAL
@@ -365,6 +371,9 @@ class SafLibrary internal constructor(
     private class SupersededScan : Exception()
 
     companion object {
+        /** Namespace stored with a MusicBrainz release MBID read from tags. */
+        const val MUSICBRAINZ_RELEASE = "musicbrainz:release"
+
         fun openTreeIntent(): Intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
             Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
         )

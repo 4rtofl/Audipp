@@ -129,6 +129,33 @@ class AudioContainerTest {
     }
 
     @Test
+    fun flacReadsTheMusicBrainzReleaseFromVorbisCommentsAndIgnoresMalformedComments() {
+        fun flac(comments: ByteArray): ByteArray = ascii("fLaC") + byteArrayOf(0, 0, 0, 34) + streamInfo(192, 192) +
+            be32(0x84000000.toInt() or comments.size) + comments +
+            byteArrayOf(0xff.toByte(), 0xf8.toByte(), 0x19, 0x18) + ByteArray(5)
+        fun comment(value: String) = ascii(value).let { le32(it.size) + it }
+        val vendor = comment("vendor")
+        val tagged = vendor + le32(2) + comment("ALBUM=Two discs") +
+            comment("musicbrainz_albumid=0E7A9C1B-2F4D-4C3B-9A8E-1D2C3B4A5F60")
+        assertEquals("0e7a9c1b-2f4d-4c3b-9a8e-1d2c3b4a5f60", read(flac(tagged), "a.flac").releaseId)
+        assertNull(read(flac(vendor + le32(1) + comment("MUSICBRAINZ_ALBUMID=not-an-mbid")), "a.flac").releaseId)
+        // A comment count beyond the block leaves the release unknown instead of rejecting the audio.
+        assertNull(read(flac(vendor + le32(5) + comment("ALBUM=x")), "a.flac").releaseId)
+    }
+
+    @Test
+    fun mp4ReadsTheMusicBrainzReleaseFromTheItunesFreeformAtom() {
+        fun freeform(name: String, value: String) = box("----",
+            box("mean", be32(0) + ascii("com.apple.iTunes")) + box("name", be32(0) + ascii(name)) +
+                box("data", be32(1) + be32(0) + ascii(value)))
+        val items = box("ilst", box("\u00a9alb", box("data", be32(1) + be32(0) + ascii("Two discs"))) +
+            freeform("MusicBrainz Album Type", "album") +
+            freeform("MusicBrainz Album Id", "0e7a9c1b-2f4d-4c3b-9a8e-1d2c3b4a5f60"))
+        val bytes = box("ftyp", ascii("M4A ") + be32(0)) + box("moov", box("udta", box("meta", be32(0) + items)))
+        assertEquals("0e7a9c1b-2f4d-4c3b-9a8e-1d2c3b4a5f60", read(bytes, "a.m4a").releaseId)
+    }
+
+    @Test
     fun readsDsdSampleRateAndLengthWithoutDescribingDsdAsPcm() {
         val dsf = ascii("DSD ") + le64(28) + le64(92 + 8192) + le64(0) +
             ascii("fmt ") + le64(52) + le32(1) + le32(0) + le32(2) + le32(2) +

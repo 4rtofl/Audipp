@@ -18,6 +18,7 @@ internal sealed interface AudioProbeResult {
         val pcm: PcmLayout? = null,
         val artwork: EmbeddedArtwork? = null,
         val id3: Id3Location? = null,
+        val releaseId: String? = null,
     ) : AudioProbeResult
 
     data class Rejected(val problem: AudioProbeProblem) : AudioProbeResult
@@ -147,10 +148,11 @@ private class ContainerReader(
         val movie = file.child("moov") ?: malformed()
         val userData = movie.child("udta")
         val metadata = userData?.child("meta") ?: movie.child("meta")
-        val artwork = metadata?.let {
+        val items = metadata?.let {
             if (it.limit - it.start < 4 || bytes(it.start, 4).getInt(0) != 0) return@let null
-            Box(it.start + 4, it.limit).child("ilst")?.child("covr")?.child("data")
-        }?.let {
+            Box(it.start + 4, it.limit).child("ilst")
+        }
+        val artwork = items?.child("covr")?.child("data")?.let {
             if (it.limit - it.start <= 8) return@let null
             val mime = when (bytes(it.start, 8).getInt(0)) {
                 13 -> "image/jpeg"
@@ -159,7 +161,27 @@ private class ContainerReader(
             }
             EmbeddedArtwork(it.start + 8, it.limit - it.start - 8, mime)
         }
-        return AudioProbeResult.Identified(AudioContainer.MP4, artwork = artwork)
+        return AudioProbeResult.Identified(AudioContainer.MP4, artwork = artwork, releaseId = items?.let(::mp4ReleaseId))
+    }
+
+    private fun mp4ReleaseId(items: Box): String? {
+        var position = items.start
+        while (position < items.limit) {
+            val item = items.boxAt(position)
+            position = item.second.limit
+            if (item.first != "----") continue
+            val mean = item.second.child("mean")?.text(4)
+            val name = item.second.child("name")?.text(4)
+            if (mean != "com.apple.iTunes" || !name.equals(MUSICBRAINZ_ALBUM_ID, ignoreCase = true)) continue
+            return item.second.child("data")?.text(8)?.let(::musicBrainzReleaseId)
+        }
+        return null
+    }
+
+    private fun Box.text(skip: Int): String? {
+        val size = limit - start - skip
+        if (size !in 1..256) return null
+        return String(bytes(start + skip, size.toInt()).array(), Charsets.UTF_8)
     }
 
     private data class Box(val start: Long, val limit: Long)
@@ -167,23 +189,27 @@ private class ContainerReader(
     private fun Box.child(type: String): Box? {
         var position = start
         while (position < limit) {
-            end(position, 8, limit)
-            val header = bytes(position, 8)
-            var payload = position + 8
-            val size = when (val shortSize = header.u32(0)) {
-                0L -> limit - position
-                1L -> {
-                    payload = end(payload, 8, limit)
-                    bytes(payload - 8, 8).getLong(0)
-                }
-                else -> shortSize
-            }
-            if (size < payload - position) malformed()
-            val childEnd = end(position, size, limit)
-            if (header.name(4) == type) return Box(payload, childEnd)
-            position = childEnd
+            val (name, child) = boxAt(position)
+            if (name == type) return child
+            position = child.limit
         }
         return null
+    }
+
+    private fun Box.boxAt(position: Long): Pair<String, Box> {
+        end(position, 8, limit)
+        val header = bytes(position, 8)
+        var payload = position + 8
+        val size = when (val shortSize = header.u32(0)) {
+            0L -> limit - position
+            1L -> {
+                payload = end(payload, 8, limit)
+                bytes(payload - 8, 8).getLong(0)
+            }
+            else -> shortSize
+        }
+        if (size < payload - position) malformed()
+        return header.name(4) to Box(payload, end(position, size, limit))
     }
 
     private fun skipId3(): Long {
@@ -219,6 +245,7 @@ private class ContainerReader(
         var last = block.u8(0) and 128 != 0
         var position = start + 42
         var artwork: EmbeddedArtwork? = null
+        var releaseId: String? = null
         while (!last) {
             val metadata = bytes(position, 4)
             val type = metadata.u8(0) and 127
@@ -226,6 +253,7 @@ private class ContainerReader(
             last = metadata.u8(0) and 128 != 0
             val next = end(position + 4, metadata.u24(1), length)
             if (type == 6 && artwork == null) artwork = picture(position + 4, next)
+            if (type == 4 && releaseId == null) releaseId = vorbisReleaseId(position + 4, next)
             position = next
         }
         end(position, 9, length)
@@ -239,7 +267,31 @@ private class ContainerReader(
             samples.takeIf { it > 0 }?.let { duration(it, rate) },
             artwork = artwork,
             id3 = id3,
+            releaseId = releaseId,
         )
+    }
+
+    // Lyrics or images stored as comments can make this block large; such a block is not read.
+    // A malformed comment leaves the release unknown instead of rejecting playable audio.
+    private fun vorbisReleaseId(start: Long, limit: Long): String? {
+        if (limit - start > MAX_VORBIS_COMMENT_BYTES) return null
+        val block = bytes(start, (limit - start).toInt()).order(ByteOrder.LITTLE_ENDIAN)
+        var offset = 0
+        fun field(): Long? = if (block.limit() - offset < 4) null else block.u32(offset).also { offset += 4 }
+        val vendor = field() ?: return null
+        if (vendor > block.limit() - offset) return null
+        offset += vendor.toInt()
+        val count = field() ?: return null
+        for (index in 0 until count) {
+            val size = field() ?: return null
+            if (size > block.limit() - offset) return null
+            val comment = String(block.array(), offset, size.toInt(), Charsets.UTF_8)
+            offset += size.toInt()
+            if (comment.substringBefore('=', "").equals("MUSICBRAINZ_ALBUMID", ignoreCase = true)) {
+                return musicBrainzReleaseId(comment.substringAfter('='))
+            }
+        }
+        return null
     }
 
     private fun picture(start: Long, limit: Long): EmbeddedArtwork? {
@@ -450,6 +502,7 @@ private class ContainerReader(
 
     private companion object {
         const val MAX_READS = 512
+        const val MAX_VORBIS_COMMENT_BYTES = 64L * 1024
         val IMAGE_BRANDS = setOf("avif", "avis", "heic", "heix", "hevc", "hevx", "mif1", "msf1")
         val IMAGE_MIME_TYPES = setOf("image/jpeg", "image/png", "image/gif", "image/webp")
         val MP3_RATES = intArrayOf(44100, 48000, 32000)
