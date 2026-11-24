@@ -16,9 +16,13 @@ internal fun interface DspStage {
     fun process(samples: FloatArray, frames: Int)
 }
 
-/** Stage slots in their fixed order; the stages themselves belong to #89-#93, #67 and #90. */
+/**
+ * Stage slots in their fixed order; the stages themselves belong to #89-#93, #67 and #90. [channels]
+ * is the swap / mono / left-right gain part of the channel map ([ChannelStage]), after [map].
+ */
 internal data class DspStages(
     val map: DspStage? = null,
+    val channels: DspStage? = null,
     val peq: DspStage? = null,
     val ir: DspStage? = null,
     val crossfeed: DspStage? = null,
@@ -28,7 +32,7 @@ internal data class DspStages(
 
 /**
  * [maxPositiveGainDb] is the sum of every positive gain that can apply at once (ReplayGain, PEQ
- * boosts); [irAbsCoefficientSum] is the sum of |IR coefficients|, 1.0 without an IR. [gainDb] is
+ * boosts, left/right gain, crossfeed); [irAbsCoefficientSum] is the sum of |IR coefficients|, 1.0 without an IR. [gainDb] is
  * the ReplayGain/R128 plus preamp gain at start. [headroomAttenuationDb] is the attenuation the
  * user has been shown and accepted; the chain does not pick one by itself.
  */
@@ -67,7 +71,8 @@ internal class DspChain private constructor(
     private val attenuationDb: Double,
 ) {
     // Arrays and index loops: iterating a List would allocate an Iterator per block.
-    private val stagesBeforeGain = listOfNotNull(config.stages.map).toTypedArray()
+    private val stagesBeforeGain =
+        listOfNotNull(config.stages.map, config.stages.channels).toTypedArray()
     private val stagesAfterGain = listOfNotNull(
         config.stages.peq, config.stages.ir, config.stages.crossfeed, config.stages.apodizing,
         config.stages.src,
