@@ -29,7 +29,9 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
+import com.google.common.util.concurrent.ListenableFuture
 import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executor
 
 internal sealed interface NavigationPlaybackState {
     data object Connecting : NavigationPlaybackState
@@ -79,6 +81,26 @@ internal sealed interface PlayRequest {
     data object Disconnected : PlayRequest
     data class Rejected(val domain: ErrorDomain) : PlayRequest
 }
+
+/**
+ * Waits for the service's answer on [executor]. A cancelled wait cancels the future, whose listener then ignores it;
+ * a failed request becomes Disconnected. Neither may throw on the executor's thread.
+ */
+internal suspend fun ListenableFuture<SessionResult>.awaitPlayRequest(executor: Executor): PlayRequest =
+    suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation { cancel(false) }
+        addListener({
+            if (isCancelled) return@addListener
+            val request = try {
+                val result = get()
+                if (result.resultCode == SessionResult.RESULT_SUCCESS) PlayRequest.Accepted
+                else PlayRequest.Rejected(PlaybackConnection.error(result)?.domain ?: ErrorDomain.UNKNOWN)
+            } catch (_: ExecutionException) {
+                PlayRequest.Disconnected
+            }
+            continuation.resume(request)
+        }, executor)
+    }
 
 internal enum class SeekBlock { OUTPUT_CONFIRMATION, PREPARING, UNKNOWN_DURATION, NOT_SEEKABLE }
 
@@ -194,17 +216,7 @@ internal class NavigationPlayback(private val context: Context) {
     /** Sends the chosen Variant to the service's play entry. Acceptance only means the service started preparing it. */
     suspend fun play(entryId: QueueEntryId, variant: TrackVariant): PlayRequest {
         val current = controller?.takeIf { it.isConnected } ?: return PlayRequest.Disconnected
-        val future = PlaybackConnection.playLocal(current, entryId, variant)
-        val result = try {
-            suspendCancellableCoroutine<SessionResult> { continuation ->
-                continuation.invokeOnCancellation { future.cancel(false) }
-                future.addListener({ continuation.resume(future.get()) }, ContextCompat.getMainExecutor(context))
-            }
-        } catch (_: ExecutionException) {
-            return PlayRequest.Disconnected
-        }
-        return if (result.resultCode == SessionResult.RESULT_SUCCESS) PlayRequest.Accepted
-        else PlayRequest.Rejected(PlaybackConnection.error(result)?.domain ?: ErrorDomain.UNKNOWN)
+        return PlaybackConnection.playLocal(current, entryId, variant).awaitPlayRequest(ContextCompat.getMainExecutor(context))
     }
 
     fun seek(positionMs: Long) {
