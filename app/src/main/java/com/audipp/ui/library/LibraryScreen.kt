@@ -32,6 +32,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -67,7 +68,8 @@ import com.audipp.ui.theme.AudippSpacing
 internal sealed interface LibraryNotice {
     data object SourcesFailed : LibraryNotice
     data object Empty : LibraryNotice
-    data class Scanning(val visited: Int) : LibraryNotice
+    /** Registration runs before the scan exists, so it cannot be cancelled yet. */
+    data class Scanning(val visited: Int, val cancellable: Boolean = true) : LibraryNotice
     data object Denied : LibraryNotice
     data object AccessLost : LibraryNotice
     data class Cancelled(val rootId: String) : LibraryNotice
@@ -82,7 +84,7 @@ internal fun libraryNotice(
     val ready = sources as? HomeSources.Ready
     return when {
         registration is FolderRegistration.Scanning -> LibraryNotice.Scanning(registration.visited)
-        registration == FolderRegistration.Registering -> LibraryNotice.Scanning(0)
+        registration == FolderRegistration.Registering -> LibraryNotice.Scanning(0, cancellable = false)
         registration == FolderRegistration.Denied -> LibraryNotice.Denied
         registration == FolderRegistration.AccessLost || ready?.accessLost == true -> LibraryNotice.AccessLost
         registration is FolderRegistration.ScanFailed ->
@@ -132,10 +134,17 @@ internal fun LibraryScreen(
     val browse = library.browse
     val latestActions by rememberUpdatedState(actions)
     BackHandler(enabled = browse.opened != null) { actions.close() }
-    // Each choice has its own scroll position; rotation restores it through the saver.
-    val listState = rememberSaveable(browse.view, browse.opened, browse.sort, browse.descending, saver = LazyListState.Saver) {
+    // The group list and the opened group's songs keep separate positions, so closing a group returns to the row it
+    // was opened from. Rotation restores both through the saver.
+    val groupListState = rememberSaveable(browse.view, saver = LazyListState.Saver) { LazyListState() }
+    val songListState = rememberSaveable(browse.view, browse.opened, browse.sort, browse.descending, saver = LazyListState.Saver) {
         LazyListState()
     }
+    val listState = if (browse.listsSongs) songListState else groupListState
+    // The group list's row count while it reloads. Browse and rows arrive separately, so on closing a group the list
+    // can be Loading for a frame; keeping its rows (unloaded) stops that frame from moving the position to the top.
+    var groupRows by rememberSaveable(browse.view) { mutableIntStateOf(0) }
+    LaunchedEffect(library.groups) { (library.groups as? LibraryList.Ready)?.let { groupRows = it.total } }
     LaunchedEffect(listState) {
         snapshotFlow { listState.firstVisibleItemIndex }.collect { latestActions.showFrom((it - 1).coerceAtLeast(0)) }
     }
@@ -167,7 +176,9 @@ internal fun LibraryScreen(
                 }
             }
             when (list) {
-                LibraryList.Loading -> item(contentType = "state") { Loading(R.string.library_loading) }
+                LibraryList.Loading ->
+                    if (!browse.listsSongs && groupRows > 0) items(groupRows, contentType = { "row" }) { PendingRow() }
+                    else item(contentType = "state") { Loading(R.string.library_loading) }
                 LibraryList.Failed -> item(contentType = "state") {
                     Column {
                         Text(stringResource(R.string.library_failed))
@@ -280,7 +291,9 @@ private fun Notice(notice: LibraryNotice, actions: LibraryActions) {
             is LibraryNotice.Scanning -> {
                 if (notice.visited == 0) Loading(R.string.music_scan_loading)
                 else Text(pluralStringResource(R.plurals.music_scan_visited, notice.visited, notice.visited))
-                TextButton(onClick = actions::cancelScan) { Text(stringResource(android.R.string.cancel)) }
+                if (notice.cancellable) {
+                    TextButton(onClick = actions::cancelScan) { Text(stringResource(android.R.string.cancel)) }
+                }
             }
             LibraryNotice.Denied, LibraryNotice.AccessLost -> {
                 Text(stringResource(

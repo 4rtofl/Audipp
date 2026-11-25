@@ -177,7 +177,8 @@ class LibraryUiTest {
                     sources = ids.map { SourceEntity("s-$it", SourceKind.LOCAL, localUri = "content://fixture/$it",
                         availability = Availability.PLAYABLE, updatedAt = 0) },
                     tracks = ids.map { TrackEntity("t-$it") },
-                    variants = ids.map { VariantEntity("v-$it", "t-$it", "s-$it", codec = "FLAC",
+                    albums = ids.map { AlbumEntity("album-$it", "Album $it") },
+                    variants = ids.map { VariantEntity("v-$it", "t-$it", "s-$it", albumId = "album-$it", codec = "FLAC",
                         localMetadata = VariantLocalMetadata(title = "Track $it", artist = "Artist ${it.take(3)}")) },
                 ))
             }
@@ -215,6 +216,7 @@ class LibraryUiTest {
                 robot.find(pastWindow) != null ||
                     robot.find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD).let { false }
             }
+            android.os.SystemClock.sleep(1_000)
             val title = requireNotNull(robot.find(pastWindow)).text.toString()
             robot.click(title)
             robot.await(text.getString(R.string.playback_format_unsupported))
@@ -229,6 +231,69 @@ class LibraryUiTest {
             assertNull("The previous song's title stays hidden while the chosen one prepares", robot.find("Previous title"))
             assertEquals(2, sent.size)
             assertEquals(sent[0], sent[1])
+        } finally {
+            scope.cancel()
+            db.close()
+        }
+    }
+
+    @Test
+    fun closingAnOpenedAlbumReturnsToTheSameRowAndKeyword() = launched { scenario ->
+        val db = memoryLibrary(600)
+        val scope = CoroutineScope(Dispatchers.Main + Job())
+        try {
+            val browser = LibraryBrowser(db.libraryQueryDao(), scope, SharingStarted.Eagerly)
+            val state = combine(browser.browse, browser.songs, browser.groups) { b, s, g -> LibraryUi(b, s, g) }
+                .stateIn(scope, SharingStarted.Eagerly, LibraryUi())
+            val actions = object : LibraryActions {
+                override fun show(view: LibraryView) = browser.show(view)
+                override fun open(group: LibraryGroup) = browser.open(group)
+                override fun close() = browser.close()
+                override fun search(keyword: String) = browser.search(keyword)
+                override fun showFrom(firstVisible: Int) = browser.showFrom(firstVisible)
+            }
+            val text = scenario.show({ state.collectAsState().value }, actions)
+            robot.click(text.getString(R.string.navigation_library))
+            robot.await("Track 00000")
+            robot.click(text.getString(R.string.library_view_albums))
+            robot.await("Album 00000")
+            val search = robot.await("search field") { it.isEditable }
+            assertTrue(search.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "Album")
+            }))
+            robot.await("Album 00000")
+
+            val farAlbum: (AccessibilityNodeInfo) -> Boolean =
+                { it.text?.toString()?.removePrefix("Album ")?.toIntOrNull()?.let { n -> n >= 150 } == true }
+            robot.waitUntil("an album past the first window is visible") {
+                robot.find(farAlbum) != null ||
+                    robot.find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD).let { false }
+            }
+            // A tap while the list still flings only stops it, so let the scroll settle first. A new window can replace
+            // the row nodes between finding and tapping, so find again until the tap lands.
+            android.os.SystemClock.sleep(1_000)
+            var title = ""
+            robot.waitUntil("an album row is tapped") {
+                val node = robot.find { farAlbum(it) && robot.bounds(it).top > 600 } ?: return@waitUntil false
+                title = node.text.toString()
+                robot.clickable(node)?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+            }
+            robot.await(text.getString(R.string.library_back_to_list))
+            val track = "Track " + title.removePrefix("Album ")
+            robot.waitUntil("$track comes into view") {
+                findFresh(track) || robot.find { it.isScrollable }
+                    ?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD).let { android.os.SystemClock.sleep(500); false }
+            }
+
+            robot.back()
+            robot.gone(text.getString(R.string.library_back_to_list))
+            // The rows around the opened one are in view again without scrolling, under the same keyword. The opened row
+            // itself may sit partly under the top edge, where accessibility does not count it as visible.
+            val opened = title.removePrefix("Album ").toInt()
+            robot.await("rows around $title") {
+                it.text?.toString()?.removePrefix("Album ")?.toIntOrNull()?.let { n -> n in opened - 2..opened + 2 } == true
+            }
+            assertEquals("Album", browser.browse.value.keyword)
         } finally {
             scope.cancel()
             db.close()
@@ -463,6 +528,17 @@ class LibraryUiTest {
             robot.reach(text.getString(R.string.source_folders))
             capture("$name-folders")
         }
+    }
+
+    /** Walks the window refreshing every node, so a list swapped in place is not read from stale cached nodes. */
+    private fun findFresh(text: String): Boolean {
+        fun visit(node: AccessibilityNodeInfo?): Boolean {
+            node ?: return false
+            node.refresh()
+            if (node.text?.toString() == text && node.isVisibleToUser) return true
+            return (0 until node.childCount).any { visit(node.getChild(it)) }
+        }
+        return visit(instrumentation.uiAutomation.rootInActiveWindow)
     }
 
     private fun albumsChosen(): Boolean {

@@ -166,7 +166,7 @@ class LibraryNoticeTest {
         assertNull(libraryNotice(ready(), FolderRegistration.Idle, null))
         assertEquals(LibraryNotice.SourcesFailed, libraryNotice(HomeSources.Failed, FolderRegistration.Idle, null))
         assertEquals(LibraryNotice.Empty, libraryNotice(ready(registered = 0), FolderRegistration.Idle, null))
-        assertEquals(LibraryNotice.Scanning(0), libraryNotice(ready(), FolderRegistration.Registering, null))
+        assertEquals(LibraryNotice.Scanning(0, cancellable = false), libraryNotice(ready(), FolderRegistration.Registering, null))
         assertEquals(LibraryNotice.Scanning(7),
             libraryNotice(ready(), FolderRegistration.Scanning(LibraryScanProgress(visited = 7)), null))
         assertEquals(LibraryNotice.Denied, libraryNotice(ready(registered = 0), FolderRegistration.Denied, null))

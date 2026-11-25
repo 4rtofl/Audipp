@@ -14,11 +14,15 @@ import com.audipp.data.local.SafEntry
 import com.audipp.data.local.SafIncompleteRead
 import com.audipp.data.local.SafLibrary
 import com.audipp.data.local.ScanLimits
+import com.audipp.ui.library.LibraryNotice
+import com.audipp.ui.library.libraryNotice
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -74,6 +78,29 @@ class FolderRegistrationTest {
         assertEquals(LibraryScanStatus.COMPLETE, runBlocking { library.lastScanStatus(root) })
     }
 
+    @Test
+    fun aNewScanClearsTheEarlierResultSoItCannotStandInForAFailureOrCancellation() = withModel { model, library, access ->
+        model.onFolderResult(resultOk = true, selection = selection())
+        await { model.registration.value == FolderRegistration.Idle }
+        assertEquals(LibraryScanStatus.COMPLETE, model.lastScan.value?.status)
+        val root = runBlocking { library.registeredRoots() }.single()
+
+        // While the next scan runs (and if it ends without a result), the earlier COMPLETE is not shown as the last scan.
+        val gate = CompletableDeferred<Unit>()
+        access.gate = gate
+        model.retryScan(root)
+        await { model.registration.value is FolderRegistration.Scanning }
+        assertNull(model.lastScan.value)
+
+        model.cancelScan()
+        await { model.registration.value == FolderRegistration.ScanFailed(root) }
+        assertEquals(LibraryScanStatus.CANCELLED, model.lastScan.value?.status)
+        assertEquals(
+            LibraryNotice.Cancelled(root),
+            libraryNotice(HomeSources.Loading, model.registration.value, model.lastScan.value),
+        )
+    }
+
     private fun selection() = SafLibrary.openTreeIntent()
         .setData(DocumentsContract.buildTreeDocumentUri("audipp.fixture", "music"))
 
@@ -104,12 +131,14 @@ class FolderRegistrationTest {
     private class FolderAccess : SafAccess {
         @Volatile var granted = false
         @Volatile var failRead = false
+        @Volatile var gate: CompletableDeferred<Unit>? = null
 
         override fun hasReadGrant(tree: Uri) = granted
         override fun takeReadGrant(tree: Uri) { granted = true }
         override fun releaseReadGrant(tree: Uri) { granted = false }
         override suspend fun rootReadable(tree: Uri) = true
         override fun children(tree: Uri, directoryId: String) = flow {
+            gate?.await()
             if (failRead) throw SafIncompleteRead()
             emit(SafEntry("recording", directory = false))
         }

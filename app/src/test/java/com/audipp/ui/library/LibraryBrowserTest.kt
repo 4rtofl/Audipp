@@ -7,6 +7,7 @@ import com.audipp.data.db.LibraryGroup
 import com.audipp.data.db.LibraryItem
 import com.audipp.data.db.LibraryQueryDao
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
@@ -79,14 +80,60 @@ class LibraryBrowserTest {
     }
 
     @Test
-    fun openingAndClosingAnAlbumSwitchesBetweenGroupsAndItsSongs() = withBrowser(FakeDao { _, _ -> flowOf(listOf(1L to item("v1"))) }) { browser ->
+    fun closingAGroupReturnsToTheListWithItsKeywordAndOrder() = withBrowser(FakeDao { _, _ -> flowOf(listOf(1L to item("v1"))) }) { browser ->
         browser.show(LibraryView.ALBUMS)
+        browser.search("beat")
+        browser.sort(LibraryField.TITLE, descending = true)
+        val list = browser.browse.value
         assertEquals(LibraryList.Ready(1, 0, listOf(album)), browser.groups.first { it is LibraryList.Ready })
+
         browser.open(album)
-        assertEquals(LibraryField.TRACK_NUMBER, browser.browse.value.sort)
+        // An album opens in ascending disc and track order, whatever order the album list had.
+        assertEquals(LibraryBrowse(view = LibraryView.ALBUMS, opened = album, sort = LibraryField.TRACK_NUMBER), browser.browse.value)
         assertEquals(listOf(item("v1")), (browser.songs.first { it is LibraryList.Ready } as LibraryList.Ready).rows)
+        browser.search("intro")
+        browser.sort(LibraryField.TRACK_NUMBER, descending = true)
+
         browser.close()
-        assertEquals(LibraryBrowse(view = LibraryView.ALBUMS), browser.browse.value)
+        assertEquals(list, browser.browse.value)
+        browser.groups.first { it is LibraryList.Ready }
+
+        browser.open(album)
+        browser.show(LibraryView.ARTISTS)
+        assertEquals(LibraryBrowse(view = LibraryView.ARTISTS, sort = LibraryField.TITLE, descending = true), browser.browse.value)
+    }
+
+    @Test
+    fun closingAGroupShowsTheEarlierRowsAtOnceAndKeepsTheirWindow() {
+        val dao = FakeDao { _, _ -> flowOf(listOf(1L to item("v1"))) }
+        withBrowser(dao) { browser ->
+            browser.show(LibraryView.ALBUMS)
+            browser.groups.first { it is LibraryList.Ready }
+            browser.showFrom(300)
+            val before = browser.groups.first { it is LibraryList.Ready && it.offset == 275 }
+            browser.open(album)
+            browser.songs.first { it is LibraryList.Ready }
+
+            val seen = mutableListOf<LibraryList<LibraryGroup>>()
+            val collecting = launch(start = CoroutineStart.UNDISPATCHED) { browser.groups.collect { seen += it } }
+            browser.close()
+            browser.groups.first { it is LibraryList.Ready && it.offset == 275 }
+            collecting.cancel()
+            // No Loading between the song list and the restored group list, so the restored position is not clamped.
+            assertEquals(LibraryList.Loading, seen.first())
+            assertEquals(before, seen[1])
+            assertTrue(seen.drop(1).none { it == LibraryList.Loading })
+        }
+    }
+
+    @Test
+    fun otherGroupsOpenWithTheListOrder() = withBrowser(FakeDao { _, _ -> flowOf(listOf(1L to item("v1"))) }) { browser ->
+        val artist = LibraryGroup(null, null, "Band", null, 1, "v1")
+        browser.show(LibraryView.ARTISTS)
+        browser.sort(LibraryField.YEAR, descending = true)
+        browser.open(artist)
+        assertEquals(LibraryBrowse(view = LibraryView.ARTISTS, opened = artist, sort = LibraryField.YEAR, descending = true),
+            browser.browse.value)
     }
 
     @Test

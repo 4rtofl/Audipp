@@ -218,6 +218,8 @@ internal class NavigationViewModel(
     }
 
     private suspend fun scan(rootId: String) {
+        // A scan that ends with an exception has no result; an older one must not stand in for it.
+        lastScanState.value = null
         folderState.value = FolderRegistration.Scanning()
         try {
             val status = coroutineScope {

@@ -24,7 +24,10 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 
@@ -82,56 +85,78 @@ internal fun windowOffset(firstVisible: Int) = ((firstVisible - WINDOW / 4) / (W
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class LibraryBrowser(private val dao: LibraryQueryDao, scope: CoroutineScope, started: SharingStarted) {
+    /** The choice and its window change together, so a query for one choice never reads another choice's window. */
+    private data class Window(val browse: LibraryBrowse, val offset: Int)
+
+    private val window = MutableStateFlow(Window(LibraryBrowse(), 0))
     private val choice = MutableStateFlow(LibraryBrowse())
-    private val offset = MutableStateFlow(0)
     private val attempt = MutableStateFlow(0)
     val browse: StateFlow<LibraryBrowse> = choice
 
     val songs: StateFlow<LibraryList<LibraryItem>> =
-        pagesOf { browse -> if (browse.listsSongs) dao.observePages(offset.map(browse::songs)).map(LibraryPage::ready) else null }
+        pagesOf { browse -> if (browse.listsSongs) dao.observePages(offsets(browse).map(browse::songs)).map(LibraryPage::ready) else null }
             .stateIn(scope, started, LibraryList.Loading)
 
     val groups: StateFlow<LibraryList<LibraryGroup>> =
-        pagesOf { browse -> if (browse.listsSongs) null else dao.observeGroups(offset.map(browse::groups)).map(LibraryGroupPage::ready) }
-            .stateIn(scope, started, LibraryList.Loading)
+        pagesOf { browse ->
+            if (browse.listsSongs) null else dao.observeGroups(offsets(browse).map(browse::groups)).map(LibraryGroupPage::ready)
+        }.stateIn(scope, started, LibraryList.Loading)
 
-    private fun <T> pagesOf(pages: (LibraryBrowse) -> Flow<LibraryList<T>>?): Flow<LibraryList<T>> =
-        combine(choice, attempt) { browse, _ -> browse }.flatMapLatest { browse ->
+    private fun offsets(browse: LibraryBrowse) = window.filter { it.browse == browse }.map { it.offset }.distinctUntilChanged()
+
+    /**
+     * Returning to the choice the last rows were read for (closing a group) shows those rows at once instead of Loading;
+     * a list of one Loading row would otherwise pull the restored scroll position back to the top.
+     */
+    private fun <T> pagesOf(pages: (LibraryBrowse) -> Flow<LibraryList<T>>?): Flow<LibraryList<T>> {
+        var last: Pair<LibraryBrowse, LibraryList.Ready<T>>? = null
+        return combine(choice, attempt) { browse, _ -> browse }.flatMapLatest { browse ->
             val source = pages(browse) ?: return@flatMapLatest flowOf(LibraryList.Loading)
             flow {
-                emit(LibraryList.Loading)
-                emitAll(source)
+                emit(last?.takeIf { it.first == browse }?.second ?: LibraryList.Loading)
+                emitAll(source.onEach { if (it is LibraryList.Ready) last = browse to it })
             }.catch {
                 if (it !is Exception || it is CancellationException) throw it
                 emit(LibraryList.Failed)
             }
         }
-
-    fun show(view: LibraryView) = choose { LibraryBrowse(view = view, sort = it.sort, descending = it.descending) }
-
-    /** Albums open in disc and track order; other groups keep the chosen sort. */
-    fun open(group: LibraryGroup) = choose {
-        it.copy(opened = group, keyword = "", sort = if (it.view == LibraryView.ALBUMS) LibraryField.TRACK_NUMBER else it.sort)
     }
 
-    fun close() = choose {
-        it.copy(opened = null, keyword = "", sort = if (it.sort == LibraryField.TRACK_NUMBER) LibraryField.TITLE else it.sort)
+    /** Switching views keeps the list order chosen outside an opened group, not the group's own order. */
+    fun show(view: LibraryView) = choose {
+        val list = if (it.opened != null) beforeOpen ?: it else it
+        LibraryBrowse(view = view, sort = list.sort, descending = list.descending)
     }
+
+    /** The group list as it was before a group was opened, so closing returns to the same keyword and order. */
+    private var beforeOpen: LibraryBrowse? = null
+    private var beforeOpenOffset = 0
+
+    /** Albums open in ascending disc and track order; other groups keep the chosen sort. */
+    fun open(group: LibraryGroup) {
+        val list = choice.value.takeIf { it.opened == null } ?: return
+        beforeOpen = list
+        beforeOpenOffset = window.value.offset
+        choose {
+            if (it.view == LibraryView.ALBUMS) it.copy(opened = group, keyword = "", sort = LibraryField.TRACK_NUMBER, descending = false)
+            else it.copy(opened = group, keyword = "")
+        }
+    }
+
+    fun close() = choose(beforeOpenOffset) { beforeOpen ?: it.copy(opened = null) }
 
     fun search(keyword: String) = choose { it.copy(keyword = keyword) }
 
     fun sort(field: LibraryField, descending: Boolean) = choose { it.copy(sort = field, descending = descending) }
 
-    fun showFrom(firstVisible: Int) {
-        offset.value = windowOffset(firstVisible)
-    }
+    fun showFrom(firstVisible: Int) = window.update { it.copy(offset = windowOffset(firstVisible)) }
 
     fun retry() = attempt.update { it + 1 }
 
-    private fun choose(change: (LibraryBrowse) -> LibraryBrowse) {
+    private fun choose(offset: Int = 0, change: (LibraryBrowse) -> LibraryBrowse) {
         val next = change(choice.value)
         if (next == choice.value) return
-        offset.value = 0
+        window.value = Window(next, offset)
         choice.value = next
     }
 }
