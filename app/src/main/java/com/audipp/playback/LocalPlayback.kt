@@ -136,10 +136,10 @@ internal class LocalPlayback(
     }
 
     /** Shows a restored or queue-only checkpoint without preparing the engine. */
-    fun restore(queue: PlaybackQueueRef, entryId: QueueEntryId?, positionMs: Long?) {
+    fun restore(queue: PlaybackQueueRef, entryId: QueueEntryId?, positionMs: Long?, error: PlaybackError?) {
         this.queue = queue
         publish(PlaybackSnapshot(0, PlaybackPhase.IDLE, currentEntryId = entryId,
-            positionMs = positionMs?.takeIf { entryId != null }))
+            positionMs = positionMs?.takeIf { entryId != null }, error = error))
     }
 
     /** The queue was edited without removing the current entry. */

@@ -163,7 +163,9 @@ class QueuePlaybackDeviceTest {
             awaitSnapshot { it.phase == PlaybackPhase.PLAYING && (it.positionMs ?: 0) > committed!!.positionMs!! + 500 }
             onMain { controller.pause() }
             awaitSnapshot { it.phase == PlaybackPhase.PAUSED }
-            SystemClock.sleep(1_000)
+            // Only a write made after the triggers were installed can report this.
+            awaitCondition { "checkpointWrite=STORAGE_ERROR" in
+                shell("dumpsys activity service ${context.packageName}/${PlaybackService::class.java.name}") }
             assertEquals(committed, checkpoint())
             onMain { controller.play() }
             awaitSnapshot { it.phase == PlaybackPhase.PLAYING }
@@ -203,6 +205,25 @@ class QueuePlaybackDeviceTest {
         val playing = awaitSnapshot { it.phase == PlaybackPhase.PLAYING }
         assertEquals(c.entryId, playing.currentEntryId)
         assertSessionAgrees()
+    }
+
+    @Test
+    fun seekingToTheEndWhilePausedStartsNothing() {
+        val a = entry("a")
+        val b = entry("b")
+        seed(a to 3_000, b to 3_000)
+        assertEquals(SessionResult.RESULT_SUCCESS, play(a).resultCode)
+        awaitSnapshot { it.phase == PlaybackPhase.PLAYING && (it.positionMs ?: 0) >= 500 }
+        onMain { controller.pause() }
+        val paused = awaitSnapshot { it.phase == PlaybackPhase.PAUSED && it.durationMs != null }
+
+        onMain { controller.seekTo(paused.durationMs!!) }
+        SystemClock.sleep(4_000)
+
+        val after = snapshot()
+        assertEquals("$after", PlaybackPhase.PAUSED, after.phase)
+        assertEquals("$after", a.entryId, after.currentEntryId)
+        assertFalse(onMain { controller.playWhenReady })
     }
 
     private fun entry(name: String) = QueueEntry(QueueEntryId("$run-$name"), VariantId("$run-$name"))
@@ -288,8 +309,7 @@ class QueuePlaybackDeviceTest {
 
     private fun <T> onMain(block: () -> T): T = runBlocking { withContext(Dispatchers.Main) { block() } }
 
-    private fun shell(command: String) {
+    private fun shell(command: String): String =
         android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command))
-            .use { it.readBytes() }
-    }
+            .use { String(it.readBytes()) }
 }

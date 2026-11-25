@@ -36,7 +36,12 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Collections
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -71,7 +76,7 @@ class PlaybackQueueServiceTest {
     private val controllers = mutableListOf<MediaController>()
     private val opened: MutableList<String> = Collections.synchronizedList(mutableListOf())
     private val denied = mutableSetOf<String>()
-    private var beforeOpen: (String) -> Unit = {}
+    @Volatile private var beforeOpen: (String) -> Unit = {}
     private val database: LibraryDatabase get() = service.libraryDatabase
     private val queues get() = database.queueDao()
 
@@ -94,6 +99,7 @@ class PlaybackQueueServiceTest {
 
     @After
     fun destroyService() {
+        outcomeWatch?.cancel()
         controllers.forEach { it.release() }
         lifecycle.destroy()
         shadowOf(Looper.getMainLooper()).idle()
@@ -271,6 +277,304 @@ class PlaybackQueueServiceTest {
         assertSessionAgreesWithSnapshot()
     }
 
+    @Test
+    fun pauseWhileTheRestoredItemResolvesKeepsTheResumePoint() {
+        seedQueue(mapOf(a to 3_000, b to 1_000))
+        val committed = playAndPause(a)
+        restartService()
+        advanceUntil { snapshot().currentEntryId == a.entryId }
+
+        val gate = holdNextOpen("a")
+        controller.play()
+        advanceUntil { gate.reached() && snapshot().phase == PlaybackPhase.RESOLVING }
+        controller.pause()
+        advanceUntil { snapshot().phase == PlaybackPhase.IDLE && snapshot().currentEntryId == null }
+        gate.release()
+        idle(500)
+
+        assertCheckpoint(a, committed, 1)
+    }
+
+    @Test
+    fun editAndStopAfterAnErrorKeepTheResumePoint() {
+        seedQueue(mapOf(a to 3_000, b to 1_000))
+        val committed = playAndPause(a)
+        playback.fail(playbackError(ErrorDomain.SOURCE_IO, "INJECTED", true))
+        advanceUntil { snapshot().phase == PlaybackPhase.ERROR }
+
+        assertEquals(QueueEditResult.Updated(2), edit(1, listOf(b, a)))
+        advanceUntil { snapshot().queue == PlaybackQueueRef(queueId, 2) }
+        idle(500)
+        assertCheckpoint(a, committed, 2)
+
+        controller.stop()
+        advanceUntil { snapshot().phase == PlaybackPhase.IDLE }
+        idle(500)
+        assertCheckpoint(a, committed, 2)
+    }
+
+    @Test
+    fun editAfterTheNextEntryFailedKeepsTheCommittedResumePoint() {
+        seedQueue(mapOf(a to 300, b to 1_000))
+        denied += "b"
+        assertEquals(SessionResult.RESULT_SUCCESS, await(play(a, 1)).resultCode)
+        advanceUntil { snapshot().phase == PlaybackPhase.ERROR && checkpoint()?.positionMs != null }
+        val before = checkpoint()!!
+        assertEquals(a.entryId.value, before.entryId)
+
+        assertEquals(QueueEditResult.Updated(2), edit(1, listOf(b, a)))
+        advanceUntil { snapshot().queue == PlaybackQueueRef(queueId, 2) }
+        idle(500)
+        assertCheckpoint(a, before.positionMs!!, 2)
+    }
+
+    @Test
+    fun stopBeforeTheSeekPositionIsObservedKeepsTheResumePoint() {
+        seedQueue(mapOf(a to 3_000, b to 1_000))
+        val committed = playAndPause(a)
+
+        // Only the main looper runs, so the stop arrives while the seek position is still unobserved.
+        controller.seekTo(2_000)
+        controller.stop()
+        shadowOf(Looper.getMainLooper()).idle()
+        advanceUntil { snapshot().phase == PlaybackPhase.IDLE }
+        idle(500)
+
+        assertCheckpoint(a, committed, 1)
+    }
+
+    @Test
+    fun staleRequestDuringTheNextSearchLeavesTheAdvanceRunning() {
+        seedQueue(mapOf(a to 300, b to 1_000))
+        val gate = holdNextOpen("b")
+        assertEquals(SessionResult.RESULT_SUCCESS, await(play(a, 1)).resultCode)
+        advanceUntil { gate.reached() }
+
+        assertEquals(SessionError.ERROR_INVALID_STATE, await(play(b, 0)).resultCode)
+        gate.release()
+
+        advanceUntil { snapshot().currentEntryId == b.entryId && snapshot().phase == PlaybackPhase.PLAYING }
+    }
+
+    @Test
+    fun staleRequestDuringResolutionLeavesThatStartRunning() {
+        seedQueue(mapOf(a to 1_000, b to 1_000))
+        val gate = holdNextOpen("a")
+        val first = play(a, 1)
+        advanceUntil { gate.reached() }
+
+        assertEquals(SessionError.ERROR_INVALID_STATE, await(play(b, 0)).resultCode)
+        gate.release()
+
+        assertEquals(SessionResult.RESULT_SUCCESS, await(first).resultCode)
+        advanceUntil { snapshot().currentEntryId == a.entryId && snapshot().phase == PlaybackPhase.PLAYING }
+    }
+
+    @Test
+    fun seekingToTheEndWhilePausedStartsNothing() {
+        seedQueue(mapOf(a to 3_000, b to 1_000))
+        playAndPause(a)
+
+        controller.seekTo(snapshot().durationMs!!)
+        idle(1_500)
+
+        assertEquals(PlaybackPhase.PAUSED, snapshot().phase)
+        assertEquals(a.entryId, snapshot().currentEntryId)
+        assertFalse(rawPlayer.playWhenReady)
+        assertFalse("b" in opened)
+    }
+
+    @Test
+    fun pauseDuringTheNextSearchPreparesTheNextEntryPaused() {
+        seedQueue(mapOf(a to 300, b to 1_000))
+        val gate = holdNextOpen("b")
+        assertEquals(SessionResult.RESULT_SUCCESS, await(play(a, 1)).resultCode)
+        advanceUntil { gate.reached() && snapshot().phase == PlaybackPhase.ADVANCING }
+
+        controller.pause()
+        advanceUntil { !rawPlayer.playWhenReady }
+        gate.release()
+
+        advanceUntil { snapshot().currentEntryId == b.entryId && snapshot().phase == PlaybackPhase.PAUSED }
+        idle(500)
+        assertEquals(PlaybackPhase.PAUSED, snapshot().phase)
+        assertFalse(rawPlayer.playWhenReady)
+    }
+
+    @Test
+    fun routeChangeDuringTheNextSearchSearchesAgain() {
+        seedQueue(mapOf(a to 300, b to 1_000))
+        val gate = holdNextOpen("b")
+        assertEquals(SessionResult.RESULT_SUCCESS, await(play(a, 1)).resultCode)
+        advanceUntil { gate.reached() }
+
+        playback.onRouteRevisionChanged(1_000)
+        gate.release()
+
+        advanceUntil { snapshot().currentEntryId == b.entryId && snapshot().phase == PlaybackPhase.PLAYING }
+    }
+
+    @Test
+    fun routeChangeDuringTheRetriedSearchStopsInsteadOfStayingAdvancing() {
+        seedQueue(mapOf(a to 300, b to 1_000))
+        val first = holdNextOpen("b")
+        assertEquals(SessionResult.RESULT_SUCCESS, await(play(a, 1)).resultCode)
+        advanceUntil { first.reached() }
+
+        playback.onRouteRevisionChanged(1_000)
+        val second = holdNextOpen("b")
+        first.release()
+        advanceUntil { second.reached() }
+        playback.onRouteRevisionChanged(1_001)
+        second.release()
+
+        advanceUntil { snapshot().phase == PlaybackPhase.IDLE }
+        assertEquals(0, rawPlayer.mediaItemCount)
+    }
+
+    @Test
+    fun restartingTheSameEntrySavesItsNewStartingPoint() {
+        seedQueue(mapOf(a to 3_000, b to 1_000))
+        assertEquals(SessionResult.RESULT_SUCCESS, await(play(a, 1)).resultCode)
+        advanceUntil { snapshot().phase == PlaybackPhase.PLAYING && (snapshot().positionMs ?: 0) >= 1_000 }
+        controller.stop()
+        advanceUntil { (checkpoint()?.positionMs ?: 0) >= 1_000 }
+
+        assertEquals(SessionResult.RESULT_SUCCESS, await(play(a, 1)).resultCode)
+        advanceUntil { snapshot().phase == PlaybackPhase.PLAYING && snapshot().positionMs != null }
+        idle(200)
+
+        assertTrue("${checkpoint()}", checkpoint()!!.positionMs!! < 500)
+    }
+
+    @Test
+    fun restoreReportsWhyThePermissionLostEntryCannotPlayYet() {
+        seedQueue(mapOf(a to 3_000, b to 1_000))
+        val committed = playAndPause(a)
+        denied += "a"
+
+        restartService()
+        advanceUntil { snapshot().error != null }
+
+        assertEquals(PlaybackPhase.IDLE, snapshot().phase)
+        assertEquals(a.entryId, snapshot().currentEntryId)
+        assertEquals(committed, snapshot().positionMs)
+        assertEquals(ErrorDomain.PERMISSION_DENIED, snapshot().error?.domain)
+    }
+
+    @Test
+    fun restoreReportsAMissingDocumentWithTheQueueOnly() {
+        seedQueue(mapOf(a to 3_000, b to 1_000))
+        playAndPause(a)
+        assertTrue(File(service.cacheDir, "a.wav").delete())
+
+        restartService()
+        advanceUntil { snapshot().error != null }
+
+        assertEquals(PlaybackPhase.IDLE, snapshot().phase)
+        assertNull(snapshot().currentEntryId)
+        assertEquals("SOURCE_MISSING", snapshot().error?.code)
+        assertEquals(PlaybackQueueRef(queueId, 1), snapshot().queue)
+    }
+
+    @Test
+    fun staleCheckpointOfAPauseIsResentWithTheCommittedRevision() {
+        seedQueue(mapOf(a to 3_000, b to 1_000))
+        assertEquals(SessionResult.RESULT_SUCCESS, await(play(a, 1)).resultCode)
+        advanceUntil { snapshot().phase == PlaybackPhase.PLAYING && (snapshot().positionMs ?: 0) >= 500 }
+        val outcomes = reviseQueueBehindTheService()
+
+        controller.pause()
+        advanceUntil { checkpoint()?.queueRevision == 2L && snapshot().queue == PlaybackQueueRef(queueId, 2) }
+
+        assertTrue(CheckpointWriteOutcome.STALE_QUEUE in outcomes)
+        val paused = snapshot().positionMs!!
+        assertTrue("${checkpoint()} vs $paused", kotlin.math.abs(checkpoint()!!.positionMs!! - paused) <= 100)
+    }
+
+    @Test
+    fun staleCheckpointOfAStopCarriesTheResumePointToTheCommittedRevision() {
+        seedQueue(mapOf(a to 3_000, b to 1_000))
+        assertEquals(SessionResult.RESULT_SUCCESS, await(play(a, 1)).resultCode)
+        advanceUntil { snapshot().phase == PlaybackPhase.PLAYING && (snapshot().positionMs ?: 0) >= 500 }
+        val outcomes = reviseQueueBehindTheService()
+
+        controller.stop()
+        advanceUntil { checkpoint()?.queueRevision == 2L }
+
+        assertTrue(CheckpointWriteOutcome.STALE_QUEUE in outcomes)
+        assertEquals(a.entryId.value, checkpoint()?.entryId)
+        assertTrue("${checkpoint()}", checkpoint()!!.positionMs!! >= 500)
+    }
+
+    @Test
+    fun removingThePlayingEntryThatTheCheckpointLagsBehindStops() {
+        seedQueue(mapOf(a to 3_000, b to 1_000))
+        assertEquals(SessionResult.RESULT_SUCCESS, await(play(a, 1)).resultCode)
+        advanceUntil { snapshot().phase == PlaybackPhase.PLAYING && checkpoint()?.entryId == a.entryId.value }
+        // Without a saved entry the DAO cannot require the stop, so the service has to notice the removal.
+        database.openHelper.writableDatabase.execSQL("DELETE FROM playback_checkpoint")
+
+        assertEquals(QueueEditResult.Updated(2), edit(1, listOf(b)))
+
+        advanceUntil { snapshot().phase == PlaybackPhase.IDLE }
+        idle(500)
+        assertNull(snapshot().currentEntryId)
+        assertEquals(0, rawPlayer.mediaItemCount)
+        assertNull(checkpoint()?.entryId)
+        assertFalse("b" in opened)
+    }
+
+    private fun playAndPause(entry: QueueEntry): Long {
+        assertEquals(SessionResult.RESULT_SUCCESS, await(play(entry, 1)).resultCode)
+        advanceUntil { snapshot().phase == PlaybackPhase.PLAYING && (snapshot().positionMs ?: 0) >= 500 }
+        controller.pause()
+        advanceUntil { snapshot().phase == PlaybackPhase.PAUSED && snapshot().positionMs != null }
+        val paused = snapshot().positionMs!!
+        advanceUntil { checkpoint()?.positionMs?.let { kotlin.math.abs(it - paused) <= 100 } == true }
+        return checkpoint()!!.positionMs!!
+    }
+
+    private fun assertCheckpoint(entry: QueueEntry, positionMs: Long, revision: Long) {
+        val saved = checkpoint()!!
+        assertEquals(listOf(entry.entryId.value, positionMs, revision),
+            listOf(saved.entryId, saved.positionMs, saved.queueRevision))
+    }
+
+    /** A raw write that the revision observer does not see, so only a rejected checkpoint reveals it. */
+    private fun reviseQueueBehindTheService(): List<CheckpointWriteOutcome> {
+        ReflectionHelpers.getField<Job>(service, "queueWatch").cancel()
+        val outcomes = Collections.synchronizedList(mutableListOf<CheckpointWriteOutcome>())
+        outcomeWatch = CoroutineScope(Dispatchers.Unconfined).launch {
+            journal.lastWrite.collect { result -> result?.let { outcomes += it.outcome } }
+        }
+        database.openHelper.writableDatabase.execSQL("UPDATE queues SET revision = 2 WHERE queue_id = '$queueId'")
+        return outcomes
+    }
+
+    private class Gate {
+        private val entered = CountDownLatch(1)
+        private val open = CountDownLatch(1)
+        fun block() {
+            entered.countDown()
+            open.await(10, TimeUnit.SECONDS)
+        }
+        fun reached() = entered.count == 0L
+        fun release() = open.countDown()
+    }
+
+    /** Holds the next open of [name] on its IO thread until the gate is released. */
+    private fun holdNextOpen(name: String): Gate {
+        val gate = Gate()
+        beforeOpen = { opening ->
+            if (opening == name) {
+                beforeOpen = {}
+                gate.block()
+            }
+        }
+        return gate
+    }
+
     private fun startService() {
         lifecycle = Robolectric.buildService(PlaybackService::class.java).create()
         service = lifecycle.get()
@@ -346,6 +650,8 @@ class PlaybackQueueServiceTest {
         assertEquals(Player.STATE_READY, controller.playbackState)
     }
 
+    private val playback: LocalPlayback get() = ReflectionHelpers.getField(service, "playback")
+    private var outcomeWatch: Job? = null
     private val rawPlayer: ExoPlayer get() = ReflectionHelpers.getField(service, "player")
     private val journal: PlaybackCheckpointJournal get() = ReflectionHelpers.getField(service, "checkpoints")
 

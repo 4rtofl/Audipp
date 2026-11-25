@@ -52,6 +52,7 @@ import com.audipp.domain.model.PlaybackError
 import com.audipp.domain.model.PlaybackPhase
 import com.audipp.domain.model.PlaybackQueueRef
 import com.audipp.domain.model.PlaybackSnapshot
+import com.audipp.domain.model.QueueEntry
 import com.audipp.domain.model.QueueEntryId
 import com.audipp.domain.model.TrackVariant
 import com.audipp.domain.model.TransitionId
@@ -64,6 +65,8 @@ import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
+import java.io.FileDescriptor
+import java.io.PrintWriter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -89,6 +92,9 @@ class PlaybackService : MediaLibraryService() {
     private lateinit var historyJournal: PlaybackHistoryJournal
     private lateinit var audioManager: AudioManager
     private var preparation: Job? = null
+    // A queue request is checked before it may cancel anything, so commands are ordered by arrival.
+    private var commandCount = 0L
+    private var acceptedCommand = 0L
     private lateinit var queues: QueueDao
     private lateinit var library: LibraryDao
     private lateinit var orchestrator: QueueOrchestrator
@@ -148,7 +154,6 @@ class PlaybackService : MediaLibraryService() {
             }
 
             override fun reset() {
-                playWhenPrepared = true
                 player.pause()
                 player.stop()
                 player.clearMediaItems()
@@ -197,6 +202,7 @@ class PlaybackService : MediaLibraryService() {
             }
 
             override fun handleStop(): ListenableFuture<*> {
+                acceptedCommand = ++commandCount
                 stopPlayback()
                 return Futures.immediateVoidFuture()
             }
@@ -248,7 +254,7 @@ class PlaybackService : MediaLibraryService() {
             }
         }
         scope.launch {
-            var savedEntry: QueueEntryId? = null
+            var savedTransition: TransitionId? = null
             var previousPhase: PlaybackPhase? = null
             playback.snapshot.collect { snapshot ->
                 if (snapshot.queue?.queueId != watchedQueue) watchQueue(snapshot.queue?.queueId)
@@ -256,11 +262,10 @@ class PlaybackService : MediaLibraryService() {
                 previousPhase = snapshot.phase
                 val sample = checkpointSample(snapshot)
                 // Stop saves its own sample; restored and switching IDLE states are not confirmed events.
-                if (sample == null || snapshot.phase == PlaybackPhase.IDLE || snapshot.positionMs == null) {
-                    return@collect
-                }
-                if (snapshot.currentEntryId != savedEntry || paused || seekCheckpoint) {
-                    savedEntry = snapshot.currentEntryId
+                if (sample == null || snapshot.phase == PlaybackPhase.IDLE) return@collect
+                val transition = currentTransition()
+                if (transition != savedTransition || paused || seekCheckpoint) {
+                    savedTransition = transition
                     seekCheckpoint = false
                     stoppedSample = null
                     checkpoints.saveConfirmed(sample)
@@ -281,7 +286,7 @@ class PlaybackService : MediaLibraryService() {
             if (playback.snapshot.value.revision != before || playback.queue != null) return@launch
             val queue = restored.queue.queue
             playback.restore(PlaybackQueueRef(queue.queueId, queue.revision), restored.entry?.entryId,
-                restored.positionMs)
+                restored.positionMs, restored.failure?.toPlaybackError())
         }
         scope.launch {
             while (isActive) {
@@ -292,6 +297,11 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
         }
+    }
+
+    // `adb shell dumpsys activity service` shows whether the last resume point reached storage.
+    override fun dump(fd: FileDescriptor, writer: PrintWriter, args: Array<out String>?) {
+        writer.println("checkpointWrite=${checkpoints.lastWrite.value?.outcome}")
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
@@ -344,12 +354,17 @@ class PlaybackService : MediaLibraryService() {
         val entryId = playback.snapshot.value.currentEntryId ?: return
         preparation?.cancel()
         preparation = scope.launch {
-            val result = orchestrator.advance(queue.queueId, entryId, QueueAdvanceTrigger.NATURAL_END,
+            suspend fun search() = orchestrator.advance(queue.queueId, entryId, QueueAdvanceTrigger.NATURAL_END,
                 UnplayableItemPolicy.ASK, playback.resolutionContext)
+            var result = search()
+            // A route change cancels the search but keeps the transition; search once more with the new context.
+            if (result == QueueAdvanceResult.Cancelled && playback.isCurrentTransition(transition)) result = search()
             if (!playback.isCurrentTransition(transition)) return@launch
             when (result) {
                 is QueueAdvanceResult.Ready -> {
-                    val error = startQueueEntry(result.queueId, result.entry.entryId, result.queueRevision)
+                    // A pause during the search stays on the ended player, so the next item is prepared paused.
+                    val error = startQueueEntry(result.queueId, result.entry.entryId, result.queueRevision,
+                        playRequested = { player.playWhenReady })
                     if (error != null && playback.isCurrentTransition(transition)) {
                         if (error.code == STALE_QUEUE) playback.stop() else playback.fail(error, result.entry.entryId)
                     }
@@ -358,12 +373,14 @@ class PlaybackService : MediaLibraryService() {
                     playback.fail(result.failure.reason.toPlaybackError(), result.failure.entryId)
                 is QueueAdvanceResult.TimedOut ->
                     playback.fail(ResolutionFailure.TIMEOUT.toPlaybackError(), result.entryId)
-                QueueAdvanceResult.Cancelled -> Unit
-                QueueAdvanceResult.QueueEnded, QueueAdvanceResult.QueueChanged,
+                QueueAdvanceResult.Cancelled, QueueAdvanceResult.QueueEnded, QueueAdvanceResult.QueueChanged,
                 is QueueAdvanceResult.NoPlayableItem -> playback.stop()
             }
         }
     }
+
+    private suspend fun queueEntry(queueId: String, entryId: QueueEntryId, revision: Long): QueueEntry? =
+        queues.read(queueId)?.takeIf { it.queue.revision == revision }?.entries?.firstOrNull { it.entryId == entryId }
 
     /** Rejections before the engine is touched leave the current playback as it is. */
     private suspend fun startQueueEntry(
@@ -371,16 +388,17 @@ class PlaybackService : MediaLibraryService() {
         entryId: QueueEntryId,
         revision: Long,
         positionMs: Long? = null,
+        playRequested: () -> Boolean = { true },
     ): PlaybackError? {
-        val stored = queues.read(queueId)
-        val entry = stored?.entries?.firstOrNull { it.entryId == entryId }
-        if (stored?.queue?.revision != revision || entry == null) {
-            return playbackError(ErrorDomain.DATABASE, STALE_QUEUE, true)
-        }
+        val entry = queueEntry(queueId, entryId, revision) ?: return staleQueueError()
         val variant = library.trackVariant(entry.variantId) ?: return ResolutionFailure.SOURCE_MISSING.toPlaybackError()
         stoppedSample = null
+        // Read last, after the suspending lookups, so a pause that arrived meanwhile is kept.
+        playWhenPrepared = playRequested()
         return playback.start(entryId, variant, PlaybackQueueRef(queueId, revision), positionMs)
     }
+
+    private fun staleQueueError() = playbackError(ErrorDomain.DATABASE, STALE_QUEUE, true)
 
     private fun resumeRestored() {
         val snapshot = playback.snapshot.value
@@ -427,9 +445,10 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    // Without an observed position (resolving, error, seeking) a write would erase the saved resume point.
     private fun checkpointSample(snapshot: PlaybackSnapshot): PlaybackCheckpointSample? {
         val queue = snapshot.queue ?: return null
-        if (snapshot.currentEntryId == null) return null
+        if (snapshot.currentEntryId == null || snapshot.positionMs == null) return null
         return PlaybackCheckpointSample(queue.queueId, queue.revision, snapshot)
     }
 
@@ -570,12 +589,14 @@ class PlaybackService : MediaLibraryService() {
                 return Futures.immediateFuture(errorResult(playbackError(ErrorDomain.FORMAT_UNSUPPORTED,
                     "INVALID_LOCAL_REQUEST", false, UserAction.RESELECT_SOURCE), SessionError.ERROR_BAD_VALUE))
             }
+            acceptedCommand = ++commandCount
             preparation?.cancel()
             stoppedSample = null
             val future = SettableFuture.create<SessionResult>()
             preparation = scope.launch {
                 try {
                     updateEngineSnapshot()
+                    playWhenPrepared = true
                     val error = playback.start(request.first, request.second)
                     future.set(if (error == null) SessionResult(SessionResult.RESULT_SUCCESS) else errorResult(error))
                 } catch (_: CancellationException) {
@@ -594,19 +615,32 @@ class PlaybackService : MediaLibraryService() {
                 return Futures.immediateFuture(errorResult(playbackError(ErrorDomain.FORMAT_UNSUPPORTED,
                     "INVALID_QUEUE_REQUEST", false), SessionError.ERROR_BAD_VALUE))
             }
-            preparation?.cancel()
+            val command = ++commandCount
             val future = SettableFuture.create<SessionResult>()
-            preparation = scope.launch {
-                try {
-                    updateEngineSnapshot()
-                    val error = startQueueEntry(queueId, QueueEntryId(entryId), revision)
-                    future.set(when {
-                        error == null -> SessionResult(SessionResult.RESULT_SUCCESS)
-                        error.code == STALE_QUEUE -> errorResult(error, SessionError.ERROR_INVALID_STATE)
-                        else -> errorResult(error)
-                    })
-                } catch (_: CancellationException) {
+            fun reject(error: PlaybackError) = future.set(
+                if (error.code == STALE_QUEUE) errorResult(error, SessionError.ERROR_INVALID_STATE)
+                else errorResult(error),
+            )
+            scope.launch {
+                // A stale request is refused here, before it can cancel what is being prepared.
+                if (queueEntry(queueId, QueueEntryId(entryId), revision) == null) {
+                    reject(staleQueueError())
+                    return@launch
+                }
+                if (command < acceptedCommand) {
                     future.set(SessionResult(SessionError.INFO_CANCELLED))
+                    return@launch
+                }
+                acceptedCommand = command
+                preparation?.cancel()
+                preparation = scope.launch {
+                    try {
+                        updateEngineSnapshot()
+                        val error = startQueueEntry(queueId, QueueEntryId(entryId), revision)
+                        if (error == null) future.set(SessionResult(SessionResult.RESULT_SUCCESS)) else reject(error)
+                    } catch (_: CancellationException) {
+                        future.set(SessionResult(SessionError.INFO_CANCELLED))
+                    }
                 }
             }
             return future
