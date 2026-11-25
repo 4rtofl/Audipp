@@ -3979,5 +3979,104 @@
       "docs/evidence/issue-84/ui-verification.md"
     ],
     "limitations": "エミュレーターの結果を実機の合格として扱わない。TEST-UI-01・TEST-LIB-02 全体の合格ではない。"
+  },
+  {
+    "case_id": "E02-11-queue-session-robolectric-2026-11-25",
+    "requirement_ids": [
+      "FR-PLY-01",
+      "FR-PLY-02",
+      "FR-PLY-03",
+      "FR-PLY-04",
+      "NFR-REL-03"
+    ],
+    "test_ids": [
+      "TEST-PLY-01",
+      "TEST-PLY-02",
+      "TEST-RESTORE-01"
+    ],
+    "commit": "6ed99a49ef019c343a3fa3eb2b5ee3c442e59f45",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "PlaybackQueueServiceTest の9件が Robolectric API 23・35 で各9件成功した（計18件）。実 Room・MediaController・ContentProvider と接続し、自然終了で次の項目、キューの末尾、古い revision と未知の項目の拒否、再生中の編集に沿った次曲、探索中の revision 変更による候補の破棄、現在の項目の削除と停止、一時停止の保存と Service の作り直し後の復元・再開、SQLite trigger による保存失敗で直前のコミットを保持、次の項目での権限の喪失、連続した再生要求を確かめた。同じ commit の assembleDebug・testDebugUnitTest（550件、失敗0、既存のスキップ1）・lintDebug が成功した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/playback/PlaybackQueueServiceTest.kt",
+      "docs/contracts/queue-session-v1.md"
+    ],
+    "limitations": "Robolectric は模擬の Android framework で、端末での試験ではない。音声出力は ShadowAudioTrack の模擬時計で進めた。"
+  },
+  {
+    "case_id": "E02-11-queue-session-emulator-2026-11-25",
+    "requirement_ids": [
+      "FR-PLY-01",
+      "FR-PLY-02",
+      "FR-PLY-03",
+      "FR-PLY-04",
+      "NFR-REL-03"
+    ],
+    "test_ids": [
+      "TEST-PLY-01",
+      "TEST-PLY-02",
+      "TEST-RESTORE-01"
+    ],
+    "commit": "6ed99a49ef019c343a3fa3eb2b5ee3c442e59f45",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "API 23（emulator-5580、Android 6.0）と API 36（emulator-5582、Android 16）の x86_64 エミュレーターで QueuePlaybackDeviceTest の6件が各6件成功した。実 Service・MediaSession・アプリの Room と別プロセスの ContentProvider を使い、画面 OFF のまま次の項目が始まること、通知の一時停止・再生の action、現在の項目の削除、保存失敗、次の項目での権限の喪失、連続した再生要求を確かめ、Snapshot と Session の曲・位置・状態の一致を検査した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/playback/QueuePlaybackDeviceTest.kt",
+      "app/src/androidTest/java/com/audipp/playback/FixtureAudioProvider.java",
+      "docs/contracts/queue-session-v1.md"
+    ],
+    "limitations": "エミュレーターは -no-audio で起動しており、成功は音声が出力に届いたことを示さない。fixture は試験 APK の ContentProvider で、SAF の picker や永続的な許可は通らない。"
+  },
+  {
+    "case_id": "E02-11-restore-after-process-stop-emulator-2026-11-25",
+    "requirement_ids": [
+      "FR-PLY-04",
+      "NFR-REL-03"
+    ],
+    "test_ids": [
+      "TEST-RESTORE-01"
+    ],
+    "commit": "6ed99a49ef019c343a3fa3eb2b5ee3c442e59f45",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "API 23・36 のエミュレーターで QueueRestoreProcessDeathTest の2段階が成功した。restorePhase 1 で一時停止点を保存したまま instrumentation を終え、Android がアプリを終了コールバックなしで強制停止した（API 36 では直後にアプリのプロセスがないことを確認）。restorePhase 2 の新しいプロセスで、保存した項目・位置・revision を IDLE として示し、Player に項目を載せず、play で保存位置以降から再開した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/playback/QueueRestoreProcessDeathTest.kt",
+      "docs/contracts/queue-session-v1.md"
+    ],
+    "limitations": "停止は instrumentation の終了に伴う強制停止で、OS によるメモリ不足時の終了ではない。API 23 では pidof が使えずプロセスの消滅は直接確認していない。定期保存だけに頼る再生中の強制終了と、I/O 負荷時の巻戻り幅は測っていない。"
+  },
+  {
+    "case_id": "E02-11-queue-session-hardware",
+    "requirement_ids": [
+      "FR-PLY-01",
+      "FR-PLY-02",
+      "FR-PLY-03",
+      "FR-PLY-04",
+      "NFR-REL-03"
+    ],
+    "test_ids": [
+      "TEST-PLY-01",
+      "TEST-PLY-02",
+      "TEST-RESTORE-01"
+    ],
+    "commit": "6ed99a49ef019c343a3fa3eb2b5ee3c442e59f45",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "reason": "物理端末（Galaxy S25・FiiO M21・S20）、実際の SAF の許可、実際の通話・音声フォーカス・BT/USB の切断、実音声の出力、DAC では試験していない。ADB シリアルの指定がないため端末を操作していない。",
+    "evidence": [
+      "docs/contracts/queue-session-v1.md"
+    ],
+    "limitations": "エミュレーターの成功を実機や実音声出力の合格として扱わない。"
   }
 ]
