@@ -3985,53 +3985,49 @@
     "requirement_ids": [
       "FR-PLY-01",
       "FR-PLY-02",
-      "FR-PLY-03",
       "FR-PLY-04",
       "NFR-REL-03"
     ],
     "test_ids": [
       "TEST-PLY-01",
-      "TEST-PLY-02",
       "TEST-RESTORE-01"
     ],
-    "commit": "6ed99a49ef019c343a3fa3eb2b5ee3c442e59f45",
+    "commit": "05f40a0c8a43c4d0341e950acff8abbc5005709c",
     "stage": "CURRENT",
-    "permission": "NOT_REQUIRED",
     "outcome": "PASS",
     "execution": "EXECUTED",
-    "reason": "PlaybackQueueServiceTest の9件が Robolectric API 23・35 で各9件成功した（計18件）。実 Room・MediaController・ContentProvider と接続し、自然終了で次の項目、キューの末尾、古い revision と未知の項目の拒否、再生中の編集に沿った次曲、探索中の revision 変更による候補の破棄、現在の項目の削除と停止、一時停止の保存と Service の作り直し後の復元・再開、SQLite trigger による保存失敗で直前のコミットを保持、次の項目での権限の喪失、連続した再生要求を確かめた。同じ commit の assembleDebug・testDebugUnitTest（550件、失敗0、既存のスキップ1）・lintDebug が成功した。",
+    "permission": "NOT_REQUIRED",
+    "reason": "PlaybackQueueServiceTest の25件が Robolectric API 23・35 で各25件成功した（計50件）。実 Room・MediaController・ContentProvider と接続し、自然終了で次の項目、キューの末尾、古い revision の要求の拒否（探索中・解決中は進行中の処理を取り消さない）、編集に沿った次曲と候補の破棄、探索中の一時停止（次の項目を一時停止で準備）と経路 revision の変更（一度だけ再探索、再び取り消されたら停止）、位置が不明な間の編集・停止で再開位置を保つこと、同じ項目の再開始、一時停止と停止の保存が STALE_QUEUE になった場合の再送、現在の項目の削除と停止、復元と失敗理由、保存失敗、次の項目での権限の喪失、連続した再生要求を確かめた。同じ commit の assembleDebug・testDebugUnitTest（582件、失敗0、既存のスキップ1）・lintDebug が成功した。",
     "evidence": [
       "app/src/test/java/com/audipp/playback/PlaybackQueueServiceTest.kt",
       "docs/contracts/queue-session-v1.md"
     ],
-    "limitations": "Robolectric は模擬の Android framework で、端末での試験ではない。音声出力は ShadowAudioTrack の模擬時計で進めた。"
+    "limitations": "Robolectric は模擬の Android framework で、端末での試験ではない。音声出力は ShadowAudioTrack の模擬時計で進めた。通話、音声フォーカス、BT/USB の切断（TEST-PLY-02）は実行していない。"
   },
   {
     "case_id": "E02-11-queue-session-emulator-2026-11-25",
     "requirement_ids": [
       "FR-PLY-01",
       "FR-PLY-02",
-      "FR-PLY-03",
       "FR-PLY-04",
       "NFR-REL-03"
     ],
     "test_ids": [
       "TEST-PLY-01",
-      "TEST-PLY-02",
       "TEST-RESTORE-01"
     ],
-    "commit": "6ed99a49ef019c343a3fa3eb2b5ee3c442e59f45",
+    "commit": "05f40a0c8a43c4d0341e950acff8abbc5005709c",
     "stage": "CURRENT",
-    "permission": "NOT_REQUIRED",
     "outcome": "PASS",
     "execution": "EXECUTED",
-    "reason": "API 23（emulator-5580、Android 6.0）と API 36（emulator-5582、Android 16）の x86_64 エミュレーターで QueuePlaybackDeviceTest の6件が各6件成功した。実 Service・MediaSession・アプリの Room と別プロセスの ContentProvider を使い、画面 OFF のまま次の項目が始まること、通知の一時停止・再生の action、現在の項目の削除、保存失敗、次の項目での権限の喪失、連続した再生要求を確かめ、Snapshot と Session の曲・位置・状態の一致を検査した。",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23（emulator-5580、Android 6.0）と API 36（emulator-5582、Android 16）の x86_64 エミュレーターで QueuePlaybackDeviceTest の7件が各7件成功した。実 Service・MediaSession・アプリの Room と別プロセスの ContentProvider を使い、実行した範囲は、画面 OFF のまま次の項目が始まること、通知の一時停止・再生の action、現在の項目の削除、保存の失敗（dumpsys で STORAGE_ERROR を確認）、次の項目での権限の喪失、連続した再生要求、一時停止中の末尾シークで何も始まらないこと。Snapshot と Session の曲・位置・状態の一致を検査した。",
     "evidence": [
       "app/src/androidTest/java/com/audipp/playback/QueuePlaybackDeviceTest.kt",
       "app/src/androidTest/java/com/audipp/playback/FixtureAudioProvider.java",
       "docs/contracts/queue-session-v1.md"
     ],
-    "limitations": "エミュレーターは -no-audio で起動しており、成功は音声が出力に届いたことを示さない。fixture は試験 APK の ContentProvider で、SAF の picker や永続的な許可は通らない。"
+    "limitations": "未実施の範囲は、ロック画面、通話、音声フォーカス、BT/USB の切断（TEST-PLY-02）。エミュレーターは -no-audio で起動しており、成功は音声が出力に届いたことを示さない。fixture は試験 APK の ContentProvider で、SAF の picker や永続的な許可は通らない。"
   },
   {
     "case_id": "E02-11-restore-after-process-stop-emulator-2026-11-25",
@@ -4042,17 +4038,17 @@
     "test_ids": [
       "TEST-RESTORE-01"
     ],
-    "commit": "6ed99a49ef019c343a3fa3eb2b5ee3c442e59f45",
+    "commit": "05f40a0c8a43c4d0341e950acff8abbc5005709c",
     "stage": "CURRENT",
-    "permission": "NOT_REQUIRED",
     "outcome": "PASS",
     "execution": "EXECUTED",
-    "reason": "API 23・36 のエミュレーターで QueueRestoreProcessDeathTest の2段階が成功した。restorePhase 1 で一時停止点を保存したまま instrumentation を終え、Android がアプリを終了コールバックなしで強制停止した（API 36 では直後にアプリのプロセスがないことを確認）。restorePhase 2 の新しいプロセスで、保存した項目・位置・revision を IDLE として示し、Player に項目を載せず、play で保存位置以降から再開した。",
+    "permission": "NOT_REQUIRED",
+    "reason": "API 23・36 のエミュレーターで QueueRestoreProcessDeathTest の2段階が成功した。restorePhase 1 で一時停止点を保存したまま instrumentation を終え、Android がアプリを終了コールバックなしで強制停止した。restorePhase 2 の新しいプロセスで、保存した項目・位置・revision を IDLE として示し、Player に項目を載せず、play で保存位置以降から再開した。",
     "evidence": [
       "app/src/androidTest/java/com/audipp/playback/QueueRestoreProcessDeathTest.kt",
       "docs/contracts/queue-session-v1.md"
     ],
-    "limitations": "停止は instrumentation の終了に伴う強制停止で、OS によるメモリ不足時の終了ではない。API 23 では pidof が使えずプロセスの消滅は直接確認していない。定期保存だけに頼る再生中の強制終了と、I/O 負荷時の巻戻り幅は測っていない。"
+    "limitations": "停止は instrumentation の終了に伴う強制停止で、OS によるメモリ不足時の終了ではない。定期保存だけに頼る再生中の強制終了と、I/O 負荷時の巻戻り幅は測っていない。"
   },
   {
     "case_id": "E02-11-queue-session-hardware",
@@ -4068,15 +4064,34 @@
       "TEST-PLY-02",
       "TEST-RESTORE-01"
     ],
-    "commit": "6ed99a49ef019c343a3fa3eb2b5ee3c442e59f45",
+    "commit": "05f40a0c8a43c4d0341e950acff8abbc5005709c",
     "stage": "CURRENT",
-    "permission": "NOT_REQUIRED",
     "outcome": "NOT_RUN",
     "execution": "NOT_RUN",
-    "reason": "物理端末（Galaxy S25・FiiO M21・S20）、実際の SAF の許可、実際の通話・音声フォーカス・BT/USB の切断、実音声の出力、DAC では試験していない。ADB シリアルの指定がないため端末を操作していない。",
+    "permission": "NOT_REQUIRED",
+    "reason": "物理端末（Galaxy S25・FiiO M21・S20）、実際の SAF の許可、実音声の出力、DAC では試験していない。TEST-PLY-02 のロック画面、通話、音声フォーカス、BT/USB の切断は、エミュレーターでも実行していない。ADB シリアルの指定がないため端末を操作していない。",
     "evidence": [
       "docs/contracts/queue-session-v1.md"
     ],
     "limitations": "エミュレーターの成功を実機や実音声出力の合格として扱わない。"
+  },
+  {
+    "case_id": "E02-11-screen-off-wake-lock-foreground-service-hardware",
+    "requirement_ids": [
+      "FR-PLY-02"
+    ],
+    "test_ids": [
+      "TEST-PLY-02"
+    ],
+    "commit": "05f40a0c8a43c4d0341e950acff8abbc5005709c",
+    "stage": "CURRENT",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "permission": "NOT_REQUIRED",
+    "reason": "実機の画面 OFF で曲を切り替えるあいだ、wake lock と foreground service が保たれ、通知と再生が続くことは確かめていない。切替では Player の項目が一度空になる。",
+    "evidence": [
+      "docs/contracts/queue-session-v1.md"
+    ],
+    "limitations": "エミュレーターの画面 OFF の試験は wake lock と foreground service の状態を検査しておらず、この条件の代わりにならない。#82 の先行準備か実機試験で確認する。"
   }
 ]
