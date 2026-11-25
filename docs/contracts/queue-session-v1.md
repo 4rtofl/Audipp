@@ -64,8 +64,9 @@ Service の生成時に `restorePlaybackCheckpoint` を実行し、結果を IDL
 | 試験 | 環境 | 確認範囲 |
 | --- | --- | --- |
 | `PlaybackQueueServiceTest`（9 件） | Robolectric API 23 / 35、実 Room・MediaController・ContentProvider | 自然終了で次の項目、キューの末尾、古い revision・未知の項目の拒否、再生中の編集に沿った次曲、探索中の revision 変更による候補の破棄、現在の項目の削除と停止、一時停止の保存と Service の作り直し後の復元・再開、保存失敗（SQLite trigger）で直前のコミットを保持、次の項目での権限の喪失、連続した再生要求 |
-| `QueuePlaybackDeviceTest`（7 件） | Android API 23 / 36 のエミュレーター。実 Service、MediaSession、アプリの Room、別プロセスの ContentProvider | 画面 OFF のまま次の項目が始まること、通知の一時停止・再生の action、現在の項目の削除、Service の作り直し後の復元・再開、保存失敗、次の項目での権限の喪失、連続した再生要求。いずれも Snapshot と Session の曲・位置・状態の一致を確かめる |
+| `QueuePlaybackDeviceTest`（6 件） | Android API 23 / 36 のエミュレーター。実 Service、MediaSession、アプリの Room、別プロセスの ContentProvider | 画面 OFF のまま次の項目が始まること、通知の一時停止・再生の action、現在の項目の削除、保存失敗、次の項目での権限の喪失、連続した再生要求。いずれも Snapshot と Session の曲・位置・状態の一致を確かめる |
+| `QueueRestoreProcessDeathTest`（2 段階） | 同上。`-e restorePhase 1` と `2` の 2 回の instrumentation 実行 | 1 回目で一時停止点を保存したまま実行を終え、Android がアプリを終了コールバックなしで強制停止する。2 回目の新しいプロセスで、保存した項目・位置・revision を IDLE として示し、Player に項目を載せず、play で保存位置から再開すること |
 
 結果と対象の commit は[試験結果](../traceability/results.json)に記録する。エミュレーターでの成功は、音声が出力に届いたことを示さない。
 
-計装試験の fixture は試験 APK の通常の ContentProvider で、SAF の picker や DocumentsProvider の永続的な許可は通らない。Service の作り直しは `stopService` と再接続で行い、プロセスの強制終了は試していない。物理端末、実際の通話・音声フォーカス・BT/USB の切断、実音声の出力、DAC は未実施である。
+計装試験の fixture は試験 APK の通常の ContentProvider で、SAF の picker や DocumentsProvider の永続的な許可は通らない。API 36 ではシステムがメディアのブラウザサービスにバインドし続けるため、`stopService` では Service が破棄されなかった。このため、復元は instrumentation の終了に伴う強制停止をまたいで試した。通常の `connectedDebugAndroidTest` では、この 2 段階の試験はスキップされる。物理端末、実際の通話・音声フォーカス・BT/USB の切断、実音声の出力、DAC は未実施である。

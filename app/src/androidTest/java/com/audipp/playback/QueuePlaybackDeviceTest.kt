@@ -144,36 +144,6 @@ class QueuePlaybackDeviceTest {
     }
 
     @Test
-    fun aRecreatedServiceRestoresThePausedPointWithoutPlayingAndPlayResumesThere() {
-        val a = entry("a")
-        seed(a to 20_000)
-        assertEquals(SessionResult.RESULT_SUCCESS, play(a).resultCode)
-        awaitSnapshot { it.phase == PlaybackPhase.PLAYING && (it.positionMs ?: 0) >= 1_000 }
-        onMain { controller.pause() }
-        val committed = awaitPauseCheckpoint()
-
-        // Without bound controllers the stopped service is destroyed; the next bind creates a new one.
-        runBlocking(Dispatchers.Main) { MediaController.releaseFuture(connection) }
-        SystemClock.sleep(500)
-        context.stopService(android.content.Intent(context, PlaybackService::class.java))
-        SystemClock.sleep(1_000)
-        controller = connectController()
-
-        val restored = awaitSnapshot { it.phase == PlaybackPhase.IDLE && it.currentEntryId == a.entryId }
-        assertEquals(committed, restored.positionMs)
-        assertEquals(PlaybackQueueRef(queueId, 1), restored.queue)
-        SystemClock.sleep(1_000)
-        assertFalse(onMain { controller.isPlaying })
-        assertEquals(PlaybackPhase.IDLE, snapshot().phase)
-
-        onMain { controller.play() }
-        val resumed = awaitSnapshot { it.phase == PlaybackPhase.PLAYING }
-        assertEquals(a.entryId, resumed.currentEntryId)
-        assertTrue("${resumed.positionMs} < $committed", (resumed.positionMs ?: 0) >= committed)
-        assertSessionAgrees()
-    }
-
-    @Test
     fun aFailedCheckpointWriteKeepsTheLastCommitAndPlaybackGoesOn() {
         val a = entry("a")
         seed(a to 20_000)
