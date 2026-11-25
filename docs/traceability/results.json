@@ -3887,5 +3887,97 @@
       "docs/contracts/album-classification-v1.md"
     ],
     "limitations": "エミュレーターと合成データの結果を実利用ライブラリでの合格として扱わない。"
+  },
+  {
+    "case_id": "E03-04-library-ui-jvm-2026-11-25",
+    "requirement_ids": [
+      "FR-UI-01",
+      "FR-SRC-02",
+      "FR-SRC-03",
+      "FR-SRC-05"
+    ],
+    "test_ids": [
+      "TEST-UI-01",
+      "TEST-LIB-02"
+    ],
+    "commit": "1d4a5b7417ad79ec84c81e678bf316fb80dbc8be",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "単体試験552件（スキップ1件は既存の Samba 試験）が成功した。本変更の LibraryQueryDaoTest・LibraryBrowserTest・LibraryNoticeTest・LibrarySelectionTest・PlayRequestTest・FolderRegistrationTest で、同名アルバム・フォルダの分離と不明値の行、窓と古い応答の破棄、閉じたときの検索語・並び・窓の復元、読み込み中・空・失敗・権限・取消の写像、選んだ Variant の再生入口への受け渡しと失敗からの再試行、待ちの取消と要求の失敗で例外を投げないこと、新しい走査で前回の結果を消すことを確認した。",
+    "evidence": [
+      "app/src/test/java/com/audipp/data/db/LibraryQueryDaoTest.kt",
+      "app/src/test/java/com/audipp/ui/library/LibraryBrowserTest.kt",
+      "app/src/test/java/com/audipp/ui/library/LibrarySelectionTest.kt",
+      "docs/evidence/issue-84/ui-verification.md"
+    ],
+    "limitations": "再生入口は差し替えた送信関数で検査した。実サービスでの再生は API 36 の計装試験で確認した。"
+  },
+  {
+    "case_id": "E03-04-library-ui-api36-2026-11-25",
+    "requirement_ids": [
+      "FR-UI-01",
+      "FR-SRC-02",
+      "FR-SRC-05"
+    ],
+    "test_ids": [
+      "TEST-UI-01",
+      "TEST-LIB-02"
+    ],
+    "commit": "1d4a5b7417ad79ec84c81e678bf316fb80dbc8be",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "API 36（emulator-5582）で com.audipp.ui の計装試験24件が成功した（撮影専用2件はスキップ）。3,000曲の一覧のスクロールと選曲から再生入口、600件のアルバム一覧で開いて戻ったときの位置と検索語の保持、拒否からの再試行、回転での表示の保持、権限を失ったフォルダの再選択の起動と取消、実サービスでのライブラリの WAV の再生と再生成後の Now Playing を確認した。",
+    "evidence": [
+      "app/src/androidTest/java/com/audipp/ui/library/LibraryUiTest.kt",
+      "docs/evidence/issue-84/ui-verification.md"
+    ],
+    "limitations": "エミュレーターでの結果。実際の文書プロバイダーでの再選択の成功、TalkBack、物理端末は未実施。"
+  },
+  {
+    "case_id": "E03-04-library-ui-api23-2026-11-25",
+    "requirement_ids": [
+      "FR-UI-01",
+      "FR-SRC-02",
+      "FR-SRC-05"
+    ],
+    "test_ids": [
+      "TEST-UI-01",
+      "TEST-LIB-02"
+    ],
+    "commit": "1d4a5b7417ad79ec84c81e678bf316fb80dbc8be",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "API 23（emulator-5580）で com.audipp.ui の計装試験19件が成功した（撮影専用2件はスキップ）。3,000曲の一覧のスクロールと選曲から再生入口・拒否からの再試行、アルバムを開いて戻ったときの位置と検索語の保持、回転での表示の保持、権限を失ったフォルダの再選択の起動と取消を確認した。",
+    "evidence": [
+      "docs/evidence/issue-84/ui-verification.md"
+    ],
+    "limitations": "MediaStore の IS_PENDING（API 29 から）を使う実サービスでの再生試験は API 23 では実行しない（本変更の1件と既存の NavigationPlaybackIntegrationTest 4件）。エミュレーターでの結果で、物理端末と TalkBack は未実施。"
+  },
+  {
+    "case_id": "E03-04-library-ui-hardware-and-talkback",
+    "requirement_ids": [
+      "FR-UI-01",
+      "FR-SRC-05"
+    ],
+    "test_ids": [
+      "TEST-UI-01",
+      "TEST-LIB-02"
+    ],
+    "commit": "1d4a5b7417ad79ec84c81e678bf316fb80dbc8be",
+    "stage": "CURRENT",
+    "permission": "NOT_REQUIRED",
+    "outcome": "NOT_RUN",
+    "execution": "NOT_RUN",
+    "reason": "物理端末（Galaxy S25・FiiO M21・S20）、TalkBack の読み上げ、実在の大規模ライブラリでの速度・メモリ、実際のアート画像を持つ音源の一覧は行っていない。",
+    "evidence": [
+      "docs/evidence/issue-84/ui-verification.md"
+    ],
+    "limitations": "エミュレーターの結果を実機の合格として扱わない。TEST-UI-01・TEST-LIB-02 全体の合格ではない。"
   }
 ]

@@ -23,6 +23,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.audipp.data.db.LibraryField
+import com.audipp.data.db.LibraryGroup
+import com.audipp.data.db.LibraryItem
 import com.audipp.data.local.SafLibrary
 import com.audipp.data.preferences.PreferenceOperation
 import com.audipp.data.preferences.preferenceStore
@@ -30,6 +33,9 @@ import com.audipp.domain.model.ThemeMode
 import com.audipp.playback.PlaybackConnection
 import com.audipp.ui.AudippApp
 import com.audipp.ui.formatAndroidVersion
+import com.audipp.ui.library.LibraryActions
+import com.audipp.ui.library.LibraryUi
+import com.audipp.ui.library.LibraryView
 import com.audipp.ui.navigation.NavigationViewModel
 import com.audipp.ui.settings.ThemeSettingsController
 import com.audipp.ui.theme.AudippDarkColors
@@ -58,6 +64,18 @@ class MainActivity : ComponentActivity() {
         navigation.refreshGrants()
     }
 
+    private val libraryActions = object : LibraryActions {
+        override fun show(view: LibraryView) = navigation.library.show(view)
+        override fun open(group: LibraryGroup) = navigation.library.open(group)
+        override fun close() = navigation.library.close()
+        override fun search(keyword: String) = navigation.library.search(keyword)
+        override fun sort(field: LibraryField, descending: Boolean) = navigation.library.sort(field, descending)
+        override fun showFrom(firstVisible: Int) = navigation.library.showFrom(firstVisible)
+        override fun retry() = navigation.library.retry()
+        override fun select(item: LibraryItem) = navigation.select(item)
+        override fun retrySelection() = navigation.retrySelection()
+    }
+
     private fun chooseFolder() {
         if (!navigation.openPicker()) return
         try {
@@ -76,6 +94,12 @@ class MainActivity : ComponentActivity() {
             val recentPlays by navigation.recentPlays.collectAsStateWithLifecycle()
             val registration by navigation.registration.collectAsStateWithLifecycle()
             val playback by navigation.playback.collectAsStateWithLifecycle()
+            val browse by navigation.library.browse.collectAsStateWithLifecycle()
+            val songs by navigation.library.songs.collectAsStateWithLifecycle()
+            val groups by navigation.library.groups.collectAsStateWithLifecycle()
+            val selection by navigation.selection.collectAsStateWithLifecycle()
+            val lastScan by navigation.lastScan.collectAsStateWithLifecycle()
+            val acceptedEntry by navigation.acceptedEntry.collectAsStateWithLifecycle()
             val controller = remember { ThemeSettingsController(applicationContext.preferenceStore) }
             val state by controller.state.collectAsState()
             val scope = rememberCoroutineScope()
@@ -113,6 +137,8 @@ class MainActivity : ComponentActivity() {
                     },
                     openNowPlaying = openNowPlaying,
                     onOpenNowPlayingHandled = { openNowPlaying = false },
+                    library = LibraryUi(browse, songs, groups, selection, lastScan, acceptedEntry),
+                    libraryActions = libraryActions,
                 )
             }
         }

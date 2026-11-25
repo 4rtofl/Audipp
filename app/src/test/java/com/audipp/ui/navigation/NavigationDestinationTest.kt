@@ -32,6 +32,16 @@ class NavigationDestinationTest {
     }
 
     @Test
+    fun sourceManagementReturnsToTheLibrary() {
+        val library = NavigationDestination(NavigationTab.LIBRARY, null)
+        val source = library.copy(page = NavigationPage.SOURCE)
+
+        assertEquals(library, source.back())
+        assertEquals(library, source.select(NavigationTab.LIBRARY))
+        assertEquals(source, source.openNowPlaying().back())
+    }
+
+    @Test
     fun expandingTheMiniPlayerLayersNowPlayingOverTheCurrentScreenAndBackReturnsToIt() {
         val queue = NavigationDestination(NavigationTab.SEARCH, NavigationPage.QUEUE)
         val tabRoot = NavigationDestination(NavigationTab.LIBRARY, null)

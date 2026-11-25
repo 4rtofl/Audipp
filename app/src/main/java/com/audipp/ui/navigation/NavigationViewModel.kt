@@ -2,17 +2,27 @@ package com.audipp.ui.navigation
 
 import android.app.Application
 import android.content.Intent
+import androidx.core.net.toUri
+import android.provider.DocumentsContract
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.audipp.data.db.LibraryDatabase
+import com.audipp.data.db.LibraryItem
 import com.audipp.data.db.LocalSourceSummary
 import com.audipp.data.db.RecentPlay
 import com.audipp.data.db.libraryDatabase
 import com.audipp.data.local.LibraryScan
+import com.audipp.data.local.LibraryScanProgress
+import com.audipp.data.local.LibraryScanResult
 import com.audipp.data.local.LibraryScanStatus
 import com.audipp.data.local.LocalTreeRegistration
 import com.audipp.data.local.SafLibrary
+import com.audipp.domain.model.QueueEntryId
 import com.audipp.playback.OutputConfirmationRequest
+import com.audipp.ui.library.LibraryBrowser
+import com.audipp.ui.library.LibrarySelection
+import com.audipp.ui.library.TrackSelection
+import com.audipp.ui.library.withSelection
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -28,6 +38,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.UUID
 
 internal sealed interface HomeSources {
     data object Loading : HomeSources
@@ -37,8 +48,17 @@ internal sealed interface HomeSources {
         val hasFolders: Boolean,
         val accessLost: Boolean,
         val retryRootId: String?,
+        val folders: List<SourceFolder> = emptyList(),
     ) : HomeSources
 }
+
+/** A registered tree. [name] is the provider's document ID for it; [granted] is the OS's current read grant. */
+internal data class SourceFolder(
+    val rootId: String,
+    val name: String,
+    val lastStatus: LibraryScanStatus?,
+    val granted: Boolean,
+)
 
 internal sealed interface RecentPlays {
     data object Loading : RecentPlays
@@ -53,7 +73,9 @@ internal sealed interface FolderRegistration {
     data object Registering : FolderRegistration
     data object Denied : FolderRegistration
     data object RegistrationFailed : FolderRegistration
-    data class Scanning(val visited: Int) : FolderRegistration
+    data class Scanning(val progress: LibraryScanProgress = LibraryScanProgress()) : FolderRegistration {
+        val visited get() = progress.visited
+    }
     data class ScanFailed(val rootId: String) : FolderRegistration
     data object AccessLost : FolderRegistration
 
@@ -70,7 +92,13 @@ internal class NavigationViewModel(
     constructor(application: Application) :
         this(application, application.libraryDatabase, SafLibrary(application, application.libraryDatabase))
 
+    // Keep the controller bound during a configuration change, including when playback is paused.
+    private val whileVisible = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0)
     private val playbackConnection = NavigationPlayback(application)
+    val library = LibraryBrowser(database.libraryQueryDao(), viewModelScope, whileVisible)
+    private val lastScanState = MutableStateFlow<LibraryScanResult?>(null)
+    /** The most recent scan this screen started, kept for its counts after it ends. */
+    val lastScan: StateFlow<LibraryScanResult?> = lastScanState
     private val sourceAttempt = MutableStateFlow(0)
     private val historyAttempt = MutableStateFlow(0)
     private val grantCheck = MutableStateFlow(0)
@@ -78,8 +106,6 @@ internal class NavigationViewModel(
     private val folderState = MutableStateFlow<FolderRegistration>(FolderRegistration.Idle)
     val registration: StateFlow<FolderRegistration> = folderState
     private var activeScan: LibraryScan? = null
-    // Keep the controller bound during a configuration change, including when playback is paused.
-    private val whileVisible = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0)
 
     val sources = sourceAttempt.flatMapLatest {
         flow<HomeSources> {
@@ -98,6 +124,10 @@ internal class NavigationViewModel(
                         it.treeUri in grants && (it.lastScanStatus == null ||
                             it.lastScanStatus == LibraryScanStatus.PARTIAL)
                     }?.id,
+                    folders = roots.map {
+                        SourceFolder(it.id, DocumentsContract.getTreeDocumentId(it.treeUri.toUri()),
+                            it.lastScanStatus, it.treeUri in grants)
+                    },
                 )
             }.collect { emit(it) }
         }.catch {
@@ -116,8 +146,25 @@ internal class NavigationViewModel(
         }
     }.stateIn(viewModelScope, whileVisible, RecentPlays.Loading)
 
-    val playback = playbackAttempt.flatMapLatest { playbackConnection.observe() }
+    private val servicePlayback = playbackAttempt.flatMapLatest { playbackConnection.observe() }
         .stateIn(viewModelScope, whileVisible, NavigationPlaybackState.Connecting)
+
+    private val selector = LibrarySelection(
+        viewModelScope,
+        lookup = { database.libraryDao().trackVariant(it) },
+        send = playbackConnection::play,
+        playback = servicePlayback,
+        newEntryId = { QueueEntryId("library-${UUID.randomUUID()}") },
+    )
+    val selection: StateFlow<TrackSelection> = selector.state
+    val acceptedEntry: StateFlow<QueueEntryId?> = selector.accepted
+
+    val playback = combine(servicePlayback, selector.state, NavigationPlaybackState::withSelection)
+        .stateIn(viewModelScope, whileVisible, NavigationPlaybackState.Connecting)
+
+    fun select(item: LibraryItem) = selector.select(item)
+
+    fun retrySelection() = selector.retry()
 
     fun retrySources() = sourceAttempt.update { it + 1 }
 
@@ -162,7 +209,7 @@ internal class NavigationViewModel(
 
     fun retryScan(rootId: String) {
         if (folderState.value.busy) return
-        folderState.value = FolderRegistration.Scanning(0)
+        folderState.value = FolderRegistration.Scanning()
         viewModelScope.launch { scan(rootId) }
     }
 
@@ -171,16 +218,18 @@ internal class NavigationViewModel(
     }
 
     private suspend fun scan(rootId: String) {
-        folderState.value = FolderRegistration.Scanning(0)
+        // A scan that ends with an exception has no result; an older one must not stand in for it.
+        lastScanState.value = null
+        folderState.value = FolderRegistration.Scanning()
         try {
             val status = coroutineScope {
                 val scan = safLibrary.startScan(rootId, this)
                 activeScan = scan
                 val progress = launch {
-                    scan.progress.collect { folderState.value = FolderRegistration.Scanning(it.visited) }
+                    scan.progress.collect { folderState.value = FolderRegistration.Scanning(it) }
                 }
                 try {
-                    scan.await().status
+                    scan.await().also { lastScanState.value = it }.status
                 } finally {
                     progress.cancel()
                 }
