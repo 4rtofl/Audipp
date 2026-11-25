@@ -3938,7 +3938,7 @@
     "limitations": "エミュレーターでの結果。実際の文書プロバイダーでの再選択の成功、TalkBack、物理端末は未実施。"
   },
   {
-    "case_id": "E03-04-library-ui-api23",
+    "case_id": "E03-04-library-ui-api23-2026-11-25",
     "requirement_ids": [
       "FR-UI-01",
       "FR-SRC-02",
@@ -3951,13 +3951,13 @@
     "commit": "1d4a5b7417ad79ec84c81e678bf316fb80dbc8be",
     "stage": "CURRENT",
     "permission": "NOT_REQUIRED",
-    "outcome": "NOT_RUN",
-    "execution": "NOT_RUN",
-    "reason": "共有の API 23 エミュレーター（emulator-5580）で 2026-11-24 から adb shell が応答せず、アプリを導入できなかったため計装試験を実行できなかった。共有のため再起動していない。",
+    "outcome": "PASS",
+    "execution": "EXECUTED",
+    "reason": "API 23（emulator-5580）で com.audipp.ui の計装試験19件が成功した（撮影専用2件はスキップ）。3,000曲の一覧のスクロールと選曲から再生入口・拒否からの再試行、アルバムを開いて戻ったときの位置と検索語の保持、回転での表示の保持、権限を失ったフォルダの再選択の起動と取消を確認した。",
     "evidence": [
       "docs/evidence/issue-84/ui-verification.md"
     ],
-    "limitations": "API 23 での一覧・選曲・回転・権限の再選択は未確認。"
+    "limitations": "MediaStore の IS_PENDING（API 29 から）を使う実サービスでの再生試験は API 23 では実行しない（本変更の1件と既存の NavigationPlaybackIntegrationTest 4件）。エミュレーターでの結果で、物理端末と TalkBack は未実施。"
   },
   {
     "case_id": "E03-04-library-ui-hardware-and-talkback",
