@@ -216,9 +216,14 @@ class LibraryUiTest {
                 robot.find(pastWindow) != null ||
                     robot.find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD).let { false }
             }
+            // Let the scroll settle, then tap a fully visible row; a new window can replace the nodes in between.
             android.os.SystemClock.sleep(1_000)
-            val title = requireNotNull(robot.find(pastWindow)).text.toString()
-            robot.click(title)
+            var title = ""
+            robot.waitUntil("a row past the first window is tapped") {
+                val node = robot.find { pastWindow(it) && robot.bounds(it).top > 600 } ?: return@waitUntil false
+                title = node.text.toString()
+                robot.clickable(node)?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+            }
             robot.await(text.getString(R.string.playback_format_unsupported))
             assertEquals(listOf("v-" + title.removePrefix("Track ")), sent.map { it.variantId.value })
             assertEquals(Availability.PLAYABLE, sent.single().source.availability)
