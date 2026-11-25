@@ -3889,7 +3889,7 @@
     "limitations": "エミュレーターと合成データの結果を実利用ライブラリでの合格として扱わない。"
   },
   {
-    "case_id": "E03-04-library-ui-jvm-2026-11-24",
+    "case_id": "E03-04-library-ui-jvm-2026-11-25",
     "requirement_ids": [
       "FR-UI-01",
       "FR-SRC-02",
@@ -3900,12 +3900,12 @@
       "TEST-UI-01",
       "TEST-LIB-02"
     ],
-    "commit": "ac9dea54df9d13ed5f91dcb6783ddfeeb8edc138",
+    "commit": "1d4a5b7417ad79ec84c81e678bf316fb80dbc8be",
     "stage": "CURRENT",
     "permission": "NOT_REQUIRED",
     "outcome": "PASS",
     "execution": "EXECUTED",
-    "reason": "単体試験546件（スキップ1件は既存の Samba 試験）が成功した。本変更の LibraryQueryDaoTest・LibraryBrowserTest・LibraryNoticeTest・LibrarySelectionTest で、同名アルバム・フォルダの分離と不明値の行、窓と古い応答の破棄、読み込み中・空・失敗・権限・取消の写像、選んだ Variant の再生入口への受け渡しと失敗からの再試行を確認した。",
+    "reason": "単体試験552件（スキップ1件は既存の Samba 試験）が成功した。本変更の LibraryQueryDaoTest・LibraryBrowserTest・LibraryNoticeTest・LibrarySelectionTest・PlayRequestTest・FolderRegistrationTest で、同名アルバム・フォルダの分離と不明値の行、窓と古い応答の破棄、閉じたときの検索語・並び・窓の復元、読み込み中・空・失敗・権限・取消の写像、選んだ Variant の再生入口への受け渡しと失敗からの再試行、待ちの取消と要求の失敗で例外を投げないこと、新しい走査で前回の結果を消すことを確認した。",
     "evidence": [
       "app/src/test/java/com/audipp/data/db/LibraryQueryDaoTest.kt",
       "app/src/test/java/com/audipp/ui/library/LibraryBrowserTest.kt",
@@ -3915,7 +3915,7 @@
     "limitations": "再生入口は差し替えた送信関数で検査した。実サービスでの再生は API 36 の計装試験で確認した。"
   },
   {
-    "case_id": "E03-04-library-ui-api36-2026-11-24",
+    "case_id": "E03-04-library-ui-api36-2026-11-25",
     "requirement_ids": [
       "FR-UI-01",
       "FR-SRC-02",
@@ -3925,12 +3925,12 @@
       "TEST-UI-01",
       "TEST-LIB-02"
     ],
-    "commit": "ac9dea54df9d13ed5f91dcb6783ddfeeb8edc138",
+    "commit": "1d4a5b7417ad79ec84c81e678bf316fb80dbc8be",
     "stage": "CURRENT",
     "permission": "NOT_REQUIRED",
     "outcome": "PASS",
     "execution": "EXECUTED",
-    "reason": "API 36（emulator-5582）で com.audipp.ui の計装試験23件が成功した（撮影専用2件はスキップ）。3,000曲の一覧のスクロールと選曲から再生入口、拒否からの再試行、回転での表示の保持、権限を失ったフォルダの再選択の起動と取消、実サービスでのライブラリの WAV の再生と再生成後の Now Playing を確認した。",
+    "reason": "API 36（emulator-5582）で com.audipp.ui の計装試験24件が成功した（撮影専用2件はスキップ）。3,000曲の一覧のスクロールと選曲から再生入口、600件のアルバム一覧で開いて戻ったときの位置と検索語の保持、拒否からの再試行、回転での表示の保持、権限を失ったフォルダの再選択の起動と取消、実サービスでのライブラリの WAV の再生と再生成後の Now Playing を確認した。",
     "evidence": [
       "app/src/androidTest/java/com/audipp/ui/library/LibraryUiTest.kt",
       "docs/evidence/issue-84/ui-verification.md"
@@ -3948,12 +3948,12 @@
       "TEST-UI-01",
       "TEST-LIB-02"
     ],
-    "commit": "ac9dea54df9d13ed5f91dcb6783ddfeeb8edc138",
+    "commit": "1d4a5b7417ad79ec84c81e678bf316fb80dbc8be",
     "stage": "CURRENT",
     "permission": "NOT_REQUIRED",
     "outcome": "NOT_RUN",
     "execution": "NOT_RUN",
-    "reason": "共有の API 23 エミュレーター（emulator-5580）でアプリの導入とパッケージ情報の取得が時間切れになり、計装試験を実行できなかった。共有のため再起動していない。",
+    "reason": "共有の API 23 エミュレーター（emulator-5580）で 2026-11-24 から adb shell が応答せず、アプリを導入できなかったため計装試験を実行できなかった。共有のため再起動していない。",
     "evidence": [
       "docs/evidence/issue-84/ui-verification.md"
     ],
@@ -3969,7 +3969,7 @@
       "TEST-UI-01",
       "TEST-LIB-02"
     ],
-    "commit": "ac9dea54df9d13ed5f91dcb6783ddfeeb8edc138",
+    "commit": "1d4a5b7417ad79ec84c81e678bf316fb80dbc8be",
     "stage": "CURRENT",
     "permission": "NOT_REQUIRED",
     "outcome": "NOT_RUN",
