@@ -68,10 +68,13 @@ class QueuePlaybackDeviceTest {
             MediaController.releaseFuture(connection)
         }
         shell("input keyevent KEYCODE_WAKEUP")
-        val sql = database.openHelper.writableDatabase
-        sql.execSQL("DELETE FROM playback_checkpoint WHERE queue_id = ?", arrayOf(queueId))
-        sql.execSQL("DELETE FROM queue_items WHERE queue_id = ?", arrayOf(queueId))
-        sql.execSQL("DELETE FROM queues WHERE queue_id = ?", arrayOf(queueId))
+        // In one transaction, so the stop's own checkpoint write cannot land between the deletes.
+        database.runInTransaction {
+            val sql = database.openHelper.writableDatabase
+            sql.execSQL("DELETE FROM playback_checkpoint WHERE queue_id = ?", arrayOf(queueId))
+            sql.execSQL("DELETE FROM queue_items WHERE queue_id = ?", arrayOf(queueId))
+            sql.execSQL("DELETE FROM queues WHERE queue_id = ?", arrayOf(queueId))
+        }
     }
 
     @Test
