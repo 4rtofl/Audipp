@@ -168,7 +168,7 @@ class PlaybackScheduleTest {
         var transition = TransitionId("unprepared")
         val engine = object : LocalPlaybackEngine {
             override fun prepare(entryId: QueueEntryId, transitionId: TransitionId,
-                document: SourceDescriptor.LocalDocument) {
+                document: SourceDescriptor.LocalDocument, startPositionMs: Long?) {
                 transition = transitionId
             }
             override fun reset() = Unit

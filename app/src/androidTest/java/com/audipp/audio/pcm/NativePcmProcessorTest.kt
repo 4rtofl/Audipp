@@ -176,7 +176,7 @@ class NativePcmProcessorTest {
         var accessAllowed = true
         val playback = LocalPlayback(object : LocalPlaybackEngine {
             override fun prepare(entryId: QueueEntryId, transitionId: TransitionId,
-                document: SourceDescriptor.LocalDocument) = Unit
+                document: SourceDescriptor.LocalDocument, startPositionMs: Long?) = Unit
             override fun reset() = Unit
         }, {
             if (!accessAllowed) throw SecurityException("test document grant revoked")

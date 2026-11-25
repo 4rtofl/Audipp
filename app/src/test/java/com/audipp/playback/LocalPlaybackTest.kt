@@ -43,7 +43,7 @@ class LocalPlaybackTest {
         var active = false
         var failure: RuntimeException? = null
         override fun prepare(entryId: QueueEntryId, transitionId: TransitionId,
-            document: SourceDescriptor.LocalDocument) {
+            document: SourceDescriptor.LocalDocument, startPositionMs: Long?) {
             failure?.let { throw it }
             active = true
             prepared += entryId

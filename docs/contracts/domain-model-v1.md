@@ -14,7 +14,7 @@
 
 `PcmPermissions`は加工と解析を分け、既定を`UNREVIEWED`にする。技術的にPCMを取得できても、現在の用途許可が`ALLOWED`でなければ処理を拒否する。Planに保存した過去の許可を再利用しない。Provider全用途の証跡・期限・保存・入口検査は #33、出力先の到達性とPlan解決は #31 が所有する。
 
-`PlaybackSnapshot`はServiceとUIの共通値で、現在項目をQueueEntry IDで示す。`PlaybackError`には表示文や例外本文ではなく分類・コード・再試行可否・復帰操作・診断IDを持たせる。`UserAction`の具体的なenum値は本実装の提案であり、UI側で日英文言へ対応付ける。
+`PlaybackSnapshot`はServiceとUIの共通値で、現在項目をQueueEntry IDで示す。キューの再生では、属するキューのIDとrevisionを`queue`で示す（[#83](queue-session-v1.md)）。`PlaybackError`には表示文や例外本文ではなく分類・コード・再試行可否・復帰操作・診断IDを持たせる。`UserAction`の具体的なenum値は本実装の提案であり、UI側で日英文言へ対応付ける。
 
 契約試験の`FakePlaybackConsumer`はPlanを検査してSnapshotを返し、UI役がJSONを復元して同じ項目・版・曲長を参照する例である。実Service、StateFlow、Reducer、停止確認、キューrevisionの管理、遅延成功時の停止再要求は #30 / #37 / #38 / #61 で実装する。このFakeを実再生の証拠にはしない。
 

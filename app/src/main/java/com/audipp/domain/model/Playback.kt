@@ -101,6 +101,12 @@ data class PlaybackError(
     init { require(code.isNotBlank() && diagnosticId.isNotBlank()) }
 }
 
+/** The committed queue revision the current playback was started or last reconciled with. */
+@Serializable
+data class PlaybackQueueRef(val queueId: String, val revision: Long) {
+    init { require(queueId.isNotBlank() && revision >= 0) }
+}
+
 @Serializable
 data class PlaybackSnapshot(
     val revision: Long,
@@ -111,6 +117,7 @@ data class PlaybackSnapshot(
     val effectiveSource: SourceRef? = null,
     val executionPlan: ExecutionPlan? = null,
     val error: PlaybackError? = null,
+    val queue: PlaybackQueueRef? = null,
 ) {
     init {
         require(revision >= 0)
